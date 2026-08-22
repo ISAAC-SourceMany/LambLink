@@ -1,0 +1,26 @@
+.vs/
+.idea/
+**/bin/
+**/obj/
+**/lib/*.dll
+*.user
+*.suo
+.env
+secrets.json
+
+local-server/preview-cache/
+
+# Reconstructed repository safety exclusions
+.env
+*.local.json
+*.log
+*.egg
+*.vol*.egg
+Cult Of The Lamb_Data/
+local-server/.token-secret
+local-server/data.json
+bin/
+obj/
+dist/
+publish/
+artifacts/
