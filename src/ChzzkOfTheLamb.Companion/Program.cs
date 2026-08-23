@@ -43,7 +43,7 @@ overlay.Start();
 var hasChzzkCredentials = !string.IsNullOrWhiteSpace(clientId) && !string.IsNullOrWhiteSpace(clientSecret);
 var developmentMode = forceDevelopmentMode || !hasChzzkCredentials;
 
-Console.WriteLine("CHZZK Companion for Cult of the Lamb - v0.1-devbridge10r");
+Console.WriteLine("CHZZK Companion for Cult of the Lamb - v0.1-devbridge10s");
 Console.WriteLine($"[CONFIG] companion credentials: {chzzkCredentials?.ProviderName ?? "not loaded"}");
 if (developmentMode)
 {
@@ -139,10 +139,11 @@ bridge.MessageReceived += envelope =>
                               || lastGameStatus.InGame != status.InGame
                               || !string.Equals(lastGameStatus.SaveId, status.SaveId, StringComparison.Ordinal)
                               || !string.Equals(lastGameStatus.ModVersion, status.ModVersion, StringComparison.Ordinal)
-                              || !string.Equals(lastGameStatus.GameVersion, status.GameVersion, StringComparison.Ordinal);
+                              || !string.Equals(lastGameStatus.GameVersion, status.GameVersion, StringComparison.Ordinal)
+                              || !string.Equals(lastGameStatus.Area, status.Area, StringComparison.Ordinal);
 
                 if (changed)
-                    Console.WriteLine($"[GAME] inGame={status.InGame} save={status.SaveId} mod={status.ModVersion} game={status.GameVersion}");
+                    Console.WriteLine($"[GAME] inGame={status.InGame} save={status.SaveId} area={status.Area} mod={status.ModVersion} game={status.GameVersion}");
 
                 // Refresh the catalog automatically when a save becomes available or changes.
                 if (status.InGame && status.SaveId != "unknown"
@@ -278,6 +279,7 @@ bridge.MessageReceived += envelope =>
                 if (result.Success)
                 {
                     Console.WriteLine($"[DONATION][RESULT] request={ShortId(result.RequestId)} SUCCESS event='{result.EventName}' effect={result.Effect}; {result.Details}");
+                    overlay.ShowDonation(result.Nickname, result.Amount, result.EventName, seconds: 5);
                 }
                 else
                 {
@@ -645,8 +647,9 @@ if (!developmentMode && api is not null && accessToken is not null)
     realtime.Donation += donation =>
     {
         var amount = donation.ParsedAmount;
-        var decision = rules.ResolveDecision(amount);
-        Console.WriteLine($"[DONATION][RECEIVED] nickname='{donation.DonatorNickname}', channel={donation.DonatorChannelId}, amount={amount:N0}, text='{donation.DonationText ?? string.Empty}'");
+        var area = lastGameStatus?.Area ?? "UNKNOWN";
+        var decision = rules.ResolveDecision(amount, area);
+        Console.WriteLine($"[DONATION][RECEIVED] nickname='{donation.DonatorNickname}', channel={donation.DonatorChannelId}, amount={amount:N0}, area={area}, text='{donation.DonationText ?? string.Empty}'");
         if (decision.Effect == "NONE")
         {
             Console.WriteLine($"[DONATION][RULE] amount={amount:N0} -> NONE ({decision.EventName})");
@@ -803,8 +806,9 @@ async Task ConsoleLoopAsync()
                 Console.WriteLine("Usage: dev donation <amount>");
                 continue;
             }
-            var decision = rules.ResolveDecision(amount);
-            Console.WriteLine($"[DEV DONATION] {amount:N0} -> {decision.EventName} ({decision.Effect})");
+            var area = lastGameStatus?.Area ?? "UNKNOWN";
+            var decision = rules.ResolveDecision(amount, area);
+            Console.WriteLine($"[DEV DONATION] {amount:N0} area={area} -> {decision.EventName} ({decision.Effect})");
             if (decision.Effect != "NONE")
                 await SendDonationEffectAsync("dev-donor", "DEV 후원자", amount, "development test", decision);
             continue;
@@ -875,8 +879,6 @@ async Task SendDonationEffectAsync(string viewerId, string nickname, long amount
         Console.WriteLine($"[DONATION][SEND] request={ShortId(requestId)} skipped: game mod is not connected.");
         return;
     }
-
-    overlay.ShowDonation(nickname, amount, decision.EventName, seconds: 5);
 
     var command = new DonationEffectCommand(
         viewerId,

@@ -276,3 +276,9 @@ An active follower raffle countdown is never replaced by the donation card.
 Versions:
 - Companion: v0.1-devbridge10r
 - Mod: 0.1.21
+
+## devbridge10s
+
+Dungeon donations now branch from village donations. The dungeon pool uses only combat/runtime members verified in the supplied Cult Of The Lamb 1.5.25.1049 Assembly-CSharp.dll. See `docs/DEVBRIDGE10S_DUNGEON_DONATION.md`.
+
+Versions: Companion `v0.1-devbridge10s`, Mod `0.1.22`.

@@ -133,6 +133,7 @@ public sealed class GameStatusEvent
     public string SaveId { get; set; } = "unknown";
     public string ModVersion { get; set; } = string.Empty;
     public string GameVersion { get; set; } = string.Empty;
+    public string Area { get; set; } = "UNKNOWN";
 }
 
 public sealed class AppearanceCatalogRequest

@@ -19,7 +19,7 @@ public sealed class Plugin : BaseUnityPlugin
     private static Plugin? _instance;
     public const string PluginGuid = "com.chzzkofthelamb.integration";
     public const string PluginName = "CHZZK Companion Integration";
-    public const string PluginVersion = "0.1.21";
+    public const string PluginVersion = "0.1.22";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private ModBridgeClient? _bridge;
@@ -209,7 +209,8 @@ public sealed class Plugin : BaseUnityPlugin
                     InGame = PlayerFarming.Instance != null,
                     SaveId = PlayerFarming.Instance != null ? _saves!.GetCurrentSaveId() : "unknown",
                     ModVersion = PluginVersion,
-                    GameVersion = UnityEngine.Application.version
+                    GameVersion = UnityEngine.Application.version,
+                    Area = DonationEffectService.GetCurrentArea()
                 });
             }
         }
