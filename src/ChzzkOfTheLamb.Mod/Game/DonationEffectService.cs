@@ -219,8 +219,31 @@ public sealed class DonationEffectService
     private string DamageAllEnemies(float damage)
     {
         EnsureDungeon();
-        Health.DamageAllEnemies(damage, DamageAllEnemiesType.Manipulation);
-        return $"all current enemies damage {damage:0.##} (Health.DamageAllEnemies/Manipulation)";
+
+        // Do not bind to DamageAllEnemiesType at compile time. In the game assembly used by
+        // this project the nested/qualified enum name is not exposed through the NuGet compile
+        // reference, even though the runtime Assembly-CSharp metadata contains both
+        // Health.DamageAllEnemies and the enum member Manipulation. Resolve the exact loaded
+        // signature from Health at runtime and invoke only after validating it.
+        var candidate = typeof(Health)
+            .GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+            .FirstOrDefault(method =>
+            {
+                if (!string.Equals(method.Name, "DamageAllEnemies", StringComparison.Ordinal)) return false;
+                var parameters = method.GetParameters();
+                if (parameters.Length != 2 || parameters[0].ParameterType != typeof(float)) return false;
+                var modeType = parameters[1].ParameterType;
+                return modeType.IsEnum && Enum.GetNames(modeType).Contains("Manipulation");
+            });
+
+        if (candidate == null)
+            throw new MissingMethodException(typeof(Health).FullName, "DamageAllEnemies(float, enum-with-Manipulation)");
+
+        var modeParameterType = candidate.GetParameters()[1].ParameterType;
+        var manipulation = Enum.Parse(modeParameterType, "Manipulation");
+        candidate.Invoke(null, new[] { (object)damage, manipulation });
+
+        return $"all current enemies damage {damage:0.##} ({typeof(Health).FullName}.{candidate.Name}, mode={modeParameterType.FullName}.Manipulation)";
     }
 
     private static void EnsureDungeon()
@@ -242,11 +265,25 @@ public sealed class DonationEffectService
         var speed = typeof(PlayerController).GetMethod("GetPlayerMaxSpeed", BindingFlags.Instance | BindingFlags.Public, null, Type.EmptyTypes, null) != null;
         var attack = typeof(PlayerWeapon).GetMethod("GetDamage", BindingFlags.Static | BindingFlags.Public, null,
             new[] { typeof(float), typeof(int), typeof(PlayerFarming) }, null) != null;
-        var enemyDamage = typeof(Health).GetMethod("DamageAllEnemies", BindingFlags.Static | BindingFlags.Public, null,
-            new[] { typeof(float), typeof(DamageAllEnemiesType) }, null) != null;
+        var enemyDamageMethod = typeof(Health)
+            .GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+            .FirstOrDefault(method =>
+            {
+                if (!string.Equals(method.Name, "DamageAllEnemies", StringComparison.Ordinal)) return false;
+                var parameters = method.GetParameters();
+                if (parameters.Length != 2 || parameters[0].ParameterType != typeof(float)) return false;
+                var modeType = parameters[1].ParameterType;
+                return modeType.IsEnum && Enum.GetNames(modeType).Contains("Manipulation");
+            });
+        var enemyDamage = enemyDamageMethod != null;
         var dungeonActive = typeof(DungeonSandboxManager).GetProperty("Active", BindingFlags.Static | BindingFlags.Public) is { CanRead: true };
 
+        var enemyDamageSignature = enemyDamageMethod == null
+            ? "UNAVAILABLE"
+            : $"{enemyDamageMethod.DeclaringType?.FullName}.{enemyDamageMethod.Name}({string.Join(", ", enemyDamageMethod.GetParameters().Select(p => p.ParameterType.FullName))})";
+
         _log.LogInfo($"[DONATION][CAPABILITY] verified against runtime types: dungeonActive={dungeonActive}, playerHeal={heal}, playerHP={hp}, fervourField={fervourField}, fervourAmmo={fervourAmmo}, fervourTotal={fervourTotal}, moveSpeed={speed}, attackDamage={attack}, enemyDamage={enemyDamage}");
+        _log.LogInfo($"[DONATION][CAPABILITY] enemyDamageSignature={enemyDamageSignature}; Manipulation enum member validated={enemyDamage}");
         if (!(dungeonActive && heal && hp && fervourField && fervourAmmo && fervourTotal && speed && attack && enemyDamage))
             _log.LogWarning("[DONATION][CAPABILITY] one or more dungeon donation members are unavailable; affected effects will fail safely and return DONATION_EFFECT_RESULT failure.");
     }

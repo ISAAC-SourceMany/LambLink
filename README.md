@@ -282,3 +282,10 @@ Versions:
 Dungeon donations now branch from village donations. The dungeon pool uses only combat/runtime members verified in the supplied Cult Of The Lamb 1.5.25.1049 Assembly-CSharp.dll. See `docs/DEVBRIDGE10S_DUNGEON_DONATION.md`.
 
 Versions: Companion `v0.1-devbridge10s`, Mod `0.1.22`.
+
+
+## devbridge10t
+
+Build fix for dungeon enemy-damage donations. Removed the compile-time reference to `DamageAllEnemiesType`, which is not exposed by the compile reference used by the Mod project. The Mod now resolves `Health.DamageAllEnemies` from the actual loaded `Assembly-CSharp` runtime type and only accepts a two-parameter signature whose first parameter is `float` and whose second parameter is an enum containing the actual `Manipulation` member. The exact resolved signature is logged under `[DONATION][CAPABILITY] enemyDamageSignature=...`.
+
+Versions: Companion `v0.1-devbridge10t`, Mod `0.1.23`.
