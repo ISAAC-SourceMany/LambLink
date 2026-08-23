@@ -331,3 +331,10 @@ Versions: Companion `v0.1-devbridge10t`, Mod `0.1.23`.
 - Added movement/attack debuffs using the same magnitudes/durations as corresponding buffs: -15%, -20%, -25%, -40%.
 - Debuffs use the same per-stat FIFO queues as buffs, so donations are never overwritten: the current speed/attack effect finishes before the next queued effect begins.
 - Added OBS overlay cards/icons for debuffs and end-to-end donation diagnostics remain unchanged.
+
+
+## devbridge10z compile compatibility fix
+- Mod 0.1.28 / Companion v0.1-devbridge10z.
+- Replaced C# init-only setters in DungeonDonationBuffs with ordinary setters to avoid IsExternalInit on the game mod target.
+- Replaced index-from-end queue[^1] with queue[queue.Count - 1] to avoid System.Index on netstandard2.0/game references.
+- No donation behavior or Protocol schema changes from 10y.

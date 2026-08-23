@@ -19,7 +19,7 @@ public sealed class Plugin : BaseUnityPlugin
     private static Plugin? _instance;
     public const string PluginGuid = "com.chzzkofthelamb.integration";
     public const string PluginName = "CHZZK Companion Integration";
-    public const string PluginVersion = "0.1.27";
+    public const string PluginVersion = "0.1.28";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private ModBridgeClient? _bridge;

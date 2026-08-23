@@ -9,9 +9,9 @@ internal static class DungeonDonationBuffState
 {
     private sealed class ScheduledBuff
     {
-        public float Multiplier { get; init; }
-        public float StartsAt { get; init; }
-        public float EndsAt { get; init; }
+        public float Multiplier { get; set; }
+        public float StartsAt { get; set; }
+        public float EndsAt { get; set; }
     }
 
     private static readonly List<ScheduledBuff> MoveQueue = new();
@@ -28,7 +28,7 @@ internal static class DungeonDonationBuffState
         var now = Time.unscaledTime;
         PruneExpired(queue, now);
 
-        var startsAt = queue.Count == 0 ? now : Math.Max(now, queue[^1].EndsAt);
+        var startsAt = queue.Count == 0 ? now : Math.Max(now, queue[queue.Count - 1].EndsAt);
         var endsAt = startsAt + Math.Max(0.1f, seconds);
         queue.Add(new ScheduledBuff
         {
