@@ -47,7 +47,7 @@ $env:COTL_INSTALLER_MANIFEST_URL='https://.../test-manifest.json'
 - 게임을 먼저/Companion을 먼저 실행해도 크래시 없는지 확인
 
 
-## RC8 installer fixes
+## RC9 installer fixes
 - Installer automatically stops a running ChzzkOfTheLamb Companion before replacing program files, preventing file-lock failures during update/reinstall.
 - Companion is published as a self-contained single-file executable to drastically reduce ZIP entry count and antivirus/Defender extraction overhead.
 - User data under `%LOCALAPPDATA%\ChzzkOfTheLamb` is not deleted by Companion program updates.

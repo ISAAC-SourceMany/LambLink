@@ -19,6 +19,7 @@ public sealed class Plugin : BaseUnityPlugin
     public const string PluginGuid = "com.chzzkofthelamb.integration";
     public const string PluginName = "CHZZK Companion Integration";
     public const string PluginVersion = "1.0.0";
+    public const string BuildTag = "rc9";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private ModBridgeClient? _bridge;
@@ -44,8 +45,9 @@ public sealed class Plugin : BaseUnityPlugin
         _donations = new DonationEffectService(Logger);
         _bridge = new ModBridgeClient(_queue, Logger);
 
-        Harmony.CreateAndPatchAll(typeof(Plugin).Assembly, PluginGuid);
-        Logger.LogInfo($"{PluginName} {PluginVersion} loaded");
+        var harmony = Harmony.CreateAndPatchAll(typeof(Plugin).Assembly, PluginGuid);
+        IndoctrinationRafflePatch.Install(harmony);
+        Logger.LogInfo($"{PluginName} {PluginVersion} loaded [BUILD={BuildTag}]");
 
         // The bridge is pure localhost networking. Starting it in Awake is safe because all
         // game API mutations still remain queued and are executed from Update on Unity's
@@ -124,23 +126,47 @@ public sealed class Plugin : BaseUnityPlugin
         });
     }
 
-    // Runtime fallback for builds where Harmony does not observe UIManager.ShowIndoctrinationMenu.
-    // GameObject.Find only returns active objects, so this is still tied to the streamer actually
-    // opening the indoctrination UI rather than merely having a pending recruit in the cult.
+    // Runtime fallback for builds where neither explicit Harmony hook fires. Prefer the real
+    // UIAppearanceMenuController_Form component over a hard-coded GameObject name. This remains
+    // edge-triggered, so an already-visible menu cannot repeatedly open raffles.
     private void ProbeIndoctrinationUiFallback()
     {
         var now = UnityEngine.Time.unscaledTime;
         if (now < _nextIndoctrinationUiProbeAt) return;
-        _nextIndoctrinationUiProbeAt = now + 0.20f;
+        _nextIndoctrinationUiProbeAt = now + 0.25f;
 
         bool visible = false;
         string detectedName = string.Empty;
+        object? detectedInstance = null;
+
         try
         {
-            var go = UnityEngine.GameObject.Find("Follower Indoctrination Menu(Clone)")
-                     ?? UnityEngine.GameObject.Find("Follower Indoctrination Menu");
-            visible = go != null && go.activeInHierarchy;
-            detectedName = go?.name ?? string.Empty;
+            var formType = AccessTools.TypeByName("Lamb.UI.UIAppearanceMenuController_Form");
+            if (formType != null)
+            {
+                var instances = UnityEngine.Object.FindObjectsOfType(formType);
+                foreach (var instance in instances)
+                {
+                    if (instance == null) continue;
+                    var component = instance as UnityEngine.Component;
+                    if (component != null && component.gameObject.activeInHierarchy)
+                    {
+                        visible = true;
+                        detectedInstance = instance;
+                        detectedName = $"{formType.FullName}@{component.gameObject.name}";
+                        break;
+                    }
+                }
+            }
+
+            if (!visible)
+            {
+                var go = UnityEngine.GameObject.Find("Follower Indoctrination Menu(Clone)")
+                         ?? UnityEngine.GameObject.Find("Follower Indoctrination Menu");
+                visible = go != null && go.activeInHierarchy;
+                detectedName = go?.name ?? detectedName;
+                detectedInstance = go;
+            }
         }
         catch (Exception ex)
         {
@@ -150,7 +176,7 @@ public sealed class Plugin : BaseUnityPlugin
         if (visible && !_indoctrinationUiWasVisible)
         {
             Logger.LogInfo($"[RAFFLE][FALLBACK] indoctrination UI became visible: object='{detectedName}', bridgeConnected={_bridge?.IsConnected == true}");
-            NotifyIndoctrinationMenuOpened(Array.Empty<object>());
+            NotifyIndoctrinationMenuOpened(detectedInstance == null ? Array.Empty<object>() : new[] { detectedInstance });
         }
         else if (!visible && _indoctrinationUiWasVisible)
         {

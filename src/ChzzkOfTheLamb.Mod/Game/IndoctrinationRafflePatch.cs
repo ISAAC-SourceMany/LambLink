@@ -1,35 +1,87 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 
 namespace ChzzkOfTheLamb.Mod.Game;
 
-// Production raffle trigger: do not open the raffle merely because a recruit exists.
-// Patch every UIManager.ShowIndoctrinationMenu overload. Some COTL builds route the
-// real UI call through an overload that is not the first method returned by reflection.
-[HarmonyPatch]
+// Explicitly installed raffle hooks. We intentionally do not rely on Harmony's assembly scan
+// for these runtime-resolved COTL types, because some release builds loaded the plugin without
+// ever invoking TargetMethods(). This installer logs every discovered/installed hook.
 internal static class IndoctrinationRafflePatch
 {
-    private static IEnumerable<MethodBase> TargetMethods()
+    private static bool _installed;
+
+    internal static void Install(Harmony harmony)
     {
-        var uiManager = AccessTools.TypeByName("Lamb.UI.UIManager");
-        if (uiManager == null)
+        if (_installed) return;
+        _installed = true;
+
+        var installed = 0;
+
+        try
         {
-            Plugin.LogRafflePatchDiagnostic("UIManager type not found; Harmony trigger unavailable. UI-presence fallback remains enabled.");
-            return Array.Empty<MethodBase>();
+            var uiManager = AccessTools.TypeByName("Lamb.UI.UIManager");
+            if (uiManager == null)
+            {
+                Plugin.LogRafflePatchDiagnostic("UIManager type not found; ShowIndoctrinationMenu hook unavailable.");
+            }
+            else
+            {
+                var targets = AccessTools.GetDeclaredMethods(uiManager)
+                    .Where(m => string.Equals(m.Name, "ShowIndoctrinationMenu", StringComparison.Ordinal))
+                    .ToArray();
+
+                Plugin.LogRafflePatchDiagnostic(targets.Length == 0
+                    ? "ShowIndoctrinationMenu target not found."
+                    : $"discovered {targets.Length} ShowIndoctrinationMenu overload(s): {string.Join(" | ", targets.Select(Describe))}");
+
+                var prefix = new HarmonyMethod(typeof(IndoctrinationRafflePatch), nameof(UIManagerPrefix));
+                foreach (var target in targets)
+                {
+                    harmony.Patch(target, prefix: prefix);
+                    installed++;
+                    Plugin.LogRafflePatchDiagnostic($"installed UIManager hook: {Describe(target)}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Plugin.LogRafflePatchDiagnostic($"UIManager hook install failed: {ex.GetBaseException().Message}");
         }
 
-        var targets = AccessTools.GetDeclaredMethods(uiManager)
-            .Where(m => string.Equals(m.Name, "ShowIndoctrinationMenu", StringComparison.Ordinal))
-            .Cast<MethodBase>()
-            .ToArray();
+        // This controller is present on the actual indoctrination appearance screen. OnShowStarted
+        // runs when the UI becomes visible and also gives us an instance that contains _follower,
+        // making recruit resolution more reliable than an empty UIManager argument list.
+        try
+        {
+            var formType = AccessTools.TypeByName("Lamb.UI.UIAppearanceMenuController_Form");
+            if (formType == null)
+            {
+                Plugin.LogRafflePatchDiagnostic("UIAppearanceMenuController_Form type not found; controller hook unavailable.");
+            }
+            else
+            {
+                var onShowStarted = AccessTools.Method(formType, "OnShowStarted", Type.EmptyTypes);
+                if (onShowStarted == null)
+                {
+                    Plugin.LogRafflePatchDiagnostic("UIAppearanceMenuController_Form.OnShowStarted() not found.");
+                }
+                else
+                {
+                    var postfix = new HarmonyMethod(typeof(IndoctrinationRafflePatch), nameof(FormControllerPostfix));
+                    harmony.Patch(onShowStarted, postfix: postfix);
+                    installed++;
+                    Plugin.LogRafflePatchDiagnostic($"installed form-controller hook: {Describe(onShowStarted)}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Plugin.LogRafflePatchDiagnostic($"form-controller hook install failed: {ex.GetBaseException().Message}");
+        }
 
-        Plugin.LogRafflePatchDiagnostic(targets.Length == 0
-            ? "ShowIndoctrinationMenu target not found; UI-presence fallback remains enabled."
-            : $"patching {targets.Length} ShowIndoctrinationMenu overload(s): {string.Join(" | ", targets.Select(Describe))}");
-        return targets;
+        Plugin.LogRafflePatchDiagnostic($"explicit raffle hook installation complete: installed={installed}; runtime controller/UI fallback enabled.");
     }
 
     private static string Describe(MethodBase method)
@@ -44,8 +96,13 @@ internal static class IndoctrinationRafflePatch
         }
     }
 
-    private static void Prefix(object[]? __args)
+    private static void UIManagerPrefix(object[]? __args)
     {
         Plugin.NotifyIndoctrinationMenuOpened(__args ?? Array.Empty<object>());
+    }
+
+    private static void FormControllerPostfix(object __instance)
+    {
+        Plugin.NotifyIndoctrinationMenuOpened(__instance == null ? Array.Empty<object>() : new[] { __instance });
     }
 }
