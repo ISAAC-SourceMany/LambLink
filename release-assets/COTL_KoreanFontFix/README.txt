@@ -1,10 +1,11 @@
 COTL Korean Font Fix 4.2.1 release assets
 
-External release must contain these two files in this folder before running build-release.ps1:
-  - COTL_KoreanFontFix.dll
-  - koreanfont.bundle
+Before building the external release, place your tested files here with these exact names:
+- COTL_KoreanFontFix.dll
+- koreanfont.bundle
 
-They are installed to:
-  <Cult of the Lamb>\BepInEx\plugins\COTL_KoreanFontFix\
+Validated SHA-256 values:
+COTL_KoreanFontFix.dll  f51607271da49cbce4085ae30423aa133b7dc20bb374c16d919a95a0833036d8
+koreanfont.bundle       d711731544f49c59423715885e4466b75a135767515ab3d3ae4de58df4123a8f
 
-Do not replace koreanfont.bundle with a font file. This bundle is the Unity/TMP asset bundle used by the tested 4.2.1 plugin.
+build-release.ps1 verifies both hashes before creating the release ZIP.

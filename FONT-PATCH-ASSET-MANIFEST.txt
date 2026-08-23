@@ -1,0 +1,10 @@
+COTL Korean Font Fix validated assets
+Version detected in DLL: 4.2.1
+
+SHA-256
+COTL_KoreanFontFix.dll  f51607271da49cbce4085ae30423aa133b7dc20bb374c16d919a95a0833036d8
+koreanfont.bundle       d711731544f49c59423715885e4466b75a135767515ab3d3ae4de58df4123a8f
+
+Expected release installation path:
+BepInEx\plugins\COTL_KoreanFontFix\COTL_KoreanFontFix.dll
+BepInEx\plugins\COTL_KoreanFontFix\koreanfont.bundle

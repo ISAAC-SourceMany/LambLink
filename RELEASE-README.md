@@ -1,4 +1,4 @@
-# ChzzkOfTheLamb v1.0.0 RC2
+# ChzzkOfTheLamb v1.0.0 RC3
 
 외부 배포용 릴리즈 후보입니다. 이 버전부터 COTL Korean Font Fix 4.2.1을 같은 설치 패키지에 포함하도록 릴리즈/설치 구조를 통합했습니다.
 
@@ -46,7 +46,7 @@ ZIP을 풀고 PowerShell에서 `Install-ChzzkOfTheLamb.ps1`을 실행합니다.
 
 배포용 Companion은 AWS CLI/SSO를 호출하지 않습니다. CHZZK Client Secret은 AWS Secrets Manager에만 존재합니다. Companion OAuth는 Auth Gateway를 통해 처리되고 로컬 Companion에는 필요한 런타임 토큰만 전달됩니다.
 
-## 현재 RC2 빌드 준비 사항
+## 현재 RC3 빌드 준비 사항
 
 `build-release.ps1` 실행 전 아래 실제 테스트 바이너리를 `release-assets\COTL_KoreanFontFix\`에 넣어야 합니다.
 

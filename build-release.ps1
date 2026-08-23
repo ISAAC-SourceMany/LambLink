@@ -16,6 +16,18 @@ if (-not (Test-Path $fontBundle)) {
     throw "Missing font bundle: $fontBundle`nPlace the tested koreanfont.bundle used by COTL Korean Font Fix 4.2.1 in release-assets\COTL_KoreanFontFix before building the external release."
 }
 
+$expectedFontDllSha256 = 'f51607271da49cbce4085ae30423aa133b7dc20bb374c16d919a95a0833036d8'
+$expectedFontBundleSha256 = 'd711731544f49c59423715885e4466b75a135767515ab3d3ae4de58df4123a8f'
+$actualFontDllSha256 = (Get-FileHash $fontDll -Algorithm SHA256).Hash.ToLowerInvariant()
+$actualFontBundleSha256 = (Get-FileHash $fontBundle -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actualFontDllSha256 -ne $expectedFontDllSha256) {
+    throw "Unexpected COTL_KoreanFontFix.dll SHA-256: $actualFontDllSha256`nExpected tested 4.2.1 binary: $expectedFontDllSha256"
+}
+if ($actualFontBundleSha256 -ne $expectedFontBundleSha256) {
+    throw "Unexpected koreanfont.bundle SHA-256: $actualFontBundleSha256`nExpected tested bundle: $expectedFontBundleSha256"
+}
+Write-Host "[ASSET] COTL Korean Font Fix 4.2.1 verified by SHA-256."
+
 Write-Host '[2/7] Cleaning dist...'
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $companionOut, $pluginOut, $fontOut | Out-Null
