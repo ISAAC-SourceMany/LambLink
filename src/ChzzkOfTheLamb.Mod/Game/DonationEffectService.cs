@@ -21,15 +21,7 @@ public sealed class DonationEffectService
 
     public static string GetCurrentArea()
     {
-        try
-        {
-            if (PlayerFarming.Instance == null) return "UNKNOWN";
-            return DungeonSandboxManager.Active ? "DUNGEON" : "BASE";
-        }
-        catch
-        {
-            return PlayerFarming.Instance == null ? "UNKNOWN" : "BASE";
-        }
+        return DungeonContext.GetArea(out _);
     }
 
     public DonationEffectResult ApplyFromJson(string payloadJson)
@@ -40,8 +32,8 @@ public sealed class DonationEffectService
             command = JsonConvert.DeserializeObject<DonationEffectCommand>(payloadJson)
                       ?? throw new InvalidOperationException("Invalid DonationEffect command.");
 
-            var actualArea = GetCurrentArea();
-            _log.LogInfo($"[DONATION][INPUT] request={Short(command.RequestId)}, viewer={command.ViewerId}, nickname='{command.Nickname}', amount={command.Amount}, effect={command.Effect}, event='{command.EventName}', actualArea={actualArea}");
+            var actualArea = DungeonContext.GetArea(out var areaEvidence);
+            _log.LogInfo($"[DONATION][INPUT] request={Short(command.RequestId)}, viewer={command.ViewerId}, nickname='{command.Nickname}', amount={command.Amount}, effect={command.Effect}, event='{command.EventName}', actualArea={actualArea}, evidence={areaEvidence}");
 
             if (PlayerFarming.Instance == null || DataManager.Instance == null)
                 throw new InvalidOperationException("game is not ready");
@@ -248,8 +240,8 @@ public sealed class DonationEffectService
 
     private static void EnsureDungeon()
     {
-        if (!DungeonSandboxManager.Active)
-            throw new InvalidOperationException("dungeon-only donation effect requested while DungeonSandboxManager.Active is false");
+        if (!DungeonContext.IsDungeon(out var evidence))
+            throw new InvalidOperationException($"dungeon-only donation effect requested outside dungeon ({evidence})");
     }
 
     private void LogDungeonCapabilities()

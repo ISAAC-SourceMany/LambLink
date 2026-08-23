@@ -289,3 +289,11 @@ Versions: Companion `v0.1-devbridge10s`, Mod `0.1.22`.
 Build fix for dungeon enemy-damage donations. Removed the compile-time reference to `DamageAllEnemiesType`, which is not exposed by the compile reference used by the Mod project. The Mod now resolves `Health.DamageAllEnemies` from the actual loaded `Assembly-CSharp` runtime type and only accepts a two-parameter signature whose first parameter is `float` and whose second parameter is an enum containing the actual `Manipulation` member. The exact resolved signature is logged under `[DONATION][CAPABILITY] enemyDamageSignature=...`.
 
 Versions: Companion `v0.1-devbridge10t`, Mod `0.1.23`.
+
+## devbridge10u
+
+- Fixes normal Crusade dungeon detection. `DungeonSandboxManager.Active` is sandbox-specific and is now only a secondary signal.
+- Authoritative dungeon detection now uses the active Unity scene (`Dungeon*`) and the runtime `PlayerFarming.Location` value observed by the game (`Dungeon1_1`, etc.), with diagnostics showing the evidence used.
+- Dungeon-only buffs use the same context detector, so movement/attack buffs remain active during normal Crusades.
+- Fixes CHZZK village nameplate markers disappearing when AWS SSO/CHZZK credentials are temporarily unavailable. In offline/dev mode, saved follower mappings are recovered across streamer IDs only after follower ID + nickname match against the current live roster. If none verify, the Companion preserves existing game markers instead of sending a destructive empty sync.
+- Versions: Companion `v0.1-devbridge10u`, Mod `0.1.24`.

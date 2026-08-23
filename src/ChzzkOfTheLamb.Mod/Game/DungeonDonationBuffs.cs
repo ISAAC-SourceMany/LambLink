@@ -49,7 +49,7 @@ internal static class ChzzkDungeonMoveSpeedPatch
 {
     private static void Postfix(ref float __result)
     {
-        if (DungeonSandboxManager.Active)
+        if (DungeonContext.IsDungeon(out _))
             __result = DungeonDonationBuffState.ApplyMove(__result);
     }
 }
@@ -59,7 +59,7 @@ internal static class ChzzkDungeonAttackDamagePatch
 {
     private static void Postfix(ref float __result)
     {
-        if (DungeonSandboxManager.Active)
+        if (DungeonContext.IsDungeon(out _))
             __result = DungeonDonationBuffState.ApplyAttack(__result);
     }
 }

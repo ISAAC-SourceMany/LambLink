@@ -89,6 +89,24 @@ public sealed class ViewerFollowerRepository
                 }).ToList();
     }
 
+    public IReadOnlyList<ViewerFollowerRecord> GetForSaveAnyStreamer(string saveId)
+    {
+        lock (_gate)
+            return _records.Where(x => x.SaveId == saveId)
+                .Select(x => new ViewerFollowerRecord
+                {
+                    StreamerChannelId = x.StreamerChannelId,
+                    ViewerChannelId = x.ViewerChannelId,
+                    LastKnownNickname = x.LastKnownNickname,
+                    SaveId = x.SaveId,
+                    FollowerId = x.FollowerId,
+                    IsAlive = x.IsAlive,
+                    CreatedAt = x.CreatedAt,
+                    DiedAt = x.DiedAt,
+                    DeathReason = x.DeathReason
+                }).ToList();
+    }
+
     public void Upsert(ViewerFollowerRecord record)
     {
         lock (_gate)

@@ -43,7 +43,7 @@ overlay.Start();
 var hasChzzkCredentials = !string.IsNullOrWhiteSpace(clientId) && !string.IsNullOrWhiteSpace(clientSecret);
 var developmentMode = forceDevelopmentMode || !hasChzzkCredentials;
 
-Console.WriteLine("CHZZK Companion for Cult of the Lamb - v0.1-devbridge10t");
+Console.WriteLine("CHZZK Companion for Cult of the Lamb - v0.1-devbridge10u");
 Console.WriteLine($"[CONFIG] companion credentials: {chzzkCredentials?.ProviderName ?? "not loaded"}");
 if (developmentMode)
 {
@@ -675,7 +675,24 @@ async Task SyncChzzkMarkersToGameAsync(string saveId, bool validateAgainstRoster
     if (string.IsNullOrWhiteSpace(saveId) || saveId == "unknown" || !bridge.IsGameConnected) return;
 
     var markers = new List<ChzzkFollowerMarker>();
-    foreach (var record in followers.GetForSave(streamerChannelId, saveId))
+    var records = followers.GetForSave(streamerChannelId, saveId);
+    var offlineFallback = false;
+
+    // If CHZZK credentials are temporarily unavailable (for example an expired AWS SSO session),
+    // LocalStreamerId is normally dev-local-streamer and would otherwise produce an empty marker
+    // list that clears all village CHZZK badges. In offline/dev mode, recover persisted records
+    // from this save across streamer IDs, but only keep entries whose follower ID + nickname match
+    // the live game roster. This makes the fallback safe against stale/reused follower IDs.
+    if (developmentMode && records.Count == 0 &&
+        validateAgainstRoster && string.Equals(latestRosterSaveId, saveId, StringComparison.Ordinal))
+    {
+        records = followers.GetForSaveAnyStreamer(saveId);
+        offlineFallback = records.Count > 0;
+        if (offlineFallback)
+            Console.WriteLine($"[FOLLOWER-NAMEPLATE] offline credential fallback: considering {records.Count} persisted record(s) across streamer IDs for save={saveId}; live roster identity validation is required.");
+    }
+
+    foreach (var record in records)
     {
         if (validateAgainstRoster && string.Equals(latestRosterSaveId, saveId, StringComparison.Ordinal))
         {
@@ -689,6 +706,12 @@ async Task SyncChzzkMarkersToGameAsync(string saveId, bool validateAgainstRoster
             ViewerId = record.ViewerChannelId,
             Nickname = NormalizeFollowerIdentityName(record.LastKnownNickname)
         });
+    }
+
+    if (developmentMode && offlineFallback && markers.Count == 0)
+    {
+        Console.WriteLine($"[FOLLOWER-NAMEPLATE] offline fallback found no roster-verified CHZZK followers; preserving current game markers instead of sending a destructive empty sync.");
+        return;
     }
 
     var signature = saveId + "|" + string.Join(";", markers
