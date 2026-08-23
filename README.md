@@ -9,3 +9,8 @@
 
 Release Companion은 AWS CLI/SSO를 사용하지 않으며 CHZZK Client Secret을 포함하지 않습니다.
 Streamer OAuth는 AWS Auth Gateway를 통해 처리합니다.
+
+
+## External release packaging
+
+RC2 release packaging bundles COTL Korean Font Fix 4.2.1 (`COTL_KoreanFontFix.dll` + `koreanfont.bundle`) under `BepInEx\plugins\COTL_KoreanFontFix` through the installer. See `RELEASE-README.md` and `DEPLOY-RELEASE.md`.

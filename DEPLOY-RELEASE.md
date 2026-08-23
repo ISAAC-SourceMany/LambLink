@@ -1,62 +1,44 @@
-# v1.0.0 RC1 배포자 체크리스트
+# v1.0.0 RC2 배포 체크리스트
 
-이 문서는 스트리머 사용자에게 ZIP을 전달하기 전에 개발자/배포자가 한 번 수행하는 작업입니다.
-일반 사용자는 AWS 계정이나 AWS SSO를 사용하지 않습니다.
+## 1. Korean Font Fix 4.2.1 실제 바이너리 준비
 
-## 1. CHZZK 개발자 콘솔
+테스트에 사용한 아래 파일을 그대로 준비합니다.
 
-`COTL Companion` 앱의 Redirect URI를 아래 production callback으로 등록합니다.
+- `release-assets\COTL_KoreanFontFix\COTL_KoreanFontFix.dll`
+- `release-assets\COTL_KoreanFontFix\koreanfont.bundle`
 
-`https://y0eblkdmu5.execute-api.ap-northeast-2.amazonaws.com/auth/companion/callback`
+런타임 로그에서 검증된 설치 위치는 `BepInEx\plugins\COTL_KoreanFontFix\`입니다. 4.2.1은 번들의 `KoreanRuntimeFont`를 TMP fallback으로 등록합니다.
 
-기존 로컬 개발용 callback이 필요하면 개발자 콘솔에서 복수 Redirect URI를 지원하는 범위 내에서 유지합니다.
+## 2. CHZZK / AWS 릴리즈 백엔드
 
-## 2. AWS backend 배포
+- CHZZK 개발자 콘솔에 Companion production redirect URI 등록
+- AWS Auth Gateway/backend 배포
+- 사용자 배포본에는 AWS CLI/SSO/Client Secret을 포함하지 않음
 
-이번 RC1 backend에는 streamer Companion용 OAuth gateway가 추가되었습니다.
-
-- `/auth/companion/start`
-- `/auth/companion/callback`
-- `/auth/companion/token`
-
-Client Secret은 Lambda가 Secrets Manager에서 읽으며 사용자 PC로 배포되지 않습니다.
-OAuth 완료 후 액세스 토큰은 DynamoDB의 2분짜리 one-time ticket으로 전달되고, Companion이 교환하는 즉시 삭제됩니다.
-
-기존 SAM 스택을 `aws/template.yaml`로 다시 배포합니다. 이 단계에서만 개발자 AWS 자격증명이 필요합니다.
-
-## 3. Release 빌드
-
-Visual Studio Developer PowerShell 또는 dotnet SDK가 설치된 PowerShell에서:
+## 3. 릴리즈 빌드
 
 ```powershell
 .\build-release.ps1
 ```
 
-생성물:
+폰트 DLL/번들이 없으면 스크립트가 즉시 실패하도록 되어 있습니다.
+
+성공하면:
 
 `dist\ChzzkOfTheLamb-v1.0.0-win-x64.zip`
 
-Release configuration에는 `RELEASE_DISTRIBUTION`이 정의됩니다. 이 빌드에서는:
+이 생성됩니다.
 
-- AWS CLI/SSO credential provider가 컴파일되지 않음
-- CHZZK Client Secret이 Companion에 포함되지 않음
-- `dev spawn`, `dev join`, `dev donation` 명령이 노출/실행되지 않음
-- production Auth Gateway만 사용
+## 4. 클린 PC 검증
 
-## 4. 배포 전 필수 smoke test
+- Steam판 Cult of the Lamb + BepInEx 5 + COTL_API 환경
+- 기존 ChzzkOfTheLamb/COTL_KoreanFontFix 폴더가 없는 상태
+- 설치 스크립트 한 번으로 두 플러그인 폴더가 생성되는지 확인
+- 게임 로그에 `COTL Korean Font Fix 4.2.1 loaded`가 찍히는지 확인
+- `Loaded bundled Korean TMP font: KoreanRuntimeFont`가 찍히는지 확인
+- CHZZK Companion이 AWS SSO 없이 로그인 플로우를 시작하는지 확인
+- OBS overlay / raffle / donation / buff/debuff 확인
 
-1. AWS CLI 환경변수를 모두 지운 일반 Windows 계정에서 Companion 실행
-2. 로그에 `[MODE] RELEASE / CHZZK LIVE` 확인
-3. 로그에 `[CONFIG] AWS CLI/SSO: not used by distribution build` 확인
-4. 브라우저 CHZZK OAuth 성공
-5. `[AUTH] CHZZK connected:` 확인
-6. 게임 Mod 연결 및 `area=BASE/DUNGEON` 전환 확인
-7. `!신도` 추첨 확인
-8. 실제 후원 이벤트 1회 또는 개발 환경에서 동일 commit Debug build로 효과 확인
-9. OBS `http://127.0.0.1:17883/overlay` 확인
-10. My Lamb catalog upload/appearance load 확인
+## 5. 정식 1.0.0 전 남은 권장 작업
 
-## 5. RC1 제한
-
-현재 설치 스크립트는 Cult of the Lamb 경로 자동 탐지, Mod/Companion 설치, 바탕화면 바로가기를 지원합니다.
-다만 BepInEx 5와 COTL_API는 이미 설치되어 있어야 합니다. 두 의존성까지 자동 설치하도록 만든 뒤 정식 v1.0.0 설치기로 승격하는 것을 권장합니다.
+BepInEx 5와 COTL_API까지 설치기에 포함하거나 안전한 자동 다운로드/검증 방식으로 처리하면, 사용자가 사전 모드 설치 없이 사용할 수 있습니다.
