@@ -19,7 +19,7 @@ public sealed class Plugin : BaseUnityPlugin
     public const string PluginGuid = "com.chzzkofthelamb.integration";
     public const string PluginName = "CHZZK Companion Integration";
     public const string PluginVersion = "1.0.0";
-    public const string BuildTag = "rc9";
+    public const string BuildTag = "rc10";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private ModBridgeClient? _bridge;
@@ -35,6 +35,8 @@ public sealed class Plugin : BaseUnityPlugin
     private float _nextBridgeStartCheckAt;
     private float _nextIndoctrinationUiProbeAt;
     private bool _indoctrinationUiWasVisible;
+    private string _lastIndoctrinationProbeSignature = string.Empty;
+    private float _nextIndoctrinationCandidateLogAt;
 
     private void Awake()
     {
@@ -126,46 +128,89 @@ public sealed class Plugin : BaseUnityPlugin
         });
     }
 
-    // Runtime fallback for builds where neither explicit Harmony hook fires. Prefer the real
-    // UIAppearanceMenuController_Form component over a hard-coded GameObject name. This remains
-    // edge-triggered, so an already-visible menu cannot repeatedly open raffles.
+    // Runtime fallback for builds where neither explicit Harmony hook fires.
+    // RC10 deliberately does not depend on one exact GameObject/controller name. While a
+    // vanilla recruit is pending, scan active MonoBehaviours/GameObjects whose runtime names
+    // clearly look like the indoctrination/appearance-form UI. This keeps the production rule
+    // intact: a mere pending recruit never opens a raffle; the matching UI must actually be active.
     private void ProbeIndoctrinationUiFallback()
     {
         var now = UnityEngine.Time.unscaledTime;
         if (now < _nextIndoctrinationUiProbeAt) return;
         _nextIndoctrinationUiProbeAt = now + 0.25f;
 
+        var pendingIds = _followers?.GetPendingRecruitIds() ?? Array.Empty<int>();
+        if (pendingIds.Count == 0)
+        {
+            if (_indoctrinationUiWasVisible)
+                Logger.LogInfo("[RAFFLE][FALLBACK] pending recruit/UI state cleared; trigger re-armed.");
+            _indoctrinationUiWasVisible = false;
+            _lastIndoctrinationProbeSignature = string.Empty;
+            return;
+        }
+
         bool visible = false;
-        string detectedName = string.Empty;
         object? detectedInstance = null;
+        string detectedName = string.Empty;
+        var candidates = new List<string>();
 
         try
         {
+            // First keep the precise known controller path.
             var formType = AccessTools.TypeByName("Lamb.UI.UIAppearanceMenuController_Form");
             if (formType != null)
             {
-                var instances = UnityEngine.Object.FindObjectsOfType(formType);
-                foreach (var instance in instances)
+                foreach (var instance in UnityEngine.Object.FindObjectsOfType(formType))
                 {
-                    if (instance == null) continue;
-                    var component = instance as UnityEngine.Component;
-                    if (component != null && component.gameObject.activeInHierarchy)
+                    if (instance is not UnityEngine.Component component || !component.gameObject.activeInHierarchy) continue;
+                    visible = true;
+                    detectedInstance = instance;
+                    detectedName = $"{formType.FullName}@{GetHierarchyPath(component.transform)}";
+                    candidates.Add(detectedName);
+                    break;
+                }
+            }
+
+            // RC10 broad runtime discovery. The actual game build can wrap/rename the form
+            // controller, so inspect active behaviours instead of guessing one more method name.
+            if (!visible)
+            {
+                var behaviours = UnityEngine.Object.FindObjectsOfType<UnityEngine.MonoBehaviour>();
+                foreach (var behaviour in behaviours)
+                {
+                    if (behaviour == null || !behaviour.gameObject.activeInHierarchy) continue;
+                    var typeName = behaviour.GetType().FullName ?? behaviour.GetType().Name;
+                    var objectName = behaviour.gameObject.name ?? string.Empty;
+                    if (!LooksLikeIndoctrinationUi(typeName, objectName)) continue;
+
+                    var label = $"{typeName}@{GetHierarchyPath(behaviour.transform)}";
+                    candidates.Add(label);
+                    if (!visible)
                     {
                         visible = true;
-                        detectedInstance = instance;
-                        detectedName = $"{formType.FullName}@{component.gameObject.name}";
-                        break;
+                        detectedInstance = behaviour;
+                        detectedName = label;
                     }
                 }
             }
 
+            // Last resort: active GameObject names. Resources.FindObjectsOfTypeAll includes
+            // inactive objects too, therefore require activeInHierarchy before considering it.
             if (!visible)
             {
-                var go = UnityEngine.GameObject.Find("Follower Indoctrination Menu(Clone)")
-                         ?? UnityEngine.GameObject.Find("Follower Indoctrination Menu");
-                visible = go != null && go.activeInHierarchy;
-                detectedName = go?.name ?? detectedName;
-                detectedInstance = go;
+                foreach (var go in UnityEngine.Resources.FindObjectsOfTypeAll<UnityEngine.GameObject>())
+                {
+                    if (go == null || !go.activeInHierarchy) continue;
+                    if (!LooksLikeIndoctrinationUi(string.Empty, go.name ?? string.Empty)) continue;
+                    var label = $"GameObject@{GetHierarchyPath(go.transform)}";
+                    candidates.Add(label);
+                    if (!visible)
+                    {
+                        visible = true;
+                        detectedInstance = go;
+                        detectedName = label;
+                    }
+                }
             }
         }
         catch (Exception ex)
@@ -173,9 +218,17 @@ public sealed class Plugin : BaseUnityPlugin
             Logger.LogWarning($"[RAFFLE][FALLBACK] UI probe failed: {ex.GetBaseException().Message}");
         }
 
+        var signature = $"pending=[{string.Join(",", pendingIds)}]|visible={visible}|{string.Join(" || ", candidates.Take(8))}";
+        if (!string.Equals(signature, _lastIndoctrinationProbeSignature, StringComparison.Ordinal) || now >= _nextIndoctrinationCandidateLogAt)
+        {
+            _lastIndoctrinationProbeSignature = signature;
+            _nextIndoctrinationCandidateLogAt = now + 5f;
+            Logger.LogInfo($"[RAFFLE][PROBE] {signature}");
+        }
+
         if (visible && !_indoctrinationUiWasVisible)
         {
-            Logger.LogInfo($"[RAFFLE][FALLBACK] indoctrination UI became visible: object='{detectedName}', bridgeConnected={_bridge?.IsConnected == true}");
+            Logger.LogInfo($"[RAFFLE][FALLBACK] indoctrination UI became visible: object='{detectedName}', pending=[{string.Join(",", pendingIds)}], bridgeConnected={_bridge?.IsConnected == true}");
             NotifyIndoctrinationMenuOpened(detectedInstance == null ? Array.Empty<object>() : new[] { detectedInstance });
         }
         else if (!visible && _indoctrinationUiWasVisible)
@@ -184,6 +237,36 @@ public sealed class Plugin : BaseUnityPlugin
         }
 
         _indoctrinationUiWasVisible = visible;
+    }
+
+    private static bool LooksLikeIndoctrinationUi(string typeName, string objectName)
+    {
+        static bool Has(string value, string token) => value.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0;
+        if (Has(typeName, "Indoctr") || Has(objectName, "Indoctr")) return true;
+        if ((Has(typeName, "AppearanceMenu") || Has(objectName, "Appearance Menu") || Has(objectName, "AppearanceMenu")) &&
+            (Has(typeName, "Form") || Has(objectName, "Follower") || Has(objectName, "Form"))) return true;
+        if (Has(typeName, "UIAppearanceMenuController_Form")) return true;
+        return false;
+    }
+
+    private static string GetHierarchyPath(UnityEngine.Transform transform)
+    {
+        try
+        {
+            var parts = new Stack<string>();
+            var current = transform;
+            var guard = 0;
+            while (current != null && guard++ < 12)
+            {
+                parts.Push(current.gameObject.name);
+                current = current.parent;
+            }
+            return string.Join("/", parts);
+        }
+        catch
+        {
+            return transform?.gameObject?.name ?? "(unknown)";
+        }
     }
 
     // Unity main thread: all Cult of the Lamb API calls are dispatched here.
