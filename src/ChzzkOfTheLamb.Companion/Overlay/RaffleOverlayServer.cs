@@ -22,7 +22,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
     private string? _donationNickname;
     private long _donationAmount;
     private string? _donationEventName;
-    private readonly Dictionary<string, ActiveBuff> _activeBuffs = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<ScheduledOverlayBuff>> _buffQueues = new(StringComparer.Ordinal);
 
     public RaffleOverlayServer(int port = 17883)
     {
@@ -120,14 +120,23 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
             var now = DateTimeOffset.UtcNow;
             foreach (var definition in definitions)
             {
-                var expiresAt = now.AddSeconds(definition.DurationSeconds);
-                if (_activeBuffs.TryGetValue(definition.Key, out var existing) && existing.ExpiresAt > expiresAt)
-                    expiresAt = existing.ExpiresAt;
+                if (!_buffQueues.TryGetValue(definition.Key, out var queue))
+                {
+                    queue = new List<ScheduledOverlayBuff>();
+                    _buffQueues[definition.Key] = queue;
+                }
 
-                _activeBuffs[definition.Key] = new ActiveBuff(
-                    definition.Key, definition.Icon, definition.Name, definition.Detail, expiresAt);
+                queue.RemoveAll(x => x.ExpiresAt <= now);
+                var startsAt = queue.Count == 0 ? now : (queue[^1].ExpiresAt > now ? queue[^1].ExpiresAt : now);
+                var expiresAt = startsAt.AddSeconds(definition.DurationSeconds);
+                queue.Add(new ScheduledOverlayBuff(
+                    definition.Key, definition.Icon, definition.Name, definition.Detail, startsAt, expiresAt));
 
-                Console.WriteLine($"[OVERLAY][BUFF] active key={definition.Key}, effect={effect}, detail='{definition.Detail}', remaining={Math.Max(0, (int)Math.Ceiling((expiresAt - now).TotalSeconds))}s");
+                var delay = Math.Max(0, (int)Math.Ceiling((startsAt - now).TotalSeconds));
+                var queuedBehind = Math.Max(0, queue.Count - 1);
+                Console.WriteLine(delay == 0
+                    ? $"[OVERLAY][BUFF] active key={definition.Key}, effect={effect}, detail='{definition.Detail}', duration={definition.DurationSeconds}s, queuedBehind={queuedBehind}"
+                    : $"[OVERLAY][BUFF] queued key={definition.Key}, effect={effect}, detail='{definition.Detail}', startsIn={delay}s, queuePosition={queuedBehind}");
             }
         }
     }
@@ -173,21 +182,34 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
                 _donationEventName = null;
             }
 
-            foreach (var key in _activeBuffs.Where(x => x.Value.ExpiresAt <= now).Select(x => x.Key).ToArray())
+            foreach (var entry in _buffQueues.ToArray())
             {
-                Console.WriteLine($"[OVERLAY][BUFF] expired key={key}");
-                _activeBuffs.Remove(key);
+                var before = entry.Value.Count;
+                entry.Value.RemoveAll(x => x.ExpiresAt <= now);
+                if (before != entry.Value.Count)
+                    Console.WriteLine($"[OVERLAY][BUFF] advanced key={entry.Key}, expired={before - entry.Value.Count}, remainingQueue={entry.Value.Count}");
+                if (entry.Value.Count == 0)
+                    _buffQueues.Remove(entry.Key);
             }
 
             var remainingMs = _phase == "raffle" && _endsAt.HasValue
                 ? Math.Max(0, (long)Math.Ceiling((_endsAt.Value - now).TotalMilliseconds))
                 : 0L;
 
-            var buffs = _activeBuffs.Values
+            var buffs = _buffQueues
                 .OrderBy(x => x.Key, StringComparer.Ordinal)
-                .Select(x => new OverlayBuffState(
-                    x.Key, x.Icon, x.Name, x.Detail,
-                    Math.Max(0, (long)Math.Ceiling((x.ExpiresAt - now).TotalMilliseconds))))
+                .Select(x =>
+                {
+                    var active = x.Value.FirstOrDefault(b => b.StartsAt <= now && b.ExpiresAt > now);
+                    if (active is null) return null;
+                    var queuedCount = x.Value.Count(b => b.StartsAt > now);
+                    return new OverlayBuffState(
+                        active.Key, active.Icon, active.Name, active.Detail,
+                        Math.Max(0, (long)Math.Ceiling((active.ExpiresAt - now).TotalMilliseconds)),
+                        queuedCount);
+                })
+                .Where(x => x is not null)
+                .Select(x => x!)
                 .ToArray();
 
             return new OverlayState(
@@ -310,13 +332,15 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
         string Icon,
         string Name,
         string Detail,
-        long RemainingMs);
+        long RemainingMs,
+        int QueuedCount);
 
-    private sealed record ActiveBuff(
+    private sealed record ScheduledOverlayBuff(
         string Key,
         string Icon,
         string Name,
         string Detail,
+        DateTimeOffset StartsAt,
         DateTimeOffset ExpiresAt);
 
     private sealed record BuffDefinition(
@@ -376,7 +400,6 @@ function render(s){
   const phase=s.phase||'hidden';
   wrap.classList.toggle('show',phase!=='hidden');
   wrap.classList.remove('urgent');
-  if(phase==='hidden') return;
   if(phase==='raffle'){
     if(lastPhase!=='raffle' && s.remainingMs>0) durationMs=s.remainingMs;
     const sec=Math.max(0,Math.ceil((s.remainingMs||0)/1000));
@@ -397,7 +420,9 @@ function render(s){
   const active=Array.isArray(s.activeBuffs)?s.activeBuffs:[];
   buffs.innerHTML=active.map(b=>{
     const sec=Math.max(0,Math.ceil(Number(b.remainingMs||0)/1000));
-    return `<div class="buff"><div class="buffIcon">${esc(b.icon||'✦')}</div><div class="buffName">${esc(b.name||'후원 버프')}</div><div class="buffMeta"><span>${esc(b.detail||'')}</span><span class="buffTime">${sec}s</span></div></div>`;
+    const queued=Number(b.queuedCount||0);
+    const queueText=queued>0?` · 대기 ${queued}`:'';
+    return `<div class="buff"><div class="buffIcon">${esc(b.icon||'✦')}</div><div class="buffName">${esc(b.name||'후원 버프')}${queueText}</div><div class="buffMeta"><span>${esc(b.detail||'')}</span><span class="buffTime">${sec}s</span></div></div>`;
   }).join('');
   lastPhase=phase;
 }

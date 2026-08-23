@@ -315,3 +315,12 @@ Versions: Companion `v0.1-devbridge10t`, Mod `0.1.23`.
 - Repeated timed buffs refresh/extend the overlay timer in the same way the current Mod buff state extends its expiry.
 - Added `[OVERLAY][BUFF]` activation/expiry diagnostics.
 - Companion `v0.1-devbridge10w`; Mod remains `0.1.25`; Protocol schema unchanged.
+
+## devbridge10x - sequential donation buff queues
+- Companion `v0.1-devbridge10x`; Mod `0.1.26`; Protocol schema unchanged.
+- Movement and attack donation buffs no longer merge/refresh while active.
+- Each stat has its own FIFO time queue. A new speed buff starts only after the previous speed buff expires; attack buffs behave the same way.
+- Combined speed+attack donations enqueue one entry into each independent queue.
+- OBS buff cards show only the currently active buff and append `대기 N` when later donations are queued.
+- Diagnostics distinguish `[OVERLAY][BUFF] active`, `[OVERLAY][BUFF] queued`, and queue advancement.
+- No attack-speed-down or movement-speed-down donation events are added in this patch; current donation pools contain only positive timed stat buffs.

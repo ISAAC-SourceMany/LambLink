@@ -227,23 +227,23 @@ public sealed class DonationEffectService
     private string BuffMove(float multiplier, float seconds)
     {
         EnsureDungeon();
-        DungeonDonationBuffState.ActivateMove(multiplier, seconds);
-        return $"movement speed x{multiplier:0.##} for {seconds:0}s (PlayerController.GetPlayerMaxSpeed postfix)";
+        var queue = DungeonDonationBuffState.QueueMove(multiplier, seconds);
+        return $"{queue} (PlayerController.GetPlayerMaxSpeed postfix)";
     }
 
     private string BuffAttack(float multiplier, float seconds)
     {
         EnsureDungeon();
-        DungeonDonationBuffState.ActivateAttack(multiplier, seconds);
-        return $"attack damage x{multiplier:0.##} for {seconds:0}s (PlayerWeapon.GetDamage postfix)";
+        var queue = DungeonDonationBuffState.QueueAttack(multiplier, seconds);
+        return $"{queue} (PlayerWeapon.GetDamage postfix)";
     }
 
     private string BuffMoveAndAttack(float moveMultiplier, float attackMultiplier, float seconds)
     {
         EnsureDungeon();
-        DungeonDonationBuffState.ActivateMove(moveMultiplier, seconds);
-        DungeonDonationBuffState.ActivateAttack(attackMultiplier, seconds);
-        return $"movement x{moveMultiplier:0.##}, attack x{attackMultiplier:0.##} for {seconds:0}s";
+        var moveQueue = DungeonDonationBuffState.QueueMove(moveMultiplier, seconds);
+        var attackQueue = DungeonDonationBuffState.QueueAttack(attackMultiplier, seconds);
+        return $"{moveQueue}; {attackQueue}";
     }
 
     private string DamageAllEnemies(float damage)
