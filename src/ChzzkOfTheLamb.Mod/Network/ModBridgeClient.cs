@@ -65,4 +65,32 @@ public sealed class ModBridgeClient(ConcurrentQueue<GameCommandEnvelope> queue, 
         try { await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct); }
         finally { _sendLock.Release(); }
     }
+    public async System.Threading.Tasks.Task<bool> TrySendAsync<T>(string type, T payload, CancellationToken ct = default)
+    {
+        var ws = _socket;
+        if (ws?.State != WebSocketState.Open) return false;
+
+        var envelope = new GameCommandEnvelope { Type = type, PayloadJson = JsonConvert.SerializeObject(payload) };
+        var bytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(envelope));
+        var locked = false;
+        try
+        {
+            await _sendLock.WaitAsync(ct);
+            locked = true;
+            ws = _socket;
+            if (ws?.State != WebSocketState.Open) return false;
+            await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning($"[BRIDGE][SEND-FAILED] type={type}: {ex.GetBaseException().Message}");
+            return false;
+        }
+        finally
+        {
+            if (locked) _sendLock.Release();
+        }
+    }
+
 }

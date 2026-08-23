@@ -26,13 +26,13 @@ RC3 release packaging bundles COTL Korean Font Fix 4.2.1 (`COTL_KoreanFontFix.dl
 - Installer ZIP extraction and recursive component installation run on worker tasks instead of the WinForms UI thread. Detailed `[EXTRACT]` / `[INSTALL] ... elapsed=` diagnostics were added so long Companion installs remain responsive and bottlenecks are visible.
 
 
-## RC10 installer fixes
+## RC11 installer fixes
 - Installer automatically stops a running ChzzkOfTheLamb Companion before replacing program files, preventing file-lock failures during update/reinstall.
 - Companion is published as a self-contained single-file executable to drastically reduce ZIP entry count and antivirus/Defender extraction overhead.
 - User data under `%LOCALAPPDATA%\ChzzkOfTheLamb` is not deleted by Companion program updates.
 - Installation log records `[PROCESS]`, `[EXTRACT]`, and `[INSTALL]` timings for diagnosis.
 
-## RC10 bridge/raffle reliability fix
+## RC11 bridge/raffle reliability fix
 
 - Game Mod starts the localhost Companion bridge directly from plugin `Awake` instead of waiting for an active Unity scene name.
 - Adds `[BRIDGE][START]`, `[BRIDGE][CONNECT]`, `[BRIDGE][CONNECTED]`, `[BRIDGE][DISCONNECTED]` diagnostics.
@@ -40,7 +40,7 @@ RC3 release packaging bundles COTL Korean Font Fix 4.2.1 (`COTL_KoreanFontFix.dl
 - All game mutations still execute from the Mod `Update` queue on Unity's main thread; only localhost networking starts earlier.
 
 
-## RC10 raffle trigger hardening
+## RC11 raffle trigger hardening
 
 - Harmony now patches **all** `Lamb.UI.UIManager.ShowIndoctrinationMenu` overloads instead of only the first reflected overload.
 - Adds `[RAFFLE][PATCH]` startup diagnostics with resolved signatures.
@@ -49,10 +49,19 @@ RC3 release packaging bundles COTL Korean Font Fix 4.2.1 (`COTL_KoreanFontFix.dl
 - Adds `[RAFFLE][FALLBACK]` open/close diagnostics.
 - Fixes the nullable `args` warning path by normalizing to an empty array.
 
-## RC10 raffle trigger hardening
+## RC11 raffle trigger hardening
 
-- Adds a `[BUILD=rc10]` startup fingerprint so installed Mod freshness is visible in `LogOutput.log` even though the public plugin version remains `1.0.0`.
+- Adds a `[BUILD=rc11]` startup fingerprint so installed Mod freshness is visible in `LogOutput.log` even though the public plugin version remains `1.0.0`.
 - Stops relying on Harmony assembly scanning for the production raffle trigger. `IndoctrinationRafflePatch.Install()` now explicitly resolves and patches every `Lamb.UI.UIManager.ShowIndoctrinationMenu` overload.
 - Also patches `Lamb.UI.UIAppearanceMenuController_Form.OnShowStarted()` as a second independent trigger tied to the actual indoctrination appearance screen.
 - Runtime fallback now detects an active `UIAppearanceMenuController_Form` instance first and passes that instance into recruit resolution; exact GameObject-name lookup is only secondary.
 - Startup diagnostics report every discovered and installed raffle hook, so a stale CDN/installer build is distinguishable immediately.
+
+## RC11 raffle trigger correction
+
+- Primary raffle trigger moved from UI visibility to the vanilla `FollowerRecruit` interaction lifecycle.
+- Explicitly patches `FollowerRecruit.ContinueRecruit` and `FollowerRecruit.ContinueRecruitRoutine` when present.
+- `ShowIndoctrinationMenu` / appearance-controller hooks remain secondary compatibility fallbacks only.
+- Removed the RC10 global UI object scan from the normal `Update()` path.
+- A recruit is marked announced only after the WebSocket raffle request is actually sent successfully; disconnected/send-failed triggers remain retryable.
+- New diagnostics: `[RAFFLE][INTERACTION]`, `[RAFFLE][REQUEST]`, and `[RAFFLE][PATCH][PRIMARY]`.

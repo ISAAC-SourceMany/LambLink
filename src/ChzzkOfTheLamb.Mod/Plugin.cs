@@ -19,7 +19,7 @@ public sealed class Plugin : BaseUnityPlugin
     public const string PluginGuid = "com.chzzkofthelamb.integration";
     public const string PluginName = "CHZZK Companion Integration";
     public const string PluginVersion = "1.0.0";
-    public const string BuildTag = "rc10";
+    public const string BuildTag = "rc11";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private ModBridgeClient? _bridge;
@@ -31,12 +31,10 @@ public sealed class Plugin : BaseUnityPlugin
     private float _nextRecruitScanAt;
     private readonly HashSet<int> _announcedRecruitIds = new();
     private readonly HashSet<int> _handledRecruitIds = new();
+    private readonly HashSet<int> _raffleRequestInFlight = new();
+    private readonly object _raffleStateGate = new();
     private bool _bridgeStarted;
     private float _nextBridgeStartCheckAt;
-    private float _nextIndoctrinationUiProbeAt;
-    private bool _indoctrinationUiWasVisible;
-    private string _lastIndoctrinationProbeSignature = string.Empty;
-    private float _nextIndoctrinationCandidateLogAt;
 
     private void Awake()
     {
@@ -84,169 +82,91 @@ public sealed class Plugin : BaseUnityPlugin
         }
     }
 
+    internal static void NotifyRecruitInteractionStarted(object[] args, string methodName)
+    {
+        var self = _instance;
+        if (self == null) return;
+        self.Logger.LogInfo($"[RAFFLE][INTERACTION] vanilla recruit interaction started: method={methodName}, bridgeConnected={self._bridge?.IsConnected == true}, args={args?.Length ?? 0}");
+        self.RequestRaffleForCurrentRecruit(args ?? Array.Empty<object>(), $"interaction:{methodName}");
+    }
+
     internal static void NotifyIndoctrinationMenuOpened(object[] args)
     {
         var self = _instance;
         if (self == null) return;
+        self.Logger.LogInfo($"[RAFFLE][UI-FALLBACK] indoctrination UI signal: bridgeConnected={self._bridge?.IsConnected == true}, args={args?.Length ?? 0}");
+        self.RequestRaffleForCurrentRecruit(args ?? Array.Empty<object>(), "ui-fallback");
+    }
 
-        args ??= Array.Empty<object>();
-        self.Logger.LogInfo($"[RAFFLE][HOOK] indoctrination menu detected: bridgeConnected={self._bridge?.IsConnected == true}, args={args.Length}");
-        self.EnsureBridgeStarted("indoctrination-hook");
+    private void RequestRaffleForCurrentRecruit(object[] args, string triggerSource)
+    {
+        EnsureBridgeStarted(triggerSource);
 
-        if (self._followers == null || self._saves == null)
+        if (_followers == null || _saves == null || _bridge == null)
         {
-            self.Logger.LogWarning("[RAFFLE][HOOK] services are not initialized; raffle request skipped.");
+            Logger.LogWarning($"[RAFFLE][REQUEST] services unavailable; trigger={triggerSource}");
             return;
         }
 
-        var recruitId = self._followers.ResolveIndoctrinationRecruitId(args, out var source);
+        var recruitId = _followers.ResolveIndoctrinationRecruitId(args, out var recruitSource);
         if (!recruitId.HasValue)
         {
             var argTypes = string.Join(", ", args.Where(x => x != null).Select(x => x.GetType().FullName));
-            self.Logger.LogWarning($"Indoctrination menu opened but recruit ID could not be resolved. args=[{argTypes}]");
+            Logger.LogWarning($"[RAFFLE][REQUEST] recruit ID unresolved; trigger={triggerSource}, args=[{argTypes}]");
             return;
         }
 
-        if (self._bridge?.IsConnected != true)
+        if (!_bridge.IsConnected)
         {
-            self.Logger.LogWarning($"[RAFFLE][HOOK] recruit {recruitId.Value} resolved (source={source}) but Companion bridge is not connected; raffle request skipped. Re-open indoctrination after [BRIDGE][CONNECTED] appears.");
+            Logger.LogWarning($"[RAFFLE][REQUEST] recruit={recruitId.Value} resolved (source={recruitSource}) but bridge is disconnected; trigger={triggerSource}. Request NOT marked announced.");
             return;
         }
 
-        if (self._handledRecruitIds.Contains(recruitId.Value) || !self._announcedRecruitIds.Add(recruitId.Value))
+        lock (_raffleStateGate)
         {
-            self.Logger.LogInfo($"Indoctrination raffle trigger ignored for recruit {recruitId.Value} (already handled/announced).");
-            return;
+            if (_handledRecruitIds.Contains(recruitId.Value) || _announcedRecruitIds.Contains(recruitId.Value) || _raffleRequestInFlight.Contains(recruitId.Value))
+            {
+                Logger.LogInfo($"[RAFFLE][REQUEST] ignored duplicate recruit={recruitId.Value}; trigger={triggerSource}");
+                return;
+            }
+            _raffleRequestInFlight.Add(recruitId.Value);
         }
 
-        self.Logger.LogInfo($"CHZZK raffle requested at indoctrination start for game recruit {recruitId.Value} (source={source})");
-        _ = self._bridge.SendAsync(GameMessageTypes.RaffleRequested, new RaffleRequestedEvent
+        var request = new RaffleRequestedEvent
         {
             Reason = "indoctrination_started",
             RecruitFollowerId = recruitId.Value,
-            SaveId = self._saves.GetCurrentSaveId()
-        });
+            SaveId = _saves.GetCurrentSaveId()
+        };
+
+        Logger.LogInfo($"[RAFFLE][REQUEST] sending recruit={recruitId.Value}, trigger={triggerSource}, recruitSource={recruitSource}, save={request.SaveId}");
+        _ = SendRaffleRequestAsync(recruitId.Value, request, triggerSource);
     }
 
-    // Runtime fallback for builds where neither explicit Harmony hook fires.
-    // RC10 deliberately does not depend on one exact GameObject/controller name. While a
-    // vanilla recruit is pending, scan active MonoBehaviours/GameObjects whose runtime names
-    // clearly look like the indoctrination/appearance-form UI. This keeps the production rule
-    // intact: a mere pending recruit never opens a raffle; the matching UI must actually be active.
-    private void ProbeIndoctrinationUiFallback()
+    private async System.Threading.Tasks.Task SendRaffleRequestAsync(int recruitId, RaffleRequestedEvent request, string triggerSource)
     {
-        var now = UnityEngine.Time.unscaledTime;
-        if (now < _nextIndoctrinationUiProbeAt) return;
-        _nextIndoctrinationUiProbeAt = now + 0.25f;
-
-        var pendingIds = _followers?.GetPendingRecruitIds() ?? Array.Empty<int>();
-        if (pendingIds.Count == 0)
-        {
-            if (_indoctrinationUiWasVisible)
-                Logger.LogInfo("[RAFFLE][FALLBACK] pending recruit/UI state cleared; trigger re-armed.");
-            _indoctrinationUiWasVisible = false;
-            _lastIndoctrinationProbeSignature = string.Empty;
-            return;
-        }
-
-        bool visible = false;
-        object? detectedInstance = null;
-        string detectedName = string.Empty;
-        var candidates = new List<string>();
-
+        var sent = false;
         try
         {
-            // First keep the precise known controller path.
-            var formType = AccessTools.TypeByName("Lamb.UI.UIAppearanceMenuController_Form");
-            if (formType != null)
+            sent = _bridge != null && await _bridge.TrySendAsync(GameMessageTypes.RaffleRequested, request);
+            if (sent)
             {
-                foreach (var instance in UnityEngine.Object.FindObjectsOfType(formType))
-                {
-                    if (instance is not UnityEngine.Component component || !component.gameObject.activeInHierarchy) continue;
-                    visible = true;
-                    detectedInstance = instance;
-                    detectedName = $"{formType.FullName}@{GetHierarchyPath(component.transform)}";
-                    candidates.Add(detectedName);
-                    break;
-                }
+                lock (_raffleStateGate) _announcedRecruitIds.Add(recruitId);
+                Logger.LogInfo($"CHZZK raffle requested at recruit interaction start for game recruit {recruitId} (trigger={triggerSource})");
             }
-
-            // RC10 broad runtime discovery. The actual game build can wrap/rename the form
-            // controller, so inspect active behaviours instead of guessing one more method name.
-            if (!visible)
+            else
             {
-                var behaviours = UnityEngine.Object.FindObjectsOfType<UnityEngine.MonoBehaviour>();
-                foreach (var behaviour in behaviours)
-                {
-                    if (behaviour == null || !behaviour.gameObject.activeInHierarchy) continue;
-                    var typeName = behaviour.GetType().FullName ?? behaviour.GetType().Name;
-                    var objectName = behaviour.gameObject.name ?? string.Empty;
-                    if (!LooksLikeIndoctrinationUi(typeName, objectName)) continue;
-
-                    var label = $"{typeName}@{GetHierarchyPath(behaviour.transform)}";
-                    candidates.Add(label);
-                    if (!visible)
-                    {
-                        visible = true;
-                        detectedInstance = behaviour;
-                        detectedName = label;
-                    }
-                }
-            }
-
-            // Last resort: active GameObject names. Resources.FindObjectsOfTypeAll includes
-            // inactive objects too, therefore require activeInHierarchy before considering it.
-            if (!visible)
-            {
-                foreach (var go in UnityEngine.Resources.FindObjectsOfTypeAll<UnityEngine.GameObject>())
-                {
-                    if (go == null || !go.activeInHierarchy) continue;
-                    if (!LooksLikeIndoctrinationUi(string.Empty, go.name ?? string.Empty)) continue;
-                    var label = $"GameObject@{GetHierarchyPath(go.transform)}";
-                    candidates.Add(label);
-                    if (!visible)
-                    {
-                        visible = true;
-                        detectedInstance = go;
-                        detectedName = label;
-                    }
-                }
+                Logger.LogWarning($"[RAFFLE][REQUEST] send failed/not connected for recruit={recruitId}; trigger={triggerSource}. Trigger remains retryable.");
             }
         }
         catch (Exception ex)
         {
-            Logger.LogWarning($"[RAFFLE][FALLBACK] UI probe failed: {ex.GetBaseException().Message}");
+            Logger.LogWarning($"[RAFFLE][REQUEST] send exception for recruit={recruitId}: {ex.GetBaseException().Message}. Trigger remains retryable.");
         }
-
-        var signature = $"pending=[{string.Join(",", pendingIds)}]|visible={visible}|{string.Join(" || ", candidates.Take(8))}";
-        if (!string.Equals(signature, _lastIndoctrinationProbeSignature, StringComparison.Ordinal) || now >= _nextIndoctrinationCandidateLogAt)
+        finally
         {
-            _lastIndoctrinationProbeSignature = signature;
-            _nextIndoctrinationCandidateLogAt = now + 5f;
-            Logger.LogInfo($"[RAFFLE][PROBE] {signature}");
+            lock (_raffleStateGate) _raffleRequestInFlight.Remove(recruitId);
         }
-
-        if (visible && !_indoctrinationUiWasVisible)
-        {
-            Logger.LogInfo($"[RAFFLE][FALLBACK] indoctrination UI became visible: object='{detectedName}', pending=[{string.Join(",", pendingIds)}], bridgeConnected={_bridge?.IsConnected == true}");
-            NotifyIndoctrinationMenuOpened(detectedInstance == null ? Array.Empty<object>() : new[] { detectedInstance });
-        }
-        else if (!visible && _indoctrinationUiWasVisible)
-        {
-            Logger.LogInfo("[RAFFLE][FALLBACK] indoctrination UI closed; trigger re-armed.");
-        }
-
-        _indoctrinationUiWasVisible = visible;
-    }
-
-    private static bool LooksLikeIndoctrinationUi(string typeName, string objectName)
-    {
-        static bool Has(string value, string token) => value.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0;
-        if (Has(typeName, "Indoctr") || Has(objectName, "Indoctr")) return true;
-        if ((Has(typeName, "AppearanceMenu") || Has(objectName, "Appearance Menu") || Has(objectName, "AppearanceMenu")) &&
-            (Has(typeName, "Form") || Has(objectName, "Follower") || Has(objectName, "Form"))) return true;
-        if (Has(typeName, "UIAppearanceMenuController_Form")) return true;
-        return false;
     }
 
     private static string GetHierarchyPath(UnityEngine.Transform transform)
@@ -282,8 +202,6 @@ public sealed class Plugin : BaseUnityPlugin
             EnsureBridgeStarted("update-fallback");
         }
 
-        ProbeIndoctrinationUiFallback();
-
         while (_queue.TryDequeue(out var command))
         {
             try
@@ -295,14 +213,14 @@ public sealed class Plugin : BaseUnityPlugin
                         // Development-only transport/API test. Production raffles never create a second recruit.
                         var result = _followers!.SpawnFromJson(command.PayloadJson);
                         if (result.Success && result.FollowerId.HasValue)
-                            _handledRecruitIds.Add(result.FollowerId.Value);
+                            lock (_raffleStateGate) _handledRecruitIds.Add(result.FollowerId.Value);
                         _ = _bridge!.SendAsync(GameMessageTypes.FollowerSpawnResult, result);
                         break;
                     }
                     case GameMessageTypes.ApplyRecruitIdentity:
                     {
                         var result = _followers!.ApplyIdentityFromJson(command.PayloadJson);
-                        if (result.Success) _handledRecruitIds.Add(result.RecruitFollowerId);
+                        if (result.Success) lock (_raffleStateGate) _handledRecruitIds.Add(result.RecruitFollowerId);
                         _ = _bridge!.SendAsync(GameMessageTypes.RecruitIdentityResult, result);
                         break;
                     }
@@ -357,16 +275,20 @@ public sealed class Plugin : BaseUnityPlugin
         }
 
         // Pending recruits are only scanned for lifecycle cleanup.
-        // The raffle itself is triggered by UIManager.ShowIndoctrinationMenu via Harmony,
-        // i.e. when the streamer actually starts indoctrinating a recruit.
+        // RC11 starts raffles from the vanilla FollowerRecruit interaction lifecycle.
+        // UI hooks are compatibility fallbacks only.
         if (UnityEngine.Time.unscaledTime >= _nextRecruitScanAt)
         {
             _nextRecruitScanAt = UnityEngine.Time.unscaledTime + 1f;
             if (PlayerFarming.Instance != null)
             {
                 var live = new HashSet<int>(_followers!.GetPendingRecruitIds());
-                _announcedRecruitIds.RemoveWhere(id => !live.Contains(id));
-                _handledRecruitIds.RemoveWhere(id => !live.Contains(id));
+                lock (_raffleStateGate)
+                {
+                    _announcedRecruitIds.RemoveWhere(id => !live.Contains(id));
+                    _handledRecruitIds.RemoveWhere(id => !live.Contains(id));
+                    _raffleRequestInFlight.RemoveWhere(id => !live.Contains(id));
+                }
             }
         }
 

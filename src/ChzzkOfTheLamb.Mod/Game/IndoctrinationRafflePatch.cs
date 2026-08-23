@@ -5,9 +5,10 @@ using HarmonyLib;
 
 namespace ChzzkOfTheLamb.Mod.Game;
 
-// Explicitly installed raffle hooks. We intentionally do not rely on Harmony's assembly scan
-// for these runtime-resolved COTL types, because some release builds loaded the plugin without
-// ever invoking TargetMethods(). This installer logs every discovered/installed hook.
+// RC11: prefer the actual recruit interaction lifecycle over UI visibility.
+// The primary hook is FollowerRecruit.ContinueRecruit / ContinueRecruitRoutine,
+// which are part of the vanilla recruit interaction sequence. UI hooks remain
+// only as secondary compatibility fallbacks.
 internal static class IndoctrinationRafflePatch
 {
     private static bool _installed;
@@ -18,13 +19,49 @@ internal static class IndoctrinationRafflePatch
         _installed = true;
 
         var installed = 0;
+        var primaryInstalled = 0;
 
+        // PRIMARY: hook the vanilla recruit interaction lifecycle itself.
+        try
+        {
+            var followerRecruitType = AccessTools.TypeByName("FollowerRecruit");
+            if (followerRecruitType == null)
+            {
+                Plugin.LogRafflePatchDiagnostic("[PRIMARY] FollowerRecruit type not found.");
+            }
+            else
+            {
+                var interactionTargets = AccessTools.GetDeclaredMethods(followerRecruitType)
+                    .Where(m => string.Equals(m.Name, "ContinueRecruit", StringComparison.Ordinal)
+                             || string.Equals(m.Name, "ContinueRecruitRoutine", StringComparison.Ordinal))
+                    .ToArray();
+
+                Plugin.LogRafflePatchDiagnostic(interactionTargets.Length == 0
+                    ? "[PRIMARY] no FollowerRecruit.ContinueRecruit/ContinueRecruitRoutine targets found."
+                    : $"[PRIMARY] discovered {interactionTargets.Length} recruit interaction target(s): {string.Join(" | ", interactionTargets.Select(Describe))}");
+
+                var prefix = new HarmonyMethod(typeof(IndoctrinationRafflePatch), nameof(FollowerRecruitInteractionPrefix));
+                foreach (var target in interactionTargets)
+                {
+                    harmony.Patch(target, prefix: prefix);
+                    installed++;
+                    primaryInstalled++;
+                    Plugin.LogRafflePatchDiagnostic($"[PRIMARY] installed recruit interaction hook: {Describe(target)}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Plugin.LogRafflePatchDiagnostic($"[PRIMARY] recruit interaction hook install failed: {ex.GetBaseException().Message}");
+        }
+
+        // SECONDARY: known UIManager wrapper. Kept for compatibility only.
         try
         {
             var uiManager = AccessTools.TypeByName("Lamb.UI.UIManager");
             if (uiManager == null)
             {
-                Plugin.LogRafflePatchDiagnostic("UIManager type not found; ShowIndoctrinationMenu hook unavailable.");
+                Plugin.LogRafflePatchDiagnostic("[SECONDARY] UIManager type not found; ShowIndoctrinationMenu hook unavailable.");
             }
             else
             {
@@ -33,55 +70,53 @@ internal static class IndoctrinationRafflePatch
                     .ToArray();
 
                 Plugin.LogRafflePatchDiagnostic(targets.Length == 0
-                    ? "ShowIndoctrinationMenu target not found."
-                    : $"discovered {targets.Length} ShowIndoctrinationMenu overload(s): {string.Join(" | ", targets.Select(Describe))}");
+                    ? "[SECONDARY] ShowIndoctrinationMenu target not found."
+                    : $"[SECONDARY] discovered {targets.Length} ShowIndoctrinationMenu overload(s): {string.Join(" | ", targets.Select(Describe))}");
 
                 var prefix = new HarmonyMethod(typeof(IndoctrinationRafflePatch), nameof(UIManagerPrefix));
                 foreach (var target in targets)
                 {
                     harmony.Patch(target, prefix: prefix);
                     installed++;
-                    Plugin.LogRafflePatchDiagnostic($"installed UIManager hook: {Describe(target)}");
+                    Plugin.LogRafflePatchDiagnostic($"[SECONDARY] installed UIManager hook: {Describe(target)}");
                 }
             }
         }
         catch (Exception ex)
         {
-            Plugin.LogRafflePatchDiagnostic($"UIManager hook install failed: {ex.GetBaseException().Message}");
+            Plugin.LogRafflePatchDiagnostic($"[SECONDARY] UIManager hook install failed: {ex.GetBaseException().Message}");
         }
 
-        // This controller is present on the actual indoctrination appearance screen. OnShowStarted
-        // runs when the UI becomes visible and also gives us an instance that contains _follower,
-        // making recruit resolution more reliable than an empty UIManager argument list.
+        // SECONDARY: appearance form controller. Also compatibility-only.
         try
         {
             var formType = AccessTools.TypeByName("Lamb.UI.UIAppearanceMenuController_Form");
             if (formType == null)
             {
-                Plugin.LogRafflePatchDiagnostic("UIAppearanceMenuController_Form type not found; controller hook unavailable.");
+                Plugin.LogRafflePatchDiagnostic("[SECONDARY] UIAppearanceMenuController_Form type not found.");
             }
             else
             {
                 var onShowStarted = AccessTools.Method(formType, "OnShowStarted", Type.EmptyTypes);
                 if (onShowStarted == null)
                 {
-                    Plugin.LogRafflePatchDiagnostic("UIAppearanceMenuController_Form.OnShowStarted() not found.");
+                    Plugin.LogRafflePatchDiagnostic("[SECONDARY] UIAppearanceMenuController_Form.OnShowStarted() not found.");
                 }
                 else
                 {
                     var postfix = new HarmonyMethod(typeof(IndoctrinationRafflePatch), nameof(FormControllerPostfix));
                     harmony.Patch(onShowStarted, postfix: postfix);
                     installed++;
-                    Plugin.LogRafflePatchDiagnostic($"installed form-controller hook: {Describe(onShowStarted)}");
+                    Plugin.LogRafflePatchDiagnostic($"[SECONDARY] installed form-controller hook: {Describe(onShowStarted)}");
                 }
             }
         }
         catch (Exception ex)
         {
-            Plugin.LogRafflePatchDiagnostic($"form-controller hook install failed: {ex.GetBaseException().Message}");
+            Plugin.LogRafflePatchDiagnostic($"[SECONDARY] form-controller hook install failed: {ex.GetBaseException().Message}");
         }
 
-        Plugin.LogRafflePatchDiagnostic($"explicit raffle hook installation complete: installed={installed}; runtime controller/UI fallback enabled.");
+        Plugin.LogRafflePatchDiagnostic($"installation complete: primary={primaryInstalled}, total={installed}. Raffle trigger priority=FollowerRecruit lifecycle > UI fallbacks.");
     }
 
     private static string Describe(MethodBase method)
@@ -94,6 +129,13 @@ internal static class IndoctrinationRafflePatch
         {
             return method.Name;
         }
+    }
+
+    private static void FollowerRecruitInteractionPrefix(object __instance, object[]? __args, MethodBase __originalMethod)
+    {
+        var args = (__args ?? Array.Empty<object>()).ToList();
+        if (__instance != null) args.Insert(0, __instance);
+        Plugin.NotifyRecruitInteractionStarted(args.ToArray(), __originalMethod?.Name ?? "FollowerRecruit");
     }
 
     private static void UIManagerPrefix(object[]? __args)
