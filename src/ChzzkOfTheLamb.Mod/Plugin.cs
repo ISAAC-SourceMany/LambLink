@@ -19,7 +19,7 @@ public sealed class Plugin : BaseUnityPlugin
     public const string PluginGuid = "com.chzzkofthelamb.integration";
     public const string PluginName = "CHZZK Companion Integration";
     public const string PluginVersion = "1.0.0";
-    public const string BuildTag = "rc12";
+    public const string BuildTag = "rc13-legacy-raffle-restore";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private ModBridgeClient? _bridge;
@@ -35,9 +35,6 @@ public sealed class Plugin : BaseUnityPlugin
     private readonly object _raffleStateGate = new();
     private bool _bridgeStarted;
     private float _nextBridgeStartCheckAt;
-    private float _nextIndoctrinationControllerProbeAt;
-    private bool _indoctrinationControllerWasVisible;
-    private string _lastIndoctrinationControllerSignature = string.Empty;
 
     private void Awake()
     {
@@ -48,8 +45,10 @@ public sealed class Plugin : BaseUnityPlugin
         _donations = new DonationEffectService(Logger);
         _bridge = new ModBridgeClient(_queue, Logger);
 
-        var harmony = Harmony.CreateAndPatchAll(typeof(Plugin).Assembly, PluginGuid);
-        IndoctrinationRafflePatch.Install(harmony);
+        // RC13: use the same assembly-scan HarmonyPatch/TargetMethod mechanism as the
+        // dev10z build where the raffle trigger was proven in-game. Do not manually
+        // re-patch IndoctrinationRafflePatch here.
+        Harmony.CreateAndPatchAll(typeof(Plugin).Assembly, PluginGuid);
         Logger.LogInfo($"{PluginName} {PluginVersion} loaded [BUILD={BuildTag}]");
 
         // The bridge is pure localhost networking. Starting it in Awake is safe because all
@@ -192,73 +191,10 @@ public sealed class Plugin : BaseUnityPlugin
         }
     }
 
-
-    private void ProbeConcreteIndoctrinationController()
-    {
-        if (_followers == null) return;
-        if (UnityEngine.Time.unscaledTime < _nextIndoctrinationControllerProbeAt) return;
-        _nextIndoctrinationControllerProbeAt = UnityEngine.Time.unscaledTime + 0.20f;
-
-        var pending = _followers.GetPendingRecruitIds();
-        if (pending.Count == 0)
-        {
-            _indoctrinationControllerWasVisible = false;
-            _lastIndoctrinationControllerSignature = string.Empty;
-            return;
-        }
-
-        try
-        {
-            var type = AccessTools.TypeByName("Lamb.UI.UIAppearanceMenuController_Form");
-            if (type == null)
-            {
-                if (!_indoctrinationControllerWasVisible)
-                    Logger.LogWarning("[RAFFLE][CONTROLLER] UIAppearanceMenuController_Form type not found while recruit is pending.");
-                return;
-            }
-
-            object? activeController = null;
-            string signature = string.Empty;
-            foreach (var obj in UnityEngine.Resources.FindObjectsOfTypeAll(type))
-            {
-                if (obj is not UnityEngine.Component component || component == null) continue;
-                var go = component.gameObject;
-                if (go == null || !go.activeInHierarchy) continue;
-
-                activeController = component;
-                signature = $"{component.GetType().FullName}@{GetHierarchyPath(component.transform)}";
-                break;
-            }
-
-            var visible = activeController != null;
-            if (visible && (!_indoctrinationControllerWasVisible || !string.Equals(signature, _lastIndoctrinationControllerSignature, StringComparison.Ordinal)))
-            {
-                Logger.LogInfo($"[RAFFLE][CONTROLLER] concrete indoctrination form became active: {signature}; pending=[{string.Join(",", pending)}], bridgeConnected={_bridge?.IsConnected == true}");
-
-                // This controller is the actual Form page used by the vanilla indoctrination appearance UI.
-                // Passing the concrete controller first gives recruit resolution a chance to inspect its state;
-                // when vanilla exposes no follower reference, the existing single-pending fallback is used.
-                RequestRaffleForCurrentRecruit(new[] { activeController! }, "controller-active:UIAppearanceMenuController_Form");
-            }
-            else if (!visible && _indoctrinationControllerWasVisible)
-            {
-                Logger.LogInfo("[RAFFLE][CONTROLLER] indoctrination form no longer active.");
-            }
-
-            _indoctrinationControllerWasVisible = visible;
-            _lastIndoctrinationControllerSignature = visible ? signature : string.Empty;
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning($"[RAFFLE][CONTROLLER] probe failed: {ex.GetBaseException().Message}");
-        }
-    }
-
     // Unity main thread: all Cult of the Lamb API calls are dispatched here.
     private void Update()
     {
         _followers?.Tick();
-        ProbeConcreteIndoctrinationController();
 
         // Fallback only. The normal path starts the bridge in Awake. Keeping this check
         // protects against an unexpected initialization failure without depending on scene names.
