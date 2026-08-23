@@ -5,6 +5,7 @@ namespace ChzzkOfTheLamb.Companion.Configuration;
 
 public sealed record ChzzkCredentials(string ClientId, string ClientSecret, string ProviderName);
 
+#if !RELEASE_DISTRIBUTION
 public static class ChzzkCredentialProvider
 {
     public static ChzzkCredentials? Load()
@@ -89,3 +90,4 @@ public static class ChzzkCredentialProvider
 
     private static string Quote(string value) => "\"" + value.Replace("\"", "\\\"") + "\"";
 }
+#endif

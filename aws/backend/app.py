@@ -4,6 +4,7 @@ import hmac
 import json
 import os
 import time
+import secrets
 import urllib.parse
 import urllib.request
 from typing import Any
@@ -13,6 +14,8 @@ from configuration import load_chzzk_configuration
 
 TABLE = os.environ["TABLE_NAME"]
 CONFIG = load_chzzk_configuration()
+COMPANION_CHZZK_CLIENT_ID = CONFIG.companion.client_id
+COMPANION_CHZZK_CLIENT_SECRET = CONFIG.companion.client_secret
 MYLAMB_CHZZK_CLIENT_ID = CONFIG.mylamb.client_id
 MYLAMB_CHZZK_CLIENT_SECRET = CONFIG.mylamb.client_secret
 TOKEN_SECRET = os.environ["TOKEN_SIGNING_SECRET"].encode("utf-8")
@@ -115,18 +118,72 @@ def chzzk_me(access_token: str) -> dict[str, Any]:
     return content
 
 
-def exchange_code(code: str, state: str) -> str:
+def exchange_code_with_credentials(code: str, state: str, client_id: str, client_secret: str) -> dict[str, Any]:
     envelope = http_json("POST", CHZZK_BASE + "/auth/v1/token", {
         "grantType": "authorization_code",
-        "clientId": MYLAMB_CHZZK_CLIENT_ID,
-        "clientSecret": MYLAMB_CHZZK_CLIENT_SECRET,
+        "clientId": client_id,
+        "clientSecret": client_secret,
         "code": code,
         "state": state,
     })
     content = envelope.get("content")
     if not content or not content.get("accessToken"):
         raise RuntimeError(envelope.get("message") or "CHZZK token exchange failed")
-    return content["accessToken"]
+    return content
+
+
+def exchange_code(code: str, state: str) -> str:
+    return exchange_code_with_credentials(
+        code, state, MYLAMB_CHZZK_CLIENT_ID, MYLAMB_CHZZK_CLIENT_SECRET
+    )["accessToken"]
+
+
+def _validate_companion_callback(value: str) -> str:
+    parsed = urllib.parse.urlparse(value)
+    if parsed.scheme != "http" or parsed.hostname not in ("127.0.0.1", "localhost"):
+        raise ValueError("invalid companion callback")
+    if parsed.port != 17881 or parsed.path != "/callback/":
+        raise ValueError("invalid companion callback")
+    if parsed.query or parsed.fragment:
+        raise ValueError("invalid companion callback")
+    return value
+
+
+def create_companion_ticket(token_content: dict[str, Any], me: dict[str, Any], nonce: str) -> str:
+    ticket = secrets.token_urlsafe(32)
+    expires_at = int(time.time()) + 120
+    ddb.put_item(Item={
+        "PK": f"AUTH#{ticket}",
+        "SK": "COMPANION",
+        "Payload": json.dumps({
+            "accessToken": token_content.get("accessToken", ""),
+            "refreshToken": token_content.get("refreshToken", ""),
+            "tokenType": token_content.get("tokenType", "Bearer"),
+            "expiresIn": token_content.get("expiresIn", 86400),
+            "streamerChannelId": me.get("channelId", ""),
+            "streamerChannelName": me.get("channelName", ""),
+            "nonce": nonce,
+        }, ensure_ascii=False),
+        "ExpiresAt": expires_at,
+    })
+    return ticket
+
+
+def consume_companion_ticket(ticket: str, nonce: str) -> dict[str, Any]:
+    key = {"PK": f"AUTH#{ticket}", "SK": "COMPANION"}
+    item = ddb.get_item(Key=key, ConsistentRead=True).get("Item")
+    if not item:
+        raise PermissionError("invalid or already-used companion ticket")
+    try:
+        if int(item.get("ExpiresAt", 0)) <= int(time.time()):
+            raise PermissionError("expired companion ticket")
+        payload = json.loads(item.get("Payload") or "{}")
+        if not hmac.compare_digest(str(payload.get("nonce", "")), nonce):
+            raise PermissionError("companion nonce mismatch")
+        payload.pop("nonce", None)
+        return payload
+    finally:
+        ddb.delete_item(Key=key)
 
 
 def get_catalog(streamer: str):
@@ -174,6 +231,43 @@ def handler(event, context):
     try:
         if path == "/health":
             return _json(200, {"ok": True, "service": "cotl-companion-api"})
+
+        if path == "/auth/companion/start" and method == "GET":
+            callback = _validate_companion_callback(qs.get("callback", ""))
+            nonce = qs.get("nonce", "")
+            if len(nonce) < 16 or len(nonce) > 128:
+                return _json(400, {"error": "invalid nonce"})
+            state = sign_token({"role": "companion-oauth-state", "callback": callback, "nonce": nonce}, 600)
+            redirect_uri = api_public_url(event) + "/auth/companion/callback"
+            url = CHZZK_AUTH + "?" + urllib.parse.urlencode({
+                "clientId": COMPANION_CHZZK_CLIENT_ID,
+                "redirectUri": redirect_uri,
+                "state": state,
+            })
+            return _redirect(url)
+
+        if path == "/auth/companion/callback" and method == "GET":
+            code = qs.get("code", "")
+            state = qs.get("state", "")
+            oauth_state = verify_token(state, "companion-oauth-state")
+            token_content = exchange_code_with_credentials(
+                code, state, COMPANION_CHZZK_CLIENT_ID, COMPANION_CHZZK_CLIENT_SECRET
+            )
+            me = chzzk_me(token_content["accessToken"])
+            ticket = create_companion_ticket(token_content, me, str(oauth_state["nonce"]))
+            target = str(oauth_state["callback"]) + "?" + urllib.parse.urlencode({
+                "ticket": ticket,
+                "nonce": oauth_state["nonce"],
+            })
+            return _redirect(target)
+
+        if path == "/auth/companion/token" and method == "POST":
+            body = json.loads(event.get("body") or "{}")
+            ticket = str(body.get("ticket") or "")
+            nonce = str(body.get("nonce") or "")
+            if not ticket or not nonce:
+                return _json(400, {"error": "ticket and nonce are required"})
+            return _json(200, consume_companion_ticket(ticket, nonce))
 
         if path == "/auth/chzzk/start" and method == "GET":
             streamer = qs.get("streamer", "")

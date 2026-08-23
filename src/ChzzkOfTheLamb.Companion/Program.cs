@@ -11,7 +11,18 @@ using ChzzkOfTheLamb.Companion.Rules;
 using ChzzkOfTheLamb.Companion.Storage;
 using ChzzkOfTheLamb.Protocol;
 
+const string ReleaseVersion = "1.0.0-rc1";
+const string ProductionApiBase = "https://y0eblkdmu5.execute-api.ap-northeast-2.amazonaws.com";
+const string ProductionFrontendUrl = "https://d1gvw9ccym1qvn.cloudfront.net";
+
+#if RELEASE_DISTRIBUTION
+const bool IsReleaseDistribution = true;
+#else
+const bool IsReleaseDistribution = false;
+#endif
+
 ChzzkCredentials? chzzkCredentials = null;
+#if !RELEASE_DISTRIBUTION
 try
 {
     chzzkCredentials = ChzzkCredentialProvider.Load();
@@ -20,11 +31,13 @@ catch (Exception ex)
 {
     Console.WriteLine($"[CONFIG] CHZZK credential provider failed: {ex.Message}");
 }
+#endif
+
 var clientId = chzzkCredentials?.ClientId;
 var clientSecret = chzzkCredentials?.ClientSecret;
 var redirectUri = Environment.GetEnvironmentVariable("CHZZK_REDIRECT_URI")
                   ?? "http://127.0.0.1:17881/callback/";
-var forceDevelopmentMode = IsTruthy(Environment.GetEnvironmentVariable("CHZZK_DEV_MODE"));
+var forceDevelopmentMode = !IsReleaseDistribution && IsTruthy(Environment.GetEnvironmentVariable("CHZZK_DEV_MODE"));
 
 var dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ChzzkOfTheLamb");
 Directory.CreateDirectory(dataDir);
@@ -41,24 +54,34 @@ await using var overlay = new RaffleOverlayServer();
 overlay.Start();
 
 var hasChzzkCredentials = !string.IsNullOrWhiteSpace(clientId) && !string.IsNullOrWhiteSpace(clientSecret);
-var developmentMode = forceDevelopmentMode || !hasChzzkCredentials;
+var developmentMode = !IsReleaseDistribution && (forceDevelopmentMode || !hasChzzkCredentials);
 
-Console.WriteLine("CHZZK Companion for Cult of the Lamb - v0.1-devbridge10z");
-Console.WriteLine($"[CONFIG] companion credentials: {chzzkCredentials?.ProviderName ?? "not loaded"}");
-if (developmentMode)
+Console.WriteLine($"CHZZK Companion for Cult of the Lamb - v{ReleaseVersion}");
+if (IsReleaseDistribution)
 {
-    Console.WriteLine("[MODE] DEVELOPMENT / OFFLINE CHZZK");
-    if (!hasChzzkCredentials)
-        Console.WriteLine("[CHZZK] credentials not set. CHZZK OAuth/realtime is disabled, but Game Bridge remains available.");
-    else
-        Console.WriteLine("[CHZZK] CHZZK_DEV_MODE is enabled. OAuth/realtime is intentionally disabled.");
+    Console.WriteLine("[MODE] RELEASE / CHZZK LIVE");
+    Console.WriteLine("[CONFIG] AWS CLI/SSO: not used by distribution build");
 }
 else
 {
-    Console.WriteLine("[MODE] CHZZK LIVE");
+    Console.WriteLine($"[CONFIG] companion credentials: {chzzkCredentials?.ProviderName ?? "not loaded"}");
+    if (developmentMode)
+    {
+        Console.WriteLine("[MODE] DEVELOPMENT / OFFLINE CHZZK");
+        if (!hasChzzkCredentials)
+            Console.WriteLine("[CHZZK] credentials not set. CHZZK OAuth/realtime is disabled, but Game Bridge remains available.");
+        else
+            Console.WriteLine("[CHZZK] CHZZK_DEV_MODE is enabled. OAuth/realtime is intentionally disabled.");
+    }
+    else
+    {
+        Console.WriteLine("[MODE] CHZZK LIVE (developer credentials)");
+    }
 }
 
-var configuredWebApiBase = Environment.GetEnvironmentVariable("COTL_WEB_API_BASE");
+var configuredWebApiBase = IsReleaseDistribution
+    ? ProductionApiBase
+    : Environment.GetEnvironmentVariable("COTL_WEB_API_BASE");
 if (!string.IsNullOrWhiteSpace(configuredWebApiBase))
     Console.WriteLine($"[WEB] API configured: {configuredWebApiBase}");
 if (developmentMode && !string.IsNullOrWhiteSpace(configuredWebApiBase))
@@ -74,23 +97,39 @@ var cloudConnectGate = new SemaphoreSlim(1, 1);
 var cloudBaseUrl = configuredWebApiBase;
 if (string.IsNullOrWhiteSpace(cloudBaseUrl) && settings.Cloud.Enabled)
     cloudBaseUrl = settings.Cloud.ApiBaseUrl;
-var frontendUrl = Environment.GetEnvironmentVariable("COTL_WEB_FRONTEND_URL");
+var frontendUrl = IsReleaseDistribution
+    ? ProductionFrontendUrl
+    : Environment.GetEnvironmentVariable("COTL_WEB_FRONTEND_URL");
 if (string.IsNullOrWhiteSpace(frontendUrl)) frontendUrl = settings.Cloud.FrontendUrl;
 
 if (!developmentMode)
 {
     http = new HttpClient();
-    api = new ChzzkApiClient(http, clientId!, clientSecret!);
 
-    Console.WriteLine("Opening browser for CHZZK OAuth...");
-    var (code, state) = await LoopbackOAuth.AuthorizeAsync(api, redirectUri, stop.Token);
-    var tokens = await api.ExchangeCodeAsync(code, state, stop.Token);
-    var me = await api.GetMeAsync(tokens.AccessToken, stop.Token);
+    if (IsReleaseDistribution)
+    {
+        if (string.IsNullOrWhiteSpace(cloudBaseUrl))
+            throw new InvalidOperationException("Release build is missing the production Auth Gateway URL.");
 
-    accessToken = tokens.AccessToken;
-    streamerChannelId = me.ChannelId;
-    streamerChannelName = me.ChannelName;
-    Console.WriteLine($"[CHZZK] connected: {streamerChannelName} ({streamerChannelId})");
+        api = new ChzzkApiClient(http);
+        Console.WriteLine("[AUTH] CHZZK 로그인을 시작합니다...");
+        var auth = await ProductionOAuth.AuthorizeAsync(http, cloudBaseUrl!, redirectUri, stop.Token);
+        accessToken = auth.AccessToken;
+        streamerChannelId = auth.StreamerChannelId;
+        streamerChannelName = auth.StreamerChannelName;
+    }
+    else
+    {
+        api = new ChzzkApiClient(http, clientId!, clientSecret!);
+        Console.WriteLine("Opening browser for CHZZK OAuth...");
+        var (code, state) = await LoopbackOAuth.AuthorizeAsync(api, redirectUri, stop.Token);
+        var tokens = await api.ExchangeCodeAsync(code, state, stop.Token);
+        var me = await api.GetMeAsync(tokens.AccessToken, stop.Token);
+        accessToken = tokens.AccessToken;
+        streamerChannelId = me.ChannelId;
+        streamerChannelName = me.ChannelName;
+        Console.WriteLine($"[CHZZK] connected: {streamerChannelName} ({streamerChannelId})");
+    }
 
     if (!string.IsNullOrWhiteSpace(cloudBaseUrl))
         await TryConnectCloudAsync(logFailure: true);
@@ -794,7 +833,7 @@ async Task ConsoleLoopAsync()
             _ = UploadLatestCatalogAsync();
             continue;
         }
-        if (normalized.StartsWith("dev spawn "))
+        if (!IsReleaseDistribution && normalized.StartsWith("dev spawn "))
         {
             var nickname = rawCommand.Substring("dev spawn ".Length).Trim();
             if (string.IsNullOrWhiteSpace(nickname))
@@ -809,7 +848,7 @@ async Task ConsoleLoopAsync()
                 new SpawnFollowerCommand(viewerId, nickname, currentSaveId, "developer-console", appearances.Get(streamerChannelId, viewerId)), stop.Token);
             continue;
         }
-        if (normalized.StartsWith("dev join "))
+        if (!IsReleaseDistribution && normalized.StartsWith("dev join "))
         {
             var nickname = rawCommand.Substring("dev join ".Length).Trim();
             if (string.IsNullOrWhiteSpace(nickname))
@@ -822,7 +861,7 @@ async Task ConsoleLoopAsync()
             Console.WriteLine(joined ? $"[DEV] raffle joined: {nickname}" : $"[DEV] raffle join rejected: {nickname}");
             continue;
         }
-        if (normalized.StartsWith("dev donation "))
+        if (!IsReleaseDistribution && normalized.StartsWith("dev donation "))
         {
             var amountText = rawCommand.Substring("dev donation ".Length).Trim().Replace(",", string.Empty);
             if (!long.TryParse(amountText, out var amount) || amount < 0)
@@ -926,9 +965,12 @@ void PrintCommands()
     Console.WriteLine("  status | help | exit");
     Console.WriteLine("  raffle start | raffle cancel | raffle draw");
     Console.WriteLine("  forms | form allow <id> | form deny <id> | refresh-forms");
-    Console.WriteLine("  dev spawn <nickname>       (개발 전용: 새 신도 생성 API 테스트, 실제 방송 흐름에서는 사용 안 함)");
-    Console.WriteLine("  dev join <nickname>        (CHZZK 없이 추첨 참가 테스트)");
-    Console.WriteLine("  dev donation <amount>      (CHZZK 없이 후원 효과 테스트)");
+    if (!IsReleaseDistribution)
+    {
+        Console.WriteLine("  dev spawn <nickname>       (개발 전용)");
+        Console.WriteLine("  dev join <nickname>        (개발 전용)");
+        Console.WriteLine("  dev donation <amount>      (개발 전용)");
+    }
 }
 
 static string BuildCatalogFingerprint(FollowerAppearanceCatalog catalog)

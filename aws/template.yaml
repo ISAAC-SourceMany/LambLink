@@ -28,6 +28,9 @@ Resources:
           KeyType: HASH
         - AttributeName: SK
           KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ExpiresAt
+        Enabled: true
 
   Api:
     Type: AWS::Serverless::HttpApi

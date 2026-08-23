@@ -4,26 +4,38 @@ using System.Text.Json;
 
 namespace ChzzkOfTheLamb.Companion.Chzzk;
 
-public sealed class ChzzkApiClient(HttpClient http, string clientId, string clientSecret)
+public sealed class ChzzkApiClient
 {
+    private readonly HttpClient http;
+    private readonly string? clientId;
+    private readonly string? clientSecret;
+
+    public ChzzkApiClient(HttpClient http, string? clientId = null, string? clientSecret = null)
+    {
+        this.http = http;
+        this.clientId = clientId;
+        this.clientSecret = clientSecret;
+    }
     private const string BaseUrl = "https://openapi.chzzk.naver.com";
     private readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
 
     public string BuildAuthorizationUrl(string redirectUri, string state)
     {
+        EnsureClientCredentials();
         return "https://chzzk.naver.com/account-interlock" +
-               $"?clientId={Uri.EscapeDataString(clientId)}" +
+               $"?clientId={Uri.EscapeDataString(clientId!)}" +
                $"&redirectUri={Uri.EscapeDataString(redirectUri)}" +
                $"&state={Uri.EscapeDataString(state)}";
     }
 
     public async Task<ChzzkTokenSet> ExchangeCodeAsync(string code, string state, CancellationToken ct)
     {
+        EnsureClientCredentials();
         var body = new
         {
             grantType = "authorization_code",
-            clientId,
-            clientSecret,
+            clientId = clientId!,
+            clientSecret = clientSecret!,
             code,
             state
         };
@@ -86,6 +98,12 @@ public sealed class ChzzkApiClient(HttpClient http, string clientId, string clie
         return (await JsonSerializer.DeserializeAsync<ChzzkApiEnvelope<T>>(
             await response.Content.ReadAsStreamAsync(ct), _json, ct))
                ?? throw new InvalidOperationException("Empty CHZZK response.");
+    }
+
+    private void EnsureClientCredentials()
+    {
+        if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+            throw new InvalidOperationException("This CHZZK API operation requires client credentials and is development-only in the distributed Companion.");
     }
 
     private static long ParseExpiresIn(JsonElement e)
