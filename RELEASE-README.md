@@ -75,3 +75,10 @@ ZIP 압축 해제와 실제 파일 설치/복사를 WinForms UI 스레드에서 
 [INSTALL] companion started mode=companion
 [INSTALL] companion complete mode=companion, elapsed=...
 ```
+
+
+## RC6 installer fixes
+- Installer automatically stops a running ChzzkOfTheLamb Companion before replacing program files, preventing file-lock failures during update/reinstall.
+- Companion is published as a self-contained single-file executable to drastically reduce ZIP entry count and antivirus/Defender extraction overhead.
+- User data under `%LOCALAPPDATA%\ChzzkOfTheLamb` is not deleted by Companion program updates.
+- Installation log records `[PROCESS]`, `[EXTRACT]`, and `[INSTALL]` timings for diagnosis.

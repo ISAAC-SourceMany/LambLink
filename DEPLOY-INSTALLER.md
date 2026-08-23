@@ -45,3 +45,10 @@ $env:COTL_INSTALLER_MANIFEST_URL='https://.../test-manifest.json'
 - SHA-256을 일부러 틀린 테스트 manifest로 검증 실패 확인
 - Companion에 AWS CLI/SSO 요구가 없는지 확인
 - 게임을 먼저/Companion을 먼저 실행해도 크래시 없는지 확인
+
+
+## RC6 installer fixes
+- Installer automatically stops a running ChzzkOfTheLamb Companion before replacing program files, preventing file-lock failures during update/reinstall.
+- Companion is published as a self-contained single-file executable to drastically reduce ZIP entry count and antivirus/Defender extraction overhead.
+- User data under `%LOCALAPPDATA%\ChzzkOfTheLamb` is not deleted by Companion program updates.
+- Installation log records `[PROCESS]`, `[EXTRACT]`, and `[INSTALL]` timings for diagnosis.

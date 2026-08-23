@@ -241,7 +241,76 @@ internal sealed class InstallerForm : Form
         await input.CopyToAsync(output, token);
     }
 
-    private static void InstallComponent(InstallerComponent c, string extracted, string gameRoot, string companionRoot)
+    private void EnsureCompanionStopped(string companionRoot)
+    {
+        var targetExe = Path.Combine(companionRoot, "ChzzkOfTheLamb.Companion.exe");
+        var currentPid = Environment.ProcessId;
+        var matches = Process.GetProcessesByName("ChzzkOfTheLamb.Companion")
+            .Where(p => p.Id != currentPid)
+            .ToList();
+
+        if (matches.Count == 0)
+        {
+            Log("[PROCESS] no running Companion detected");
+            return;
+        }
+
+        Log($"[PROCESS] running Companion detected count={matches.Count}; stopping before update");
+        foreach (var process in matches)
+        {
+            try
+            {
+                string? processPath = null;
+                try { processPath = process.MainModule?.FileName; } catch { }
+                Log($"[PROCESS] stopping pid={process.Id}, path={processPath ?? "unknown"}");
+
+                bool exited = false;
+                try
+                {
+                    if (process.CloseMainWindow())
+                        exited = process.WaitForExit(3000);
+                }
+                catch { }
+
+                if (!exited && !process.HasExited)
+                {
+                    process.Kill(true);
+                    exited = process.WaitForExit(5000);
+                    Log($"[PROCESS] force-stopped pid={process.Id}, exited={exited}");
+                }
+                else
+                {
+                    Log($"[PROCESS] stopped pid={process.Id}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"[PROCESS][WARN] failed to stop Companion pid={process.Id}: {ex.Message}");
+            }
+            finally
+            {
+                process.Dispose();
+            }
+        }
+
+        // Give Windows/AV scanners a brief moment to release loaded assemblies.
+        Thread.Sleep(500);
+
+        if (File.Exists(targetExe))
+        {
+            try
+            {
+                using var probe = new FileStream(targetExe, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                Log("[PROCESS] Companion files unlocked");
+            }
+            catch (IOException ex)
+            {
+                throw new IOException("실행 중인 ChzzkOfTheLamb Companion을 종료하지 못했습니다. 작업 관리자에서 Companion을 종료한 뒤 다시 설치해주세요.", ex);
+            }
+        }
+    }
+
+    private void InstallComponent(InstallerComponent c, string extracted, string gameRoot, string companionRoot)
     {
         switch (c.InstallMode.ToLowerInvariant())
         {
@@ -255,6 +324,7 @@ internal sealed class InstallerForm : Form
                 InstallCotlApi(extracted, gameRoot);
                 break;
             case "companion":
+                EnsureCompanionStopped(companionRoot);
                 if (Directory.Exists(companionRoot))
                 {
                     foreach (var f in Directory.EnumerateFiles(companionRoot))
