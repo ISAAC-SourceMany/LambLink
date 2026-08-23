@@ -118,27 +118,27 @@ public sealed class DonationEffectService
 
             // Dungeon-only effects. These use only members verified in the user's
             // Cult Of The Lamb 1.5.25.1049 Assembly-CSharp.dll.
-            "DUNGEON_HEAL_SMALL" => HealPlayer(0.5f),
-            "DUNGEON_HURT_SMALL" => HurtPlayerNonLethal(0.5f),
+            "DUNGEON_HEAL_SMALL" => HealPlayerHearts(0.5f),
+            "DUNGEON_HURT_SMALL" => HurtPlayerNonLethalHearts(0.5f),
             "DUNGEON_FERVOUR_SMALL" => ChangeFervour(0.20f, false),
             "DUNGEON_SPEED_SMALL" => BuffMove(1.15f, 8f),
             "DUNGEON_ENEMY_DAMAGE_SMALL" => DamageAllEnemies(0.5f),
 
-            "DUNGEON_HEAL_MEDIUM" => HealPlayer(1.0f),
-            "DUNGEON_HURT_MEDIUM" => HurtPlayerNonLethal(1.0f),
+            "DUNGEON_HEAL_MEDIUM" => HealPlayerHearts(1.0f),
+            "DUNGEON_HURT_MEDIUM" => HurtPlayerNonLethalHearts(1.0f),
             "DUNGEON_FERVOUR_MEDIUM" => ChangeFervour(0.35f, false),
             "DUNGEON_SPEED_MEDIUM" => BuffMove(1.20f, 10f),
             "DUNGEON_ATTACK_MEDIUM" => BuffAttack(1.20f, 10f),
             "DUNGEON_ENEMY_DAMAGE_MEDIUM" => DamageAllEnemies(1.0f),
 
-            "DUNGEON_HEAL_LARGE" => HealPlayer(1.5f),
-            "DUNGEON_HURT_LARGE" => HurtPlayerNonLethal(1.5f),
+            "DUNGEON_HEAL_LARGE" => HealPlayerHearts(1.5f),
+            "DUNGEON_HURT_LARGE" => HurtPlayerNonLethalHearts(1.5f),
             "DUNGEON_FERVOUR_LARGE" => ChangeFervour(0.50f, false),
             "DUNGEON_SPEED_ATTACK_LARGE" => BuffMoveAndAttack(1.25f, 1.25f, 12f),
             "DUNGEON_ENEMY_DAMAGE_LARGE" => DamageAllEnemies(1.5f),
 
-            "DUNGEON_HEAL_SPECIAL" => HealPlayer(2.0f),
-            "DUNGEON_HURT_SPECIAL" => HurtPlayerNonLethal(2.0f),
+            "DUNGEON_HEAL_SPECIAL" => HealPlayerHearts(2.0f),
+            "DUNGEON_HURT_SPECIAL" => HurtPlayerNonLethalHearts(2.0f),
             "DUNGEON_FERVOUR_SPECIAL" => ChangeFervour(1f, true),
             "DUNGEON_SPEED_ATTACK_SPECIAL" => BuffMoveAndAttack(1.40f, 1.40f, 15f),
             "DUNGEON_ENEMY_DAMAGE_SPECIAL" => DamageAllEnemies(2.5f),
@@ -151,39 +151,77 @@ public sealed class DonationEffectService
         };
     }
 
-    private string HealPlayer(float amount)
+    // Cult of the Lamb stores combat HP in half-heart units: 2 raw HP == 1 HUD heart.
+    // Donation rules are expressed in visible HUD hearts, so convert at the boundary.
+    private const float RawHpPerHeart = 2f;
+
+    private static float RawHpToHearts(float rawHp) => rawHp / RawHpPerHeart;
+    private static float HeartsToRawHp(float hearts) => hearts * RawHpPerHeart;
+
+    private string HealPlayerHearts(float hearts)
     {
         EnsureDungeon();
         var health = PlayerFarming.Instance.health ?? throw new InvalidOperationException("PlayerFarming.Instance.health is null");
-        var before = health.HP;
-        health.Heal(amount);
-        return $"player HP {before:0.##} -> {health.HP:0.##} (HealthPlayer.Heal({amount:0.##}))";
+        var beforeRaw = health.HP;
+        var rawAmount = HeartsToRawHp(hearts);
+        health.Heal(rawAmount);
+        var afterRaw = health.HP;
+        return $"player HP raw {beforeRaw:0.##} -> {afterRaw:0.##}; HUD hearts {RawHpToHearts(beforeRaw):0.##} -> {RawHpToHearts(afterRaw):0.##}; requested +{hearts:0.##} heart(s) (HealthPlayer.Heal({rawAmount:0.##} raw))";
     }
 
-    private string HurtPlayerNonLethal(float amount)
+    private string HurtPlayerNonLethalHearts(float hearts)
     {
         EnsureDungeon();
         var health = PlayerFarming.Instance.health ?? throw new InvalidOperationException("PlayerFarming.Instance.health is null");
-        var before = health.HP;
-        // Use the verified HealthPlayer.HP property instead of guessing DealDamage argument semantics.
-        // Donation damage is intentionally non-lethal to avoid soft-locking a run during cutscenes/transitions.
-        health.HP = Mathf.Max(0.5f, before - amount);
-        return $"player HP {before:0.##} -> {health.HP:0.##} (non-lethal HP reduction {amount:0.##})";
+        var beforeRaw = health.HP;
+        var rawAmount = HeartsToRawHp(hearts);
+        // Keep at least half a visible heart. This continues to avoid donation-triggered death/soft-locks.
+        var minimumRawHp = HeartsToRawHp(0.5f);
+        health.HP = Mathf.Max(minimumRawHp, beforeRaw - rawAmount);
+        var afterRaw = health.HP;
+        return $"player HP raw {beforeRaw:0.##} -> {afterRaw:0.##}; HUD hearts {RawHpToHearts(beforeRaw):0.##} -> {RawHpToHearts(afterRaw):0.##}; requested -{hearts:0.##} heart(s) (non-lethal, min 0.5 heart)";
     }
 
     private string ChangeFervour(float fractionOfTotal, bool fill)
     {
         EnsureDungeon();
         var spells = PlayerFarming.Instance.playerSpells ?? throw new InvalidOperationException("PlayerFarming.Instance.playerSpells is null");
-        var field = typeof(PlayerSpells).GetField("faithAmmo", BindingFlags.Instance | BindingFlags.NonPublic)
-                    ?? throw new MissingFieldException(typeof(PlayerSpells).FullName, "faithAmmo");
-        var ammo = field.GetValue(spells) as FaithAmmo
-                   ?? throw new InvalidOperationException("PlayerSpells.faithAmmo is null");
+        var (ammo, memberName) = ResolveFervourAmmo(spells);
 
         var before = ammo.Ammo;
         var total = ammo.Total;
         ammo.Ammo = fill ? total : Mathf.Clamp(before + total * fractionOfTotal, 0f, total);
-        return $"fervour {before:0.##}/{total:0.##} -> {ammo.Ammo:0.##}/{total:0.##} (FaithAmmo.Ammo)";
+        return $"fervour {before:0.##}/{total:0.##} -> {ammo.Ammo:0.##}/{total:0.##} (resolved via {memberName}; FaithAmmo.Ammo)";
+    }
+
+    private static (FaithAmmo Ammo, string MemberName) ResolveFervourAmmo(PlayerSpells spells)
+    {
+        // Resolve by the verified runtime type instead of guessing a private member name.
+        // This survives game builds where the backing field/property name changes.
+        var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+
+        foreach (var property in typeof(PlayerSpells).GetProperties(flags))
+        {
+            if (!typeof(FaithAmmo).IsAssignableFrom(property.PropertyType) || !property.CanRead) continue;
+            try
+            {
+                if (property.GetValue(spells, null) is FaithAmmo ammo)
+                    return (ammo, $"property PlayerSpells.{property.Name}");
+            }
+            catch
+            {
+                // Ignore an inaccessible/throwing property and continue to the next verified member.
+            }
+        }
+
+        foreach (var field in typeof(PlayerSpells).GetFields(flags))
+        {
+            if (!typeof(FaithAmmo).IsAssignableFrom(field.FieldType)) continue;
+            if (field.GetValue(spells) is FaithAmmo ammo)
+                return (ammo, $"field PlayerSpells.{field.Name}");
+        }
+
+        throw new MissingMemberException(typeof(PlayerSpells).FullName, "FaithAmmo-typed field/property");
     }
 
     private string BuffMove(float multiplier, float seconds)
@@ -251,7 +289,12 @@ public sealed class DonationEffectService
 
         var heal = typeof(HealthPlayer).GetMethod("Heal", BindingFlags.Instance | BindingFlags.Public, null, new[] { typeof(float) }, null) != null;
         var hp = typeof(HealthPlayer).GetProperty("HP", BindingFlags.Instance | BindingFlags.Public) is { CanRead: true, CanWrite: true };
-        var fervourField = typeof(PlayerSpells).GetField("faithAmmo", BindingFlags.Instance | BindingFlags.NonPublic) != null;
+        var playerSpellsFlags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var fervourMember = typeof(PlayerSpells).GetProperties(playerSpellsFlags)
+            .FirstOrDefault(p => p.CanRead && typeof(FaithAmmo).IsAssignableFrom(p.PropertyType))?.Name
+            ?? typeof(PlayerSpells).GetFields(playerSpellsFlags)
+                .FirstOrDefault(f => typeof(FaithAmmo).IsAssignableFrom(f.FieldType))?.Name;
+        var fervourMemberAvailable = !string.IsNullOrWhiteSpace(fervourMember);
         var fervourAmmo = typeof(FaithAmmo).GetProperty("Ammo", BindingFlags.Instance | BindingFlags.Public) is { CanRead: true, CanWrite: true };
         var fervourTotal = typeof(FaithAmmo).GetProperty("Total", BindingFlags.Instance | BindingFlags.Public) is { CanRead: true };
         var speed = typeof(PlayerController).GetMethod("GetPlayerMaxSpeed", BindingFlags.Instance | BindingFlags.Public, null, Type.EmptyTypes, null) != null;
@@ -274,9 +317,9 @@ public sealed class DonationEffectService
             ? "UNAVAILABLE"
             : $"{enemyDamageMethod.DeclaringType?.FullName}.{enemyDamageMethod.Name}({string.Join(", ", enemyDamageMethod.GetParameters().Select(p => p.ParameterType.FullName))})";
 
-        _log.LogInfo($"[DONATION][CAPABILITY] verified against runtime types: dungeonActive={dungeonActive}, playerHeal={heal}, playerHP={hp}, fervourField={fervourField}, fervourAmmo={fervourAmmo}, fervourTotal={fervourTotal}, moveSpeed={speed}, attackDamage={attack}, enemyDamage={enemyDamage}");
+        _log.LogInfo($"[DONATION][CAPABILITY] verified against runtime types: dungeonActive={dungeonActive}, playerHeal={heal}, playerHP={hp}, hpScaleRawPerHeart={RawHpPerHeart:0.##}, fervourMember={fervourMember ?? "UNAVAILABLE"}, fervourAmmo={fervourAmmo}, fervourTotal={fervourTotal}, moveSpeed={speed}, attackDamage={attack}, enemyDamage={enemyDamage}");
         _log.LogInfo($"[DONATION][CAPABILITY] enemyDamageSignature={enemyDamageSignature}; Manipulation enum member validated={enemyDamage}");
-        if (!(dungeonActive && heal && hp && fervourField && fervourAmmo && fervourTotal && speed && attack && enemyDamage))
+        if (!(dungeonActive && heal && hp && fervourMemberAvailable && fervourAmmo && fervourTotal && speed && attack && enemyDamage))
             _log.LogWarning("[DONATION][CAPABILITY] one or more dungeon donation members are unavailable; affected effects will fail safely and return DONATION_EFFECT_RESULT failure.");
     }
 

@@ -297,3 +297,10 @@ Versions: Companion `v0.1-devbridge10t`, Mod `0.1.23`.
 - Dungeon-only buffs use the same context detector, so movement/attack buffs remain active during normal Crusades.
 - Fixes CHZZK village nameplate markers disappearing when AWS SSO/CHZZK credentials are temporarily unavailable. In offline/dev mode, saved follower mappings are recovered across streamer IDs only after follower ID + nickname match against the current live roster. If none verify, the Companion preserves existing game markers instead of sending a destructive empty sync.
 - Versions: Companion `v0.1-devbridge10u`, Mod `0.1.24`.
+
+## devbridge10v
+- Dungeon player-health donation rules are now expressed in visible HUD hearts. The game `HealthPlayer.HP` raw value is logged separately; conversion is `2 raw HP = 1 HUD heart`.
+- Heal/hurt amounts therefore convert 0.5/1/1.5/2 hearts to 1/2/3/4 raw HP before applying. Donation damage remains non-lethal with a 0.5-heart floor.
+- Dungeon health logs now show both `raw HP` and `HUD hearts` before/after values so mismatches are diagnosable.
+- Fervour no longer assumes a private `PlayerSpells.faithAmmo` field. It discovers the actual `FaithAmmo`-typed property/field on the loaded `PlayerSpells` runtime type, logs the resolved member name, and uses its verified `Ammo`/`Total` properties.
+- Versions: Companion `v0.1-devbridge10v`, Mod `0.1.25`.
