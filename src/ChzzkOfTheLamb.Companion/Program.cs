@@ -43,7 +43,7 @@ overlay.Start();
 var hasChzzkCredentials = !string.IsNullOrWhiteSpace(clientId) && !string.IsNullOrWhiteSpace(clientSecret);
 var developmentMode = forceDevelopmentMode || !hasChzzkCredentials;
 
-Console.WriteLine("CHZZK Companion for Cult of the Lamb - v0.1-devbridge10v");
+Console.WriteLine("CHZZK Companion for Cult of the Lamb - v0.1-devbridge10w");
 Console.WriteLine($"[CONFIG] companion credentials: {chzzkCredentials?.ProviderName ?? "not loaded"}");
 if (developmentMode)
 {
@@ -280,6 +280,7 @@ bridge.MessageReceived += envelope =>
                 {
                     Console.WriteLine($"[DONATION][RESULT] request={ShortId(result.RequestId)} SUCCESS event='{result.EventName}' effect={result.Effect}; {result.Details}");
                     overlay.ShowDonation(result.Nickname, result.Amount, result.EventName, seconds: 5);
+                    overlay.RegisterDonationBuff(result.Effect, result.EventName);
                 }
                 else
                 {

@@ -22,6 +22,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
     private string? _donationNickname;
     private long _donationAmount;
     private string? _donationEventName;
+    private readonly Dictionary<string, ActiveBuff> _activeBuffs = new(StringComparer.Ordinal);
 
     public RaffleOverlayServer(int port = 17883)
     {
@@ -109,6 +110,54 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
         }
     }
 
+    public void RegisterDonationBuff(string effect, string eventName)
+    {
+        var definitions = GetBuffDefinitions(effect, eventName);
+        if (definitions.Count == 0) return;
+
+        lock (_gate)
+        {
+            var now = DateTimeOffset.UtcNow;
+            foreach (var definition in definitions)
+            {
+                var expiresAt = now.AddSeconds(definition.DurationSeconds);
+                if (_activeBuffs.TryGetValue(definition.Key, out var existing) && existing.ExpiresAt > expiresAt)
+                    expiresAt = existing.ExpiresAt;
+
+                _activeBuffs[definition.Key] = new ActiveBuff(
+                    definition.Key, definition.Icon, definition.Name, definition.Detail, expiresAt);
+
+                Console.WriteLine($"[OVERLAY][BUFF] active key={definition.Key}, effect={effect}, detail='{definition.Detail}', remaining={Math.Max(0, (int)Math.Ceiling((expiresAt - now).TotalSeconds))}s");
+            }
+        }
+    }
+
+    private static List<BuffDefinition> GetBuffDefinitions(string effect, string eventName)
+    {
+        var result = new List<BuffDefinition>();
+        switch (effect)
+        {
+            case "DUNGEON_SPEED_SMALL":
+                result.Add(new("speed", "💨", eventName, "이동속도 +15%", 8));
+                break;
+            case "DUNGEON_SPEED_MEDIUM":
+                result.Add(new("speed", "💨", eventName, "이동속도 +20%", 10));
+                break;
+            case "DUNGEON_ATTACK_MEDIUM":
+                result.Add(new("attack", "⚔", eventName, "공격력 +20%", 10));
+                break;
+            case "DUNGEON_SPEED_ATTACK_LARGE":
+                result.Add(new("speed", "💨", eventName, "이동속도 +25%", 12));
+                result.Add(new("attack", "⚔", eventName, "공격력 +25%", 12));
+                break;
+            case "DUNGEON_SPEED_ATTACK_SPECIAL":
+                result.Add(new("speed", "💨", eventName, "이동속도 +40%", 15));
+                result.Add(new("attack", "⚔", eventName, "공격력 +40%", 15));
+                break;
+        }
+        return result;
+    }
+
     private OverlayState Snapshot()
     {
         lock (_gate)
@@ -124,9 +173,22 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
                 _donationEventName = null;
             }
 
+            foreach (var key in _activeBuffs.Where(x => x.Value.ExpiresAt <= now).Select(x => x.Key).ToArray())
+            {
+                Console.WriteLine($"[OVERLAY][BUFF] expired key={key}");
+                _activeBuffs.Remove(key);
+            }
+
             var remainingMs = _phase == "raffle" && _endsAt.HasValue
                 ? Math.Max(0, (long)Math.Ceiling((_endsAt.Value - now).TotalMilliseconds))
                 : 0L;
+
+            var buffs = _activeBuffs.Values
+                .OrderBy(x => x.Key, StringComparer.Ordinal)
+                .Select(x => new OverlayBuffState(
+                    x.Key, x.Icon, x.Name, x.Detail,
+                    Math.Max(0, (long)Math.Ceiling((x.ExpiresAt - now).TotalMilliseconds))))
+                .ToArray();
 
             return new OverlayState(
                 _phase,
@@ -136,7 +198,8 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
                 _winnerNickname,
                 _donationNickname,
                 _donationAmount,
-                _donationEventName);
+                _donationEventName,
+                buffs);
         }
     }
 
@@ -239,7 +302,29 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
         string? WinnerNickname,
         string? DonationNickname,
         long DonationAmount,
-        string? DonationEventName);
+        string? DonationEventName,
+        OverlayBuffState[] ActiveBuffs);
+
+    private sealed record OverlayBuffState(
+        string Key,
+        string Icon,
+        string Name,
+        string Detail,
+        long RemainingMs);
+
+    private sealed record ActiveBuff(
+        string Key,
+        string Icon,
+        string Name,
+        string Detail,
+        DateTimeOffset ExpiresAt);
+
+    private sealed record BuffDefinition(
+        string Key,
+        string Icon,
+        string Name,
+        string Detail,
+        int DurationSeconds);
 
     private const string OverlayHtml = """
 <!doctype html>
@@ -252,7 +337,8 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
   :root { color-scheme: dark; }
   html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;font-family:"Malgun Gothic","Noto Sans KR",sans-serif}
   body{display:flex;align-items:flex-start;justify-content:center;box-sizing:border-box;padding:18px}
-  #wrap{width:min(720px,calc(100vw - 36px));opacity:0;transform:translateY(-14px) scale(.98);transition:opacity .22s ease,transform .22s ease;pointer-events:none}
+  #stage{width:min(760px,calc(100vw - 36px));display:flex;flex-direction:column;align-items:center;gap:10px}
+  #wrap{width:min(720px,100%);opacity:0;transform:translateY(-14px) scale(.98);transition:opacity .22s ease,transform .22s ease;pointer-events:none}
   #wrap.show{opacity:1;transform:translateY(0) scale(1)}
   .panel{position:relative;background:rgba(12,9,15,.90);border:2px solid rgba(248,235,207,.78);border-radius:22px;padding:18px 24px 16px;box-shadow:0 10px 34px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.05)}
   .eyebrow{font-size:17px;font-weight:800;letter-spacing:.08em;color:#e7d5b0;text-align:center}
@@ -269,14 +355,21 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
   .winner{font-size:43px;font-weight:1000;color:#fff3d2;margin-top:5px;text-shadow:0 4px 13px #000}
   .donor{font-size:28px;font-weight:900;color:#fff;margin-top:4px}
   .donationEvent{font-size:36px;font-weight:1000;color:#00c471;margin-top:6px;text-shadow:0 3px 12px #000}
+  #buffs{width:min(720px,100%);display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;pointer-events:none}
+  .buff{min-width:168px;display:grid;grid-template-columns:42px 1fr;column-gap:9px;align-items:center;background:rgba(12,9,15,.88);border:1px solid rgba(248,235,207,.62);border-radius:14px;padding:8px 11px;box-shadow:0 6px 20px rgba(0,0,0,.38)}
+  .buffIcon{grid-row:1/3;font-size:30px;line-height:1;text-align:center;filter:drop-shadow(0 2px 4px #000)}
+  .buffName{font-size:14px;line-height:1.15;font-weight:900;color:#fff3d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .buffMeta{display:flex;gap:7px;align-items:baseline;margin-top:3px;font-size:13px;font-weight:800;color:#d8cdbb}
+  .buffTime{color:#00c471;font-variant-numeric:tabular-nums;font-size:15px}
   @keyframes pulse{from{transform:scale(1)}to{transform:scale(1.08)}}
 </style>
 </head>
 <body>
-<div id="wrap"><div class="panel" id="panel"></div></div>
+<div id="stage"><div id="wrap"><div class="panel" id="panel"></div></div><div id="buffs"></div></div>
 <script>
 const wrap=document.getElementById('wrap');
 const panel=document.getElementById('panel');
+const buffs=document.getElementById('buffs');
 let durationMs=30000,lastPhase='hidden';
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function render(s){
@@ -301,6 +394,11 @@ function render(s){
     const amount=Number(s.donationAmount||0).toLocaleString('ko-KR');
     panel.innerHTML=`<div class="result"><div class="resultTitle">CHZZK 후원 이벤트</div><div class="donor">${esc(s.donationNickname||'후원자')} · ${amount}원</div><div class="donationEvent">${esc(s.donationEventName||'이벤트 발동')}</div></div>`;
   }
+  const active=Array.isArray(s.activeBuffs)?s.activeBuffs:[];
+  buffs.innerHTML=active.map(b=>{
+    const sec=Math.max(0,Math.ceil(Number(b.remainingMs||0)/1000));
+    return `<div class="buff"><div class="buffIcon">${esc(b.icon||'✦')}</div><div class="buffName">${esc(b.name||'후원 버프')}</div><div class="buffMeta"><span>${esc(b.detail||'')}</span><span class="buffTime">${sec}s</span></div></div>`;
+  }).join('');
   lastPhase=phase;
 }
 async function tick(){

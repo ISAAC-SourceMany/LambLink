@@ -304,3 +304,14 @@ Versions: Companion `v0.1-devbridge10t`, Mod `0.1.23`.
 - Dungeon health logs now show both `raw HP` and `HUD hearts` before/after values so mismatches are diagnosable.
 - Fervour no longer assumes a private `PlayerSpells.faithAmmo` field. It discovers the actual `FaithAmmo`-typed property/field on the loaded `PlayerSpells` runtime type, logs the resolved member name, and uses its verified `Ammo`/`Total` properties.
 - Versions: Companion `v0.1-devbridge10v`, Mod `0.1.25`.
+
+
+## devbridge10w
+
+- OBS overlay now keeps persistent donation buff chips for timed dungeon buffs.
+- Speed uses a `💨` chip and attack uses a `⚔` chip; each chip shows effect detail and live remaining seconds.
+- Combined speed+attack donations create two independently tracked chips.
+- Instant effects (heal, hurt, fervour refill, enemy damage) remain event-card-only and do not occupy the persistent buff bar.
+- Repeated timed buffs refresh/extend the overlay timer in the same way the current Mod buff state extends its expiry.
+- Added `[OVERLAY][BUFF]` activation/expiry diagnostics.
+- Companion `v0.1-devbridge10w`; Mod remains `0.1.25`; Protocol schema unchanged.
