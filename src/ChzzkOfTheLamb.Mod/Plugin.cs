@@ -32,6 +32,8 @@ public sealed class Plugin : BaseUnityPlugin
     private readonly HashSet<int> _handledRecruitIds = new();
     private bool _bridgeStarted;
     private float _nextBridgeStartCheckAt;
+    private float _nextIndoctrinationUiProbeAt;
+    private bool _indoctrinationUiWasVisible;
 
     private void Awake()
     {
@@ -61,6 +63,11 @@ public sealed class Plugin : BaseUnityPlugin
         _ = _bridge.RunAsync(CancellationToken.None);
     }
 
+    internal static void LogRafflePatchDiagnostic(string message)
+    {
+        _instance?.Logger.LogInfo($"[RAFFLE][PATCH] {message}");
+    }
+
     internal static void RefreshFollowerNameplate(object uiFollowerName)
     {
         try
@@ -78,7 +85,8 @@ public sealed class Plugin : BaseUnityPlugin
         var self = _instance;
         if (self == null) return;
 
-        self.Logger.LogInfo($"[RAFFLE][HOOK] indoctrination menu detected: bridgeConnected={self._bridge?.IsConnected == true}, args={args?.Length ?? 0}");
+        args ??= Array.Empty<object>();
+        self.Logger.LogInfo($"[RAFFLE][HOOK] indoctrination menu detected: bridgeConnected={self._bridge?.IsConnected == true}, args={args.Length}");
         self.EnsureBridgeStarted("indoctrination-hook");
 
         if (self._followers == null || self._saves == null)
@@ -116,6 +124,42 @@ public sealed class Plugin : BaseUnityPlugin
         });
     }
 
+    // Runtime fallback for builds where Harmony does not observe UIManager.ShowIndoctrinationMenu.
+    // GameObject.Find only returns active objects, so this is still tied to the streamer actually
+    // opening the indoctrination UI rather than merely having a pending recruit in the cult.
+    private void ProbeIndoctrinationUiFallback()
+    {
+        var now = UnityEngine.Time.unscaledTime;
+        if (now < _nextIndoctrinationUiProbeAt) return;
+        _nextIndoctrinationUiProbeAt = now + 0.20f;
+
+        bool visible = false;
+        string detectedName = string.Empty;
+        try
+        {
+            var go = UnityEngine.GameObject.Find("Follower Indoctrination Menu(Clone)")
+                     ?? UnityEngine.GameObject.Find("Follower Indoctrination Menu");
+            visible = go != null && go.activeInHierarchy;
+            detectedName = go?.name ?? string.Empty;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning($"[RAFFLE][FALLBACK] UI probe failed: {ex.GetBaseException().Message}");
+        }
+
+        if (visible && !_indoctrinationUiWasVisible)
+        {
+            Logger.LogInfo($"[RAFFLE][FALLBACK] indoctrination UI became visible: object='{detectedName}', bridgeConnected={_bridge?.IsConnected == true}");
+            NotifyIndoctrinationMenuOpened(Array.Empty<object>());
+        }
+        else if (!visible && _indoctrinationUiWasVisible)
+        {
+            Logger.LogInfo("[RAFFLE][FALLBACK] indoctrination UI closed; trigger re-armed.");
+        }
+
+        _indoctrinationUiWasVisible = visible;
+    }
+
     // Unity main thread: all Cult of the Lamb API calls are dispatched here.
     private void Update()
     {
@@ -128,6 +172,8 @@ public sealed class Plugin : BaseUnityPlugin
             _nextBridgeStartCheckAt = UnityEngine.Time.unscaledTime + 1f;
             EnsureBridgeStarted("update-fallback");
         }
+
+        ProbeIndoctrinationUiFallback();
 
         while (_queue.TryDequeue(out var command))
         {
