@@ -1,0 +1,50 @@
+{
+  "release": "1.0.0",
+  "components": [
+    {
+      "id": "bepinex",
+      "displayName": "BepInEx 5.4.21 (x64)",
+      "version": "5.4.21",
+      "url": "https://github.com/BepInEx/BepInEx/releases/download/v5.4.21/BepInEx_x64_5.4.21.0.zip",
+      "sha256": "__BEPINEX_SHA256__",
+      "installMode": "game-root-autostrip",
+      "source": "BepInEx official GitHub release"
+    },
+    {
+      "id": "cotl-api",
+      "displayName": "COTL_API 0.3.4",
+      "version": "0.3.4",
+      "url": "https://thunderstore.io/package/download/xhayper/COTL_API/0.3.4/",
+      "sha256": "__COTL_API_SHA256__",
+      "installMode": "cotl-api",
+      "source": "Thunderstore / xhayper"
+    },
+    {
+      "id": "korean-font-fix",
+      "displayName": "COTL Korean Font Fix 4.2.1",
+      "version": "4.2.1",
+      "url": "https://d1gvw9ccym1qvn.cloudfront.net/releases/COTL-KoreanFontFix-4.2.1.zip",
+      "sha256": "__FONT_FIX_SHA256__",
+      "installMode": "game-root",
+      "source": "ChzzkOfTheLamb release CDN"
+    },
+    {
+      "id": "chzzk-mod",
+      "displayName": "ChzzkOfTheLamb Mod 1.0.0",
+      "version": "1.0.0",
+      "url": "https://d1gvw9ccym1qvn.cloudfront.net/releases/ChzzkOfTheLamb-Mod-1.0.0.zip",
+      "sha256": "__MOD_SHA256__",
+      "installMode": "game-root",
+      "source": "ChzzkOfTheLamb release CDN"
+    },
+    {
+      "id": "companion",
+      "displayName": "ChzzkOfTheLamb Companion 1.0.0",
+      "version": "1.0.0",
+      "url": "https://d1gvw9ccym1qvn.cloudfront.net/releases/ChzzkOfTheLamb-Companion-1.0.0-win-x64.zip",
+      "sha256": "__COMPANION_SHA256__",
+      "installMode": "companion",
+      "source": "ChzzkOfTheLamb release CDN"
+    }
+  ]
+}

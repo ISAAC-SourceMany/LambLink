@@ -1,60 +1,47 @@
-# ChzzkOfTheLamb v1.0.0 RC3
+# ChzzkOfTheLamb v1.0.0 RC4 — GUI Installer
 
-외부 배포용 릴리즈 후보입니다. 이 버전부터 COTL Korean Font Fix 4.2.1을 같은 설치 패키지에 포함하도록 릴리즈/설치 구조를 통합했습니다.
+외부 사용자 배포 방식이 `ZIP + PowerShell`에서 **설치 EXE 하나**로 변경되었습니다.
 
-## 사용자에게 필요한 것
+## 사용자 설치 흐름
 
-- Windows 10/11 64-bit
-- Steam판 Cult of the Lamb
-- BepInEx 5 및 COTL_API 설치
-- CHZZK 계정
+1. `ChzzkOfTheLamb-Setup-1.0.0.exe` 실행
+2. 설치기가 Steam 라이브러리에서 Cult of the Lamb 자동 탐색
+3. 아래 구성요소 다운로드 + SHA-256 검증 + 자동 설치
+   - BepInEx 5.4.21 x64
+   - COTL_API 0.3.4
+   - COTL Korean Font Fix 4.2.1
+   - ChzzkOfTheLamb Mod 1.0.0
+   - ChzzkOfTheLamb Companion 1.0.0 (self-contained)
+4. 바탕화면/시작 메뉴 Companion 바로가기 생성
+5. Companion 실행 → CHZZK 로그인
 
-.NET 런타임은 Companion을 self-contained로 게시하므로 별도 설치할 필요가 없습니다.
-AWS CLI, AWS 계정, AWS SSO, CHZZK Client Secret도 필요하지 않습니다.
+사용자에게 AWS CLI, AWS SSO, .NET Runtime, DLL 수동 복사를 요구하지 않습니다.
 
-## 함께 설치되는 구성요소
+## 설치 위치
 
-- ChzzkOfTheLamb 게임 Mod
-- ChzzkOfTheLamb Companion
-- COTL Korean Font Fix 4.2.1
-  - `COTL_KoreanFontFix.dll`
-  - `koreanfont.bundle`
+- BepInEx / COTL_API / Mod / Font Fix: Cult of the Lamb 게임 폴더
+- Companion: `%LOCALAPPDATA%\Programs\ChzzkOfTheLamb`
+- 설치 로그: `%LOCALAPPDATA%\ChzzkOfTheLamb\installer.log`
+- 설치 영수증/상태: `%LOCALAPPDATA%\ChzzkOfTheLamb\install-receipt.json`
 
-한글 폰트 패치는 다음 위치에 자동 설치됩니다.
+## 배포자가 해야 할 것
 
-`Cult of the Lamb\BepInEx\plugins\COTL_KoreanFontFix\`
+1. 테스트된 `release-assets\COTL_KoreanFontFix\COTL_KoreanFontFix.dll`과 `koreanfont.bundle`을 준비합니다.
+2. `build-release.ps1` 실행
+3. `prepare-installer-manifest.ps1` 실행
+   - BepInEx 5.4.21 공식 GitHub ZIP 다운로드/해시 계산
+   - COTL_API 0.3.4 Thunderstore ZIP 다운로드/해시 계산
+   - 자체 component ZIP 해시 계산
+   - `release-hosting\installer-manifest.json` 생성
+4. 아래 자체 파일을 CloudFront `/releases/` 경로에 업로드합니다.
+   - `COTL-KoreanFontFix-4.2.1.zip`
+   - `ChzzkOfTheLamb-Mod-1.0.0.zip`
+   - `ChzzkOfTheLamb-Companion-1.0.0-win-x64.zip`
+   - `installer-manifest.json`
+5. 사용자에게는 `ChzzkOfTheLamb-Setup-1.0.0.exe` 하나만 배포합니다.
 
-테스트된 4.2.1은 `koreanfont.bundle`에서 `KoreanRuntimeFont`를 로드하고 TMP 전역 fallback으로 등록하는 방식입니다.
+BepInEx와 COTL_API는 manifest에서 각각 공식 GitHub/Thunderstore URL을 사용합니다. 설치기는 모든 파일을 SHA-256으로 검증한 뒤 설치합니다.
 
-## 설치
+## 진단
 
-ZIP을 풀고 PowerShell에서 `Install-ChzzkOfTheLamb.ps1`을 실행합니다.
-설치기는 Steam 라이브러리에서 Cult of the Lamb 경로를 자동 검색하고 Mod, 한글 폰트 패치, Companion을 함께 설치합니다.
-
-설치 후 게임과 Companion을 실행합니다. Companion이 브라우저를 열면 CHZZK 연결을 승인합니다.
-
-## OBS
-
-브라우저 소스 하나만 추가합니다.
-
-- URL: `http://127.0.0.1:17883/overlay`
-- 권장 크기: 800x360
-
-신도 추첨, 후원 이벤트, 버프/디버프가 같은 오버레이에 표시됩니다.
-
-## 릴리즈 보안 구조
-
-배포용 Companion은 AWS CLI/SSO를 호출하지 않습니다. CHZZK Client Secret은 AWS Secrets Manager에만 존재합니다. Companion OAuth는 Auth Gateway를 통해 처리되고 로컬 Companion에는 필요한 런타임 토큰만 전달됩니다.
-
-## 현재 RC3 빌드 준비 사항
-
-`build-release.ps1` 실행 전 아래 실제 테스트 바이너리를 `release-assets\COTL_KoreanFontFix\`에 넣어야 합니다.
-
-- `COTL_KoreanFontFix.dll` (4.2.1)
-- `koreanfont.bundle` (4.2.1에서 사용한 번들)
-
-둘 중 하나라도 없으면 빌드 스크립트가 외부 배포 ZIP 생성을 중단합니다. 다른 폰트 파일이나 임의로 만든 번들로 대체하지 마세요.
-
-## 주의
-
-현재 설치기는 BepInEx와 COTL_API 자동 설치까지는 포함하지 않습니다. 이 두 의존성까지 자동 설치하게 만들면 일반 사용자는 별도 모드 사전 설치 없이 사용할 수 있습니다.
+설치 과정은 `[DETECT]`, `[MANIFEST]`, `[DOWNLOAD]`, `[VERIFY]`, `[INSTALL]`, `[COMPLETE]`, `[ERROR]` 로그를 남깁니다. 외부 사용자 설치 문제가 생기면 `installer.log` 하나로 설치 단계부터 추적할 수 있습니다.

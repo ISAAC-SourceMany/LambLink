@@ -8,6 +8,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ChzzkOfTheLamb.Companion", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ChzzkOfTheLamb.Mod", "src\ChzzkOfTheLamb.Mod\ChzzkOfTheLamb.Mod.csproj", "{A1D5A3F4-9301-4E88-A6F2-B17AB7A5D003}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ChzzkOfTheLamb.Installer", "src\ChzzkOfTheLamb.Installer\ChzzkOfTheLamb.Installer.csproj", "{A1D5A3F4-9301-4E88-A6F2-B17AB7A5D004}"
+EndProject
 Global
     GlobalSection(SolutionConfigurationPlatforms) = preSolution
         Debug|Any CPU = Debug|Any CPU
@@ -26,5 +28,9 @@ Global
         {A1D5A3F4-9301-4E88-A6F2-B17AB7A5D003}.Debug|Any CPU.Build.0 = Debug|Any CPU
         {A1D5A3F4-9301-4E88-A6F2-B17AB7A5D003}.Release|Any CPU.ActiveCfg = Release|Any CPU
         {A1D5A3F4-9301-4E88-A6F2-B17AB7A5D003}.Release|Any CPU.Build.0 = Release|Any CPU
+        {A1D5A3F4-9301-4E88-A6F2-B17AB7A5D004}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {A1D5A3F4-9301-4E88-A6F2-B17AB7A5D004}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {A1D5A3F4-9301-4E88-A6F2-B17AB7A5D004}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {A1D5A3F4-9301-4E88-A6F2-B17AB7A5D004}.Release|Any CPU.Build.0 = Release|Any CPU
     EndGlobalSection
 EndGlobal
