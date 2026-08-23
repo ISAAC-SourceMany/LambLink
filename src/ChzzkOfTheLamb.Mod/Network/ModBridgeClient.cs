@@ -25,8 +25,9 @@ public sealed class ModBridgeClient(ConcurrentQueue<GameCommandEnvelope> queue, 
             {
                 using var ws = new ClientWebSocket();
                 _socket = ws;
+                log.LogInfo("[BRIDGE][CONNECT] attempting ws://127.0.0.1:17771/game");
                 await ws.ConnectAsync(new Uri("ws://127.0.0.1:17771/game"), ct);
-                log.LogInfo("Connected to CHZZK Companion.");
+                log.LogInfo("[BRIDGE][CONNECTED] Connected to CHZZK Companion at ws://127.0.0.1:17771/game");
 
                 var buffer = new byte[32 * 1024];
                 while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
@@ -47,7 +48,7 @@ public sealed class ModBridgeClient(ConcurrentQueue<GameCommandEnvelope> queue, 
             }
             catch (Exception ex)
             {
-                log.LogWarning($"Companion connection lost: {ex.Message}");
+                log.LogWarning($"[BRIDGE][DISCONNECTED] {ex.GetBaseException().Message}; retrying in 3s");
                 try { await System.Threading.Tasks.Task.Delay(3000, ct); } catch { }
             }
             finally { _socket = null; }

@@ -9,7 +9,6 @@ using ChzzkOfTheLamb.Mod.Game;
 using ChzzkOfTheLamb.Mod.Network;
 using ChzzkOfTheLamb.Protocol;
 using Newtonsoft.Json;
-using UnityEngine.SceneManagement;
 
 namespace ChzzkOfTheLamb.Mod;
 
@@ -43,11 +42,23 @@ public sealed class Plugin : BaseUnityPlugin
         _donations = new DonationEffectService(Logger);
         _bridge = new ModBridgeClient(_queue, Logger);
 
-        // Do not start networking during the Unity Splash scene. COTL initializes several
-        // global animation/UI managers during this window and we want the integration to be
-        // completely passive until the boot transition has completed.
         Harmony.CreateAndPatchAll(typeof(Plugin).Assembly, PluginGuid);
         Logger.LogInfo($"{PluginName} {PluginVersion} loaded");
+
+        // The bridge is pure localhost networking. Starting it in Awake is safe because all
+        // game API mutations still remain queued and are executed from Update on Unity's
+        // main thread. Do not gate the socket connection on SceneManager.GetActiveScene():
+        // some COTL scene configurations keep an unexpected active-scene value long after
+        // the game is playable, which can leave the Companion waiting forever.
+        EnsureBridgeStarted("plugin-awake");
+    }
+
+    private void EnsureBridgeStarted(string reason)
+    {
+        if (_bridgeStarted || _bridge == null) return;
+        _bridgeStarted = true;
+        Logger.LogInfo($"[BRIDGE][START] reason={reason}, endpoint=ws://127.0.0.1:17771/game");
+        _ = _bridge.RunAsync(CancellationToken.None);
     }
 
     internal static void RefreshFollowerNameplate(object uiFollowerName)
@@ -65,14 +76,28 @@ public sealed class Plugin : BaseUnityPlugin
     internal static void NotifyIndoctrinationMenuOpened(object[] args)
     {
         var self = _instance;
-        if (self == null || self._bridge?.IsConnected != true || self._followers == null || self._saves == null)
+        if (self == null) return;
+
+        self.Logger.LogInfo($"[RAFFLE][HOOK] indoctrination menu detected: bridgeConnected={self._bridge?.IsConnected == true}, args={args?.Length ?? 0}");
+        self.EnsureBridgeStarted("indoctrination-hook");
+
+        if (self._followers == null || self._saves == null)
+        {
+            self.Logger.LogWarning("[RAFFLE][HOOK] services are not initialized; raffle request skipped.");
             return;
+        }
 
         var recruitId = self._followers.ResolveIndoctrinationRecruitId(args, out var source);
         if (!recruitId.HasValue)
         {
             var argTypes = string.Join(", ", args.Where(x => x != null).Select(x => x.GetType().FullName));
             self.Logger.LogWarning($"Indoctrination menu opened but recruit ID could not be resolved. args=[{argTypes}]");
+            return;
+        }
+
+        if (self._bridge?.IsConnected != true)
+        {
+            self.Logger.LogWarning($"[RAFFLE][HOOK] recruit {recruitId.Value} resolved (source={source}) but Companion bridge is not connected; raffle request skipped. Re-open indoctrination after [BRIDGE][CONNECTED] appears.");
             return;
         }
 
@@ -96,20 +121,12 @@ public sealed class Plugin : BaseUnityPlugin
     {
         _followers?.Tick();
 
-        // Safe-start the bridge only after Cult of the Lamb has left its Splash scene.
-        // This also makes startup issues easy to isolate: no Companion networking touches
-        // the game while the intro/splash pipeline is still initializing.
+        // Fallback only. The normal path starts the bridge in Awake. Keeping this check
+        // protects against an unexpected initialization failure without depending on scene names.
         if (!_bridgeStarted && UnityEngine.Time.unscaledTime >= _nextBridgeStartCheckAt)
         {
-            _nextBridgeStartCheckAt = UnityEngine.Time.unscaledTime + 0.5f;
-            var sceneName = SceneManager.GetActiveScene().name ?? string.Empty;
-            if (!string.Equals(sceneName, "Splash", StringComparison.OrdinalIgnoreCase) &&
-                !string.IsNullOrWhiteSpace(sceneName))
-            {
-                _bridgeStarted = true;
-                Logger.LogInfo($"Starting CHZZK Companion bridge after boot (scene={sceneName}).");
-                _ = _bridge!.RunAsync(CancellationToken.None);
-            }
+            _nextBridgeStartCheckAt = UnityEngine.Time.unscaledTime + 1f;
+            EnsureBridgeStarted("update-fallback");
         }
 
         while (_queue.TryDequeue(out var command))
