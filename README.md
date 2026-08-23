@@ -324,3 +324,10 @@ Versions: Companion `v0.1-devbridge10t`, Mod `0.1.23`.
 - OBS buff cards show only the currently active buff and append `대기 N` when later donations are queued.
 - Diagnostics distinguish `[OVERLAY][BUFF] active`, `[OVERLAY][BUFF] queued`, and queue advancement.
 - No attack-speed-down or movement-speed-down donation events are added in this patch; current donation pools contain only positive timed stat buffs.
+
+
+## devbridge10y - dungeon donation debuffs
+- Companion `v0.1-devbridge10y`; Mod `0.1.27`; Protocol schema unchanged.
+- Added movement/attack debuffs using the same magnitudes/durations as corresponding buffs: -15%, -20%, -25%, -40%.
+- Debuffs use the same per-stat FIFO queues as buffs, so donations are never overwritten: the current speed/attack effect finishes before the next queued effect begins.
+- Added OBS overlay cards/icons for debuffs and end-to-end donation diagnostics remain unchanged.

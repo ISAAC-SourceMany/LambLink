@@ -122,6 +122,7 @@ public sealed class DonationEffectService
             "DUNGEON_HURT_SMALL" => HurtPlayerNonLethalHearts(0.5f),
             "DUNGEON_FERVOUR_SMALL" => ChangeFervour(0.20f, false),
             "DUNGEON_SPEED_SMALL" => BuffMove(1.15f, 8f),
+            "DUNGEON_SPEED_DOWN_SMALL" => BuffMove(0.85f, 8f),
             "DUNGEON_ENEMY_DAMAGE_SMALL" => DamageAllEnemies(0.5f),
 
             "DUNGEON_HEAL_MEDIUM" => HealPlayerHearts(1.0f),
@@ -129,18 +130,22 @@ public sealed class DonationEffectService
             "DUNGEON_FERVOUR_MEDIUM" => ChangeFervour(0.35f, false),
             "DUNGEON_SPEED_MEDIUM" => BuffMove(1.20f, 10f),
             "DUNGEON_ATTACK_MEDIUM" => BuffAttack(1.20f, 10f),
+            "DUNGEON_SPEED_DOWN_MEDIUM" => BuffMove(0.80f, 10f),
+            "DUNGEON_ATTACK_DOWN_MEDIUM" => BuffAttack(0.80f, 10f),
             "DUNGEON_ENEMY_DAMAGE_MEDIUM" => DamageAllEnemies(1.0f),
 
             "DUNGEON_HEAL_LARGE" => HealPlayerHearts(1.5f),
             "DUNGEON_HURT_LARGE" => HurtPlayerNonLethalHearts(1.5f),
             "DUNGEON_FERVOUR_LARGE" => ChangeFervour(0.50f, false),
             "DUNGEON_SPEED_ATTACK_LARGE" => BuffMoveAndAttack(1.25f, 1.25f, 12f),
+            "DUNGEON_SPEED_ATTACK_DOWN_LARGE" => BuffMoveAndAttack(0.75f, 0.75f, 12f),
             "DUNGEON_ENEMY_DAMAGE_LARGE" => DamageAllEnemies(1.5f),
 
             "DUNGEON_HEAL_SPECIAL" => HealPlayerHearts(2.0f),
             "DUNGEON_HURT_SPECIAL" => HurtPlayerNonLethalHearts(2.0f),
             "DUNGEON_FERVOUR_SPECIAL" => ChangeFervour(1f, true),
             "DUNGEON_SPEED_ATTACK_SPECIAL" => BuffMoveAndAttack(1.40f, 1.40f, 15f),
+            "DUNGEON_SPEED_ATTACK_DOWN_SPECIAL" => BuffMoveAndAttack(0.60f, 0.60f, 15f),
             "DUNGEON_ENEMY_DAMAGE_SPECIAL" => DamageAllEnemies(2.5f),
 
             "SMALL_RANDOM" => ApplyLegacySmall(command),
@@ -331,25 +336,26 @@ public sealed class DonationEffectService
             {
                 ("DUNGEON_HEAL_SMALL", "작은 치유"), ("DUNGEON_HURT_SMALL", "작은 시련"),
                 ("DUNGEON_FERVOUR_SMALL", "열정 충전"), ("DUNGEON_SPEED_SMALL", "신속의 축복"),
-                ("DUNGEON_ENEMY_DAMAGE_SMALL", "적을 향한 일격")
+                ("DUNGEON_SPEED_DOWN_SMALL", "둔화의 장난"), ("DUNGEON_ENEMY_DAMAGE_SMALL", "적을 향한 일격")
             },
             <= 4_999 => new[]
             {
                 ("DUNGEON_HEAL_MEDIUM", "치유의 손길"), ("DUNGEON_HURT_MEDIUM", "고통의 장난"),
                 ("DUNGEON_FERVOUR_MEDIUM", "열정의 샘"), ("DUNGEON_SPEED_MEDIUM", "질주의 축복"),
-                ("DUNGEON_ATTACK_MEDIUM", "전투의 축복"), ("DUNGEON_ENEMY_DAMAGE_MEDIUM", "적 무리 강타")
+                ("DUNGEON_ATTACK_MEDIUM", "전투의 축복"), ("DUNGEON_SPEED_DOWN_MEDIUM", "무거운 발걸음"),
+                ("DUNGEON_ATTACK_DOWN_MEDIUM", "무뎌진 칼날"), ("DUNGEON_ENEMY_DAMAGE_MEDIUM", "적 무리 강타")
             },
             <= 9_999 => new[]
             {
                 ("DUNGEON_HEAL_LARGE", "강한 치유"), ("DUNGEON_HURT_LARGE", "강한 시련"),
                 ("DUNGEON_FERVOUR_LARGE", "넘치는 열정"), ("DUNGEON_SPEED_ATTACK_LARGE", "광전사의 축복"),
-                ("DUNGEON_ENEMY_DAMAGE_LARGE", "적 무리 대타격")
+                ("DUNGEON_SPEED_ATTACK_DOWN_LARGE", "쇠약의 저주"), ("DUNGEON_ENEMY_DAMAGE_LARGE", "적 무리 대타격")
             },
             _ => new[]
             {
                 ("DUNGEON_HEAL_SPECIAL", "기적의 치유"), ("DUNGEON_HURT_SPECIAL", "신의 시련"),
                 ("DUNGEON_FERVOUR_SPECIAL", "열정 완전 충전"), ("DUNGEON_SPEED_ATTACK_SPECIAL", "전투의 기적"),
-                ("DUNGEON_ENEMY_DAMAGE_SPECIAL", "적 무리 대폭발")
+                ("DUNGEON_SPEED_ATTACK_DOWN_SPECIAL", "전투의 대저주"), ("DUNGEON_ENEMY_DAMAGE_SPECIAL", "적 무리 대폭발")
             }
         };
         return pool[UnityEngine.Random.Range(0, pool.Length)];

@@ -43,7 +43,7 @@ overlay.Start();
 var hasChzzkCredentials = !string.IsNullOrWhiteSpace(clientId) && !string.IsNullOrWhiteSpace(clientSecret);
 var developmentMode = forceDevelopmentMode || !hasChzzkCredentials;
 
-Console.WriteLine("CHZZK Companion for Cult of the Lamb - v0.1-devbridge10x");
+Console.WriteLine("CHZZK Companion for Cult of the Lamb - v0.1-devbridge10y");
 Console.WriteLine($"[CONFIG] companion credentials: {chzzkCredentials?.ProviderName ?? "not loaded"}");
 if (developmentMode)
 {

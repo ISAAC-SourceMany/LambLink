@@ -40,6 +40,7 @@ public sealed class DonationRuleEngine(DonationSettings settings)
             ["DUNGEON_HURT_SMALL"] = ("작은 시련", "DUNGEON_SMALL"),
             ["DUNGEON_FERVOUR_SMALL"] = ("열정 충전", "DUNGEON_SMALL"),
             ["DUNGEON_SPEED_SMALL"] = ("신속의 축복", "DUNGEON_SMALL"),
+            ["DUNGEON_SPEED_DOWN_SMALL"] = ("둔화의 장난", "DUNGEON_SMALL"),
             ["DUNGEON_ENEMY_DAMAGE_SMALL"] = ("적을 향한 일격", "DUNGEON_SMALL"),
 
             ["DUNGEON_HEAL_MEDIUM"] = ("치유의 손길", "DUNGEON_MEDIUM"),
@@ -47,18 +48,22 @@ public sealed class DonationRuleEngine(DonationSettings settings)
             ["DUNGEON_FERVOUR_MEDIUM"] = ("열정의 샘", "DUNGEON_MEDIUM"),
             ["DUNGEON_SPEED_MEDIUM"] = ("질주의 축복", "DUNGEON_MEDIUM"),
             ["DUNGEON_ATTACK_MEDIUM"] = ("전투의 축복", "DUNGEON_MEDIUM"),
+            ["DUNGEON_SPEED_DOWN_MEDIUM"] = ("무거운 발걸음", "DUNGEON_MEDIUM"),
+            ["DUNGEON_ATTACK_DOWN_MEDIUM"] = ("무뎌진 칼날", "DUNGEON_MEDIUM"),
             ["DUNGEON_ENEMY_DAMAGE_MEDIUM"] = ("적 무리 강타", "DUNGEON_MEDIUM"),
 
             ["DUNGEON_HEAL_LARGE"] = ("강한 치유", "DUNGEON_HELP_OR_HINDER"),
             ["DUNGEON_HURT_LARGE"] = ("강한 시련", "DUNGEON_HELP_OR_HINDER"),
             ["DUNGEON_FERVOUR_LARGE"] = ("넘치는 열정", "DUNGEON_HELP_OR_HINDER"),
             ["DUNGEON_SPEED_ATTACK_LARGE"] = ("광전사의 축복", "DUNGEON_HELP_OR_HINDER"),
+            ["DUNGEON_SPEED_ATTACK_DOWN_LARGE"] = ("쇠약의 저주", "DUNGEON_HELP_OR_HINDER"),
             ["DUNGEON_ENEMY_DAMAGE_LARGE"] = ("적 무리 대타격", "DUNGEON_HELP_OR_HINDER"),
 
             ["DUNGEON_HEAL_SPECIAL"] = ("기적의 치유", "DUNGEON_SPECIAL"),
             ["DUNGEON_HURT_SPECIAL"] = ("신의 시련", "DUNGEON_SPECIAL"),
             ["DUNGEON_FERVOUR_SPECIAL"] = ("열정 완전 충전", "DUNGEON_SPECIAL"),
             ["DUNGEON_SPEED_ATTACK_SPECIAL"] = ("전투의 기적", "DUNGEON_SPECIAL"),
+            ["DUNGEON_SPEED_ATTACK_DOWN_SPECIAL"] = ("전투의 대저주", "DUNGEON_SPECIAL"),
             ["DUNGEON_ENEMY_DAMAGE_SPECIAL"] = ("적 무리 대폭발", "DUNGEON_SPECIAL"),
         };
 
@@ -145,24 +150,25 @@ public sealed class DonationRuleEngine(DonationSettings settings)
     private static readonly string[] DungeonSmall =
     [
         "DUNGEON_HEAL_SMALL", "DUNGEON_HURT_SMALL", "DUNGEON_FERVOUR_SMALL",
-        "DUNGEON_SPEED_SMALL", "DUNGEON_ENEMY_DAMAGE_SMALL"
+        "DUNGEON_SPEED_SMALL", "DUNGEON_SPEED_DOWN_SMALL", "DUNGEON_ENEMY_DAMAGE_SMALL"
     ];
 
     private static readonly string[] DungeonMedium =
     [
         "DUNGEON_HEAL_MEDIUM", "DUNGEON_HURT_MEDIUM", "DUNGEON_FERVOUR_MEDIUM",
-        "DUNGEON_SPEED_MEDIUM", "DUNGEON_ATTACK_MEDIUM", "DUNGEON_ENEMY_DAMAGE_MEDIUM"
+        "DUNGEON_SPEED_MEDIUM", "DUNGEON_ATTACK_MEDIUM", "DUNGEON_SPEED_DOWN_MEDIUM",
+        "DUNGEON_ATTACK_DOWN_MEDIUM", "DUNGEON_ENEMY_DAMAGE_MEDIUM"
     ];
 
     private static readonly string[] DungeonLarge =
     [
         "DUNGEON_HEAL_LARGE", "DUNGEON_HURT_LARGE", "DUNGEON_FERVOUR_LARGE",
-        "DUNGEON_SPEED_ATTACK_LARGE", "DUNGEON_ENEMY_DAMAGE_LARGE"
+        "DUNGEON_SPEED_ATTACK_LARGE", "DUNGEON_SPEED_ATTACK_DOWN_LARGE", "DUNGEON_ENEMY_DAMAGE_LARGE"
     ];
 
     private static readonly string[] DungeonSpecial =
     [
         "DUNGEON_HEAL_SPECIAL", "DUNGEON_HURT_SPECIAL", "DUNGEON_FERVOUR_SPECIAL",
-        "DUNGEON_SPEED_ATTACK_SPECIAL", "DUNGEON_ENEMY_DAMAGE_SPECIAL"
+        "DUNGEON_SPEED_ATTACK_SPECIAL", "DUNGEON_SPEED_ATTACK_DOWN_SPECIAL", "DUNGEON_ENEMY_DAMAGE_SPECIAL"
     ];
 }

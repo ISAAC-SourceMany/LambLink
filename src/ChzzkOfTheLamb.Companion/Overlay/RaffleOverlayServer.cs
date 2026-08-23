@@ -152,8 +152,17 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
             case "DUNGEON_SPEED_MEDIUM":
                 result.Add(new("speed", "💨", eventName, "이동속도 +20%", 10));
                 break;
+            case "DUNGEON_SPEED_DOWN_SMALL":
+                result.Add(new("speed", "🐌", eventName, "이동속도 -15%", 8));
+                break;
+            case "DUNGEON_SPEED_DOWN_MEDIUM":
+                result.Add(new("speed", "🐌", eventName, "이동속도 -20%", 10));
+                break;
             case "DUNGEON_ATTACK_MEDIUM":
                 result.Add(new("attack", "⚔", eventName, "공격력 +20%", 10));
+                break;
+            case "DUNGEON_ATTACK_DOWN_MEDIUM":
+                result.Add(new("attack", "🥀", eventName, "공격력 -20%", 10));
                 break;
             case "DUNGEON_SPEED_ATTACK_LARGE":
                 result.Add(new("speed", "💨", eventName, "이동속도 +25%", 12));
@@ -162,6 +171,14 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
             case "DUNGEON_SPEED_ATTACK_SPECIAL":
                 result.Add(new("speed", "💨", eventName, "이동속도 +40%", 15));
                 result.Add(new("attack", "⚔", eventName, "공격력 +40%", 15));
+                break;
+            case "DUNGEON_SPEED_ATTACK_DOWN_LARGE":
+                result.Add(new("speed", "🐌", eventName, "이동속도 -25%", 12));
+                result.Add(new("attack", "🥀", eventName, "공격력 -25%", 12));
+                break;
+            case "DUNGEON_SPEED_ATTACK_DOWN_SPECIAL":
+                result.Add(new("speed", "🐌", eventName, "이동속도 -40%", 15));
+                result.Add(new("attack", "🥀", eventName, "공격력 -40%", 15));
                 break;
         }
         return result;
