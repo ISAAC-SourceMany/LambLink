@@ -65,3 +65,11 @@ RC3 release packaging bundles COTL Korean Font Fix 4.2.1 (`COTL_KoreanFontFix.dl
 - Removed the RC10 global UI object scan from the normal `Update()` path.
 - A recruit is marked announced only after the WebSocket raffle request is actually sent successfully; disconnected/send-failed triggers remain retryable.
 - New diagnostics: `[RAFFLE][INTERACTION]`, `[RAFFLE][REQUEST]`, and `[RAFFLE][PATCH][PRIMARY]`.
+
+## RC12 raffle trigger hardening
+
+- Keeps RC11's `FollowerRecruit` lifecycle hooks and UI method hooks.
+- Adds a concrete main-thread state transition detector for the actual vanilla `Lamb.UI.UIAppearanceMenuController_Form` component.
+- The detector runs only while at least one pending vanilla recruit exists, checks only that concrete component type every 200ms, and triggers only on the inactive -> active transition.
+- It does **not** scan every GameObject/MonoBehaviour and does not open a raffle merely because a recruit exists.
+- Diagnostics: `[RAFFLE][CONTROLLER] concrete indoctrination form became active...` followed by `[RAFFLE][REQUEST] ...`.
