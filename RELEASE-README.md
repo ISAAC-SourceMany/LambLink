@@ -1,4 +1,4 @@
-# ChzzkOfTheLamb v1.0.0 RC4 — GUI Installer
+# ChzzkOfTheLamb v1.0.0 RC5 — GUI Installer
 
 외부 사용자 배포 방식이 `ZIP + PowerShell`에서 **설치 EXE 하나**로 변경되었습니다.
 
@@ -45,3 +45,33 @@ BepInEx와 COTL_API는 manifest에서 각각 공식 GitHub/Thunderstore URL을 �
 ## 진단
 
 설치 과정은 `[DETECT]`, `[MANIFEST]`, `[DOWNLOAD]`, `[VERIFY]`, `[INSTALL]`, `[COMPLETE]`, `[ERROR]` 로그를 남깁니다. 외부 사용자 설치 문제가 생기면 `installer.log` 하나로 설치 단계부터 추적할 수 있습니다.
+
+## RC5 검증 포인트
+
+### CHZZK 마을 이름표
+
+RC5에서는 COTL의 `UIFollowerName.nameText` 값을 더 이상 `Chzzk 닉네임`으로 덮어쓰지 않습니다.
+원래 닉네임 TMP 오브젝트의 자식으로 `CHZZK_PlatformBadge`를 별도 생성하여 초록색 `Chzzk`를 표시합니다.
+따라서 저장 이름과 게임 원본 이름표는 항상 순수 닉네임만 유지합니다.
+
+정상 로그 예:
+
+```text
+CHZZK follower markers synced: save=slot_0, count=1, ids=[12]
+[NAMEPLATE] badge created followerId=12, name='유르밍', ...
+CHZZK village nameplate badge active: followerId=12, vanillaName='유르밍', badge='Chzzk' ...
+```
+
+### 설치기 응답 없음
+
+ZIP 압축 해제와 실제 파일 설치/복사를 WinForms UI 스레드에서 분리했습니다.
+긴 Companion 설치 중에도 창은 응답해야 하며 진행 막대는 marquee 애니메이션으로 계속 움직입니다.
+
+설치 로그에는 각 병목 시간을 구분해 기록합니다.
+
+```text
+[EXTRACT] companion started
+[EXTRACT] companion complete elapsed=...
+[INSTALL] companion started mode=companion
+[INSTALL] companion complete mode=companion, elapsed=...
+```

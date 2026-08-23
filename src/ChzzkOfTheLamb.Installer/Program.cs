@@ -153,11 +153,35 @@ internal sealed class InstallerForm : Form
                 }
                 Log($"[VERIFY] {component.Id} SHA-256 OK ({actualHash})");
 
-                _status.Text = $"{component.DisplayName} 설치 중...";
+                _status.Text = $"{component.DisplayName} 압축 해제 중... 창을 닫지 마세요.";
+                _progress.Style = ProgressBarStyle.Marquee;
+                _progress.MarqueeAnimationSpeed = 25;
                 var extracted = Path.Combine(workDir, component.Id);
-                ZipFile.ExtractToDirectory(archive, extracted, true);
-                InstallComponent(component, extracted, gameRoot, companionRoot);
-                Log($"[INSTALL] {component.Id} complete mode={component.InstallMode}");
+                var extractTimer = Stopwatch.StartNew();
+                Log($"[EXTRACT] {component.Id} started");
+
+                // ZIP extraction and the recursive file copy are intentionally kept off the WinForms
+                // UI thread. Self-contained Companion contains many runtime files and antivirus/Defender
+                // can make this take minutes; the installer must remain responsive while that happens.
+                await Task.Run(() =>
+                {
+                    _cts.Token.ThrowIfCancellationRequested();
+                    ZipFile.ExtractToDirectory(archive, extracted, true);
+                }, _cts.Token);
+                extractTimer.Stop();
+                Log($"[EXTRACT] {component.Id} complete elapsed={extractTimer.Elapsed.TotalSeconds:0.0}s");
+
+                _status.Text = $"{component.DisplayName} 설치 중...";
+                var installTimer = Stopwatch.StartNew();
+                Log($"[INSTALL] {component.Id} started mode={component.InstallMode}");
+                await Task.Run(() =>
+                {
+                    _cts.Token.ThrowIfCancellationRequested();
+                    InstallComponent(component, extracted, gameRoot, companionRoot);
+                }, _cts.Token);
+                installTimer.Stop();
+                Log($"[INSTALL] {component.Id} complete mode={component.InstallMode}, elapsed={installTimer.Elapsed.TotalSeconds:0.0}s");
+                _progress.Style = ProgressBarStyle.Blocks;
                 SetProgress(endProgress);
             }
 
@@ -183,6 +207,7 @@ internal sealed class InstallerForm : Form
         }
         finally
         {
+            _progress.Style = ProgressBarStyle.Blocks;
             try { Directory.Delete(workDir, true); } catch { }
             _install.Enabled = true;
             _browse.Enabled = true;

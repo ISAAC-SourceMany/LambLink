@@ -1,4 +1,4 @@
-# RC4 Installer 배포 체크리스트
+# RC5 Installer 배포 체크리스트
 
 ## 1. 로컬 빌드
 

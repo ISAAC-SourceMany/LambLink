@@ -882,17 +882,34 @@ public sealed class FollowerService(
     public void RefreshFollowerNameplate(object uiFollowerName)
     {
         if (uiFollowerName == null) return;
-        var saveId = saves.GetCurrentSaveId();
-        if (!string.Equals(saveId, _chzzkMarkerSaveId, StringComparison.Ordinal)) return;
 
         var uiType = uiFollowerName.GetType();
+        var nameTextField = AccessTools.Field(uiType, "nameText");
+        var nameText = nameTextField?.GetValue(uiFollowerName);
+        if (nameText == null) return;
+
+        var saveId = saves.GetCurrentSaveId();
+        if (!string.Equals(saveId, _chzzkMarkerSaveId, StringComparison.Ordinal))
+        {
+            SetChzzkBadgeActive(nameText, false);
+            return;
+        }
+
         var followerField = AccessTools.Field(uiType, "follower");
         var follower = followerField?.GetValue(uiFollowerName);
-        if (follower == null) return;
+        if (follower == null)
+        {
+            SetChzzkBadgeActive(nameText, false);
+            return;
+        }
 
         var info = FollowerAppearanceService.FindFollowerInfo(follower, 5) ?? follower;
         var followerId = ReadFollowerId(info);
-        if (!followerId.HasValue || !_chzzkFollowerMarkers.TryGetValue(followerId.Value, out var marker)) return;
+        if (!followerId.HasValue || !_chzzkFollowerMarkers.TryGetValue(followerId.Value, out var marker))
+        {
+            SetChzzkBadgeActive(nameText, false);
+            return;
+        }
 
         var plainName = NormalizeLegacyChzzkStoredName(ReadStringMember(info, "Name") ?? marker.Nickname);
         var expectedName = NormalizeLegacyChzzkStoredName(marker.Nickname);
@@ -902,32 +919,159 @@ public sealed class FollowerService(
             // A COTL follower ID may be reused. Do not put a CHZZK badge on a different follower.
             _chzzkFollowerMarkers.Remove(followerId.Value);
             _loggedDecoratedNameplates.Remove(followerId.Value);
+            SetChzzkBadgeActive(nameText, false);
             log.LogWarning($"CHZZK nameplate marker dropped: followerId={followerId.Value}, expectedName='{expectedName}', actualName='{plainName}' (ID appears reused)");
             return;
         }
 
-        var nameTextField = AccessTools.Field(uiType, "nameText");
-        var nameText = nameTextField?.GetValue(uiFollowerName);
-        if (nameText == null) return;
-        var textType = nameText.GetType();
-        var textProp = AccessTools.Property(textType, "text");
-        if (textProp?.CanWrite != true) return;
+        try
+        {
+            var badge = EnsureChzzkBadge(nameText, plainName, followerId.Value);
+            SetChzzkBadgeActive(badge, true);
 
-        // This rich text exists only in UIFollowerName's rendered label. It is never written back
-        // to FollowerInfo.Name, the save file, or Companion storage.
-        var visualName = $"<color=#00C471>Chzzk</color> {plainName}";
-        var richTextProp = AccessTools.Property(textType, "richText");
-        if (richTextProp?.CanWrite == true) richTextProp.SetValue(nameText, true, null);
-        textProp.SetValue(nameText, visualName, null);
+            if (_loggedDecoratedNameplates.Add(followerId.Value))
+                log.LogInfo($"CHZZK village nameplate badge active: followerId={followerId.Value}, vanillaName='{plainName}', badge='Chzzk' (separate TMP object; save/name text untouched)");
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning($"CHZZK village nameplate badge failed: followerId={followerId.Value}, name='{plainName}', error={ex.GetBaseException().Message}");
+        }
+    }
 
-        // IMPORTANT: do not call UIFollowerName.RegenerateLabels here. In COTL 1.5.25 that
-        // path rebuilds the shared follower-name TMP atlas. Re-running it for every marker/roster
-        // sync can rapidly exhaust the 4096x4096 atlas and manifests as individual Hangul glyphs
-        // (for example '밍') rendering as blanks. Setting TMP_Text.text is enough for the active
-        // label to update; the vanilla UI will rebuild its own atlas on its normal lifecycle.
+    private const string ChzzkBadgeObjectName = "CHZZK_PlatformBadge";
 
-        if (_loggedDecoratedNameplates.Add(followerId.Value))
-            log.LogInfo($"CHZZK village nameplate decorated: followerId={followerId.Value}, name='{plainName}' (visual-only, no atlas regeneration)");
+    private object EnsureChzzkBadge(object nameText, string plainName, int followerId)
+    {
+        if (nameText is not UnityEngine.Component sourceComponent)
+            throw new InvalidOperationException($"nameText is not a Unity Component: {nameText.GetType().FullName}");
+
+        var sourceRect = sourceComponent.transform as UnityEngine.RectTransform;
+        if (sourceRect == null)
+            throw new InvalidOperationException("nameText does not use RectTransform");
+
+        var existingTransform = sourceRect.Find(ChzzkBadgeObjectName);
+        object badgeText;
+        UnityEngine.RectTransform badgeRect;
+        var created = false;
+
+        if (existingTransform != null)
+        {
+            badgeRect = existingTransform as UnityEngine.RectTransform
+                        ?? throw new InvalidOperationException("existing CHZZK badge is not RectTransform");
+            badgeText = badgeRect.gameObject.GetComponent(nameText.GetType())
+                        ?? throw new InvalidOperationException("existing CHZZK badge TMP component missing");
+        }
+        else
+        {
+            var badgeObject = new UnityEngine.GameObject(ChzzkBadgeObjectName, typeof(UnityEngine.RectTransform));
+            badgeRect = (UnityEngine.RectTransform)badgeObject.transform;
+            badgeRect.SetParent(sourceRect, false);
+            badgeText = badgeObject.AddComponent(nameText.GetType());
+            created = true;
+        }
+
+        CopyTextVisualProperty(nameText, badgeText, "font");
+        CopyTextVisualProperty(nameText, badgeText, "fontSharedMaterial");
+        CopyTextVisualProperty(nameText, badgeText, "fontSize");
+        CopyTextVisualProperty(nameText, badgeText, "fontStyle");
+        CopyTextVisualProperty(nameText, badgeText, "fontWeight");
+        CopyTextVisualProperty(nameText, badgeText, "enableAutoSizing");
+        CopyTextVisualProperty(nameText, badgeText, "fontSizeMin");
+        CopyTextVisualProperty(nameText, badgeText, "fontSizeMax");
+        CopyTextVisualProperty(nameText, badgeText, "outlineWidth");
+        CopyTextVisualProperty(nameText, badgeText, "outlineColor");
+
+        SetTextProperty(badgeText, "text", "Chzzk");
+        SetTextProperty(badgeText, "richText", true);
+        SetTextProperty(badgeText, "raycastTarget", false);
+        SetTextProperty(badgeText, "color", new UnityEngine.Color(0f, 196f / 255f, 113f / 255f, 1f));
+        TrySetEnumProperty(badgeText, "alignment", "Right");
+
+        var sourceFontSize = Math.Max(12f, ReadFloatProperty(nameText, "fontSize"));
+        var preferredWidth = ReadFloatProperty(nameText, "preferredWidth");
+        if (preferredWidth <= 1f)
+            preferredWidth = Math.Max(sourceFontSize, plainName.Length * sourceFontSize * 0.55f);
+        var sourceHeight = Math.Max(18f, sourceRect.rect.height);
+        var badgeWidth = Math.Max(54f, sourceFontSize * 3.9f);
+
+        // The vanilla follower name is centered in its RectTransform. Anchor this separate label
+        // to that same center, then put its RIGHT edge immediately to the left of the rendered
+        // vanilla name. COTL can freely overwrite/rebuild the original text without touching us.
+        badgeRect.anchorMin = new UnityEngine.Vector2(0.5f, 0.5f);
+        badgeRect.anchorMax = new UnityEngine.Vector2(0.5f, 0.5f);
+        badgeRect.pivot = new UnityEngine.Vector2(1f, 0.5f);
+        badgeRect.sizeDelta = new UnityEngine.Vector2(badgeWidth, sourceHeight);
+        badgeRect.anchoredPosition = new UnityEngine.Vector2(-(preferredWidth * 0.5f) - 5f, 0f);
+        badgeRect.localScale = UnityEngine.Vector3.one;
+        badgeRect.localRotation = UnityEngine.Quaternion.identity;
+        badgeRect.SetAsLastSibling();
+
+        if (created)
+        {
+            log.LogInfo($"[NAMEPLATE] badge created followerId={followerId}, name='{plainName}', textType={nameText.GetType().FullName}, preferredWidth={preferredWidth:0.##}, badgeX={badgeRect.anchoredPosition.x:0.##}, badgeWidth={badgeWidth:0.##}");
+        }
+
+        return badgeText;
+    }
+
+    private static void SetChzzkBadgeActive(object nameTextOrBadge, bool active)
+    {
+        if (nameTextOrBadge is not UnityEngine.Component component) return;
+        if (string.Equals(component.gameObject.name, ChzzkBadgeObjectName, StringComparison.Ordinal))
+        {
+            component.gameObject.SetActive(active);
+            return;
+        }
+
+        var sourceRect = component.transform as UnityEngine.RectTransform;
+        var child = sourceRect?.Find(ChzzkBadgeObjectName);
+        if (child != null) child.gameObject.SetActive(active);
+    }
+
+    private static void CopyTextVisualProperty(object source, object target, string propertyName)
+    {
+        try
+        {
+            var sourceProperty = AccessTools.Property(source.GetType(), propertyName);
+            var targetProperty = AccessTools.Property(target.GetType(), propertyName);
+            if (sourceProperty?.CanRead != true || targetProperty?.CanWrite != true) return;
+            targetProperty.SetValue(target, sourceProperty.GetValue(source, null), null);
+        }
+        catch { }
+    }
+
+    private static void SetTextProperty(object target, string propertyName, object value)
+    {
+        try
+        {
+            var property = AccessTools.Property(target.GetType(), propertyName);
+            if (property?.CanWrite == true) property.SetValue(target, value, null);
+        }
+        catch { }
+    }
+
+    private static void TrySetEnumProperty(object target, string propertyName, string enumValue)
+    {
+        try
+        {
+            var property = AccessTools.Property(target.GetType(), propertyName);
+            if (property?.CanWrite != true || !property.PropertyType.IsEnum) return;
+            var parsed = Enum.Parse(property.PropertyType, enumValue, true);
+            property.SetValue(target, parsed, null);
+        }
+        catch { }
+    }
+
+    private static float ReadFloatProperty(object target, string propertyName)
+    {
+        try
+        {
+            var property = AccessTools.Property(target.GetType(), propertyName);
+            if (property?.CanRead != true) return 0f;
+            var value = property.GetValue(target, null);
+            return value == null ? 0f : Convert.ToSingle(value);
+        }
+        catch { return 0f; }
     }
 
     private void RegenerateVisibleFollowerNameplates()
