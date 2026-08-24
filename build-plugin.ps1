@@ -3,8 +3,12 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $project = Join-Path $root 'src\ChzzkOfTheLamb.Mod\ChzzkOfTheLamb.Mod.csproj'
 $dist = Join-Path $root 'dist\rc21-plugin'
 
+function Assert-NativeSuccess([string]$Step) {
+  if ($LASTEXITCODE -ne 0) { throw "$Step failed with exit code $LASTEXITCODE." }
+}
+
 $criticalSources = @{
-  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = '443e3d908c06841dc62731a5fd441b309b7b1161c066cb1389bb7c9d4aba56de'
+  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = 'af6f54f5fbe4a0c818f9516d940aedad43f0b07a4ad6027994ef52ca598dc5c8'
   'src\ChzzkOfTheLamb.Mod\Network\ModBridgeClient.cs' = 'f4880b66af179cdb341abee543fd1d4e0c40a23d893cdd57ad7571b61cac7bbf'
   'src\ChzzkOfTheLamb.Mod\Game\IndoctrinationRafflePatch.cs' = '81260035a8f74e613b414576d1065373c76fcdccca000a790097fa4047b2f9cb'
   'src\ChzzkOfTheLamb.Mod\Game\FollowerService.cs' = '6883d37210328c161ead327c6d4c9ff1576c96aa8793790872d4d8791f7a0ee9'
@@ -29,11 +33,17 @@ if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
 
 dotnet restore $project
+Assert-NativeSuccess 'Plugin restore'
 dotnet build $project -c Release --no-restore
+Assert-NativeSuccess 'Plugin build'
 
 $bin = Join-Path $root 'src\ChzzkOfTheLamb.Mod\bin\Release'
-Copy-Item (Join-Path $bin 'ChzzkOfTheLamb.Mod.dll') $dist -Force
-Copy-Item (Join-Path $bin 'ChzzkOfTheLamb.Protocol.dll') $dist -Force
+$modSource = Join-Path $bin 'ChzzkOfTheLamb.Mod.dll'
+$protocolSource = Join-Path $bin 'ChzzkOfTheLamb.Protocol.dll'
+if (-not (Test-Path $modSource)) { throw "Plugin build reported success but output is missing: $modSource" }
+if (-not (Test-Path $protocolSource)) { throw "Plugin build reported success but output is missing: $protocolSource" }
+Copy-Item $modSource $dist -Force
+Copy-Item $protocolSource $dist -Force
 
 function Test-ByteSequence([byte[]]$Haystack, [byte[]]$Needle) {
   if ($Needle.Length -eq 0 -or $Haystack.Length -lt $Needle.Length) { return $false }

@@ -9,9 +9,13 @@ $fontDll = Join-Path $fontAssetRoot 'COTL_KoreanFontFix.dll'
 $fontBundle = Join-Path $fontAssetRoot 'koreanfont.bundle'
 $hosting = Join-Path $root 'release-hosting'
 
+function Assert-NativeSuccess([string]$Step) {
+  if ($LASTEXITCODE -ne 0) { throw "$Step failed with exit code $LASTEXITCODE." }
+}
+
 Write-Host '[0/9] Verifying RC21 source identity and removing stale compiler outputs...'
 $criticalSources = @{
-  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = '443e3d908c06841dc62731a5fd441b309b7b1161c066cb1389bb7c9d4aba56de'
+  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = 'af6f54f5fbe4a0c818f9516d940aedad43f0b07a4ad6027994ef52ca598dc5c8'
   'src\ChzzkOfTheLamb.Mod\Network\ModBridgeClient.cs' = 'f4880b66af179cdb341abee543fd1d4e0c40a23d893cdd57ad7571b61cac7bbf'
   'src\ChzzkOfTheLamb.Mod\Game\IndoctrinationRafflePatch.cs' = '81260035a8f74e613b414576d1065373c76fcdccca000a790097fa4047b2f9cb'
   'src\ChzzkOfTheLamb.Mod\Game\FollowerService.cs' = '6883d37210328c161ead327c6d4c9ff1576c96aa8793790872d4d8791f7a0ee9'
@@ -57,9 +61,11 @@ foreach ($f in @('COTL-KoreanFontFix-4.2.1.zip','ChzzkOfTheLamb-Mod-1.0.0.zip','
 
 Write-Host '[3/9] Restore...'
 dotnet restore (Join-Path $root 'ChzzkOfTheLamb.sln')
+Assert-NativeSuccess 'Release restore'
 
 Write-Host '[4/9] Building game mod...'
 dotnet build (Join-Path $root 'src\ChzzkOfTheLamb.Mod\ChzzkOfTheLamb.Mod.csproj') -c Release --no-restore
+Assert-NativeSuccess 'Release Mod build'
 $modBin = Join-Path $root 'src\ChzzkOfTheLamb.Mod\bin\Release'
 Copy-Item (Join-Path $modBin 'ChzzkOfTheLamb.Mod.dll') $pluginOut -Force
 Copy-Item (Join-Path $modBin 'ChzzkOfTheLamb.Protocol.dll') $pluginOut -Force
@@ -87,6 +93,7 @@ Write-Host "[VERIFY] RC21 mod build tag found; SHA-256=$((Get-FileHash $modDll -
 
 Write-Host '[5/9] Publishing Companion self-contained single-file...'
 dotnet publish (Join-Path $root 'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $companionOut
+Assert-NativeSuccess 'Release Companion publish'
 $companionExe = Join-Path $companionOut 'ChzzkOfTheLamb.Companion.exe'
 if (-not (Test-Path $companionExe)) { throw "Companion EXE was not produced: $companionExe" }
 $companionVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($companionExe)
@@ -115,6 +122,7 @@ Write-Host '[7/9] Publishing single-file GUI installer...'
 $installerPublish = Join-Path $distRoot '_installer-publish'
 if (Test-Path $installerPublish) { Remove-Item $installerPublish -Recurse -Force }
 dotnet publish (Join-Path $root 'src\ChzzkOfTheLamb.Installer\ChzzkOfTheLamb.Installer.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $installerPublish
+Assert-NativeSuccess 'Release Installer publish'
 $installerExe = Join-Path $installerPublish 'ChzzkOfTheLamb.Installer.exe'
 if (-not (Test-Path $installerExe)) { throw "Installer EXE was not produced: $installerExe" }
 Copy-Item $installerExe (Join-Path $hosting 'ChzzkOfTheLamb-Setup-1.0.0.exe') -Force

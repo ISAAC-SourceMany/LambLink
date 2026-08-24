@@ -3,9 +3,11 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 Write-Host '[1/2] Building RC21 game Mod...'
 & (Join-Path $root 'build-plugin.ps1')
+if (-not $?) { throw 'RC21 game Mod build script failed.' }
 
 Write-Host '[2/2] Building RC21 Companion...'
 & (Join-Path $root 'build-companion.ps1')
+if (-not $?) { throw 'RC21 Companion build script failed.' }
 
 $mod = Join-Path $root 'dist\rc21-plugin\ChzzkOfTheLamb.Mod.dll'
 $protocol = Join-Path $root 'dist\rc21-plugin\ChzzkOfTheLamb.Protocol.dll'

@@ -3,6 +3,10 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $project = Join-Path $root 'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj'
 $dist = Join-Path $root 'dist\rc21-companion'
 
+function Assert-NativeSuccess([string]$Step) {
+  if ($LASTEXITCODE -ne 0) { throw "$Step failed with exit code $LASTEXITCODE." }
+}
+
 $criticalSources = @{
   'src\ChzzkOfTheLamb.Companion\Program.cs' = '0400585c337f006b6bc5e8e89e24383d36677ad23d6bde2160656ca5e5b81543'
   'src\ChzzkOfTheLamb.Companion\GameBridge\GameBridgeServer.cs' = '7f5070e83242227d5baee5c64c6565f6f0b8020d54ff280a2f96daea5eb47fdd'
@@ -34,6 +38,7 @@ dotnet publish $project -c Release -r win-x64 --self-contained true `
   -p:DebugType=None `
   -p:DebugSymbols=false `
   -o $dist
+Assert-NativeSuccess 'Companion publish'
 
 $companionExe = Join-Path $dist 'ChzzkOfTheLamb.Companion.exe'
 if (-not (Test-Path $companionExe)) { throw "Companion EXE was not produced: $companionExe" }

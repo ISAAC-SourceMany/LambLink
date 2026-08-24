@@ -1,4 +1,4 @@
-# ChzzkOfTheLamb v1.0.0 RC21 source release
+# ChzzkOfTheLamb v1.0.0 RC21 source release — build fix 1
 
 외부 배포를 위한 release candidate 소스입니다.
 
@@ -9,6 +9,13 @@
 
 Release Companion은 AWS CLI/SSO를 사용하지 않으며 CHZZK Client Secret을 포함하지 않습니다.
 Streamer OAuth는 AWS Auth Gateway를 통해 처리합니다.
+
+## Build fix 1
+
+- Fully qualifies all Mod `Task`, `Task<bool>`, and `Task.Delay` references as
+  `System.Threading.Tasks` to prevent collision with the game assembly's `Task` type.
+- Stops every build script immediately when a `dotnet` command returns a non-zero exit code.
+- Verifies expected DLL/EXE files exist before copying or packaging them.
 
 ## RC21 matched test pair
 

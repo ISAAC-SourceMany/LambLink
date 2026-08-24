@@ -5,7 +5,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Threading.Tasks;
 using BepInEx;
 using HarmonyLib;
 using ChzzkOfTheLamb.Mod.Game;
@@ -37,10 +36,10 @@ public sealed class Plugin : BaseUnityPlugin
     private readonly Dictionary<int, float> _pendingRaffleQueuedAt = new();
     private bool _bridgeStarted;
     private volatile bool _initialStateSyncPending;
-    private Task<bool>? _statusSendTask;
+    private System.Threading.Tasks.Task<bool>? _statusSendTask;
     private string _statusSendReason = string.Empty;
     private GameStatusEvent? _statusSendPayload;
-    private Task<bool>? _raffleSendTask;
+    private System.Threading.Tasks.Task<bool>? _raffleSendTask;
     private int? _raffleSendRecruitId;
     private float _nextRaffleSendAt;
     private readonly CancellationTokenSource _lifetime = new();
@@ -115,7 +114,7 @@ public sealed class Plugin : BaseUnityPlugin
         _ = SendCachedGameStatusFallbackAsync(sequence);
     }
 
-    private async Task SendCachedGameStatusFallbackAsync(long receiveSequence)
+    private async System.Threading.Tasks.Task SendCachedGameStatusFallbackAsync(long receiveSequence)
     {
         if (Interlocked.CompareExchange(ref _networkFallbackStatusInFlight, 1, 0) != 0)
         {
@@ -127,7 +126,7 @@ public sealed class Plugin : BaseUnityPlugin
         {
             for (var attempt = 1; attempt <= 3; attempt++)
             {
-                if (attempt > 1) await Task.Delay(attempt == 2 ? 1000 : 2000, _lifetime.Token);
+                if (attempt > 1) await System.Threading.Tasks.Task.Delay(attempt == 2 ? 1000 : 2000, _lifetime.Token);
                 var saveId = _saves?.LastResolvedSaveId ?? "unknown";
                 if (string.Equals(saveId, "unknown", StringComparison.Ordinal)) saveId = _cachedSaveId;
                 var inGame = _cachedInGame || !string.Equals(saveId, "unknown", StringComparison.Ordinal);
@@ -474,7 +473,7 @@ public sealed class Plugin : BaseUnityPlugin
         Interlocked.Increment(ref _diagnosticProgress);
     }
 
-    private async Task RunDiagnosticWatchdogAsync(CancellationToken ct)
+    private async System.Threading.Tasks.Task RunDiagnosticWatchdogAsync(CancellationToken ct)
     {
         var bootTimestamp = Stopwatch.GetTimestamp();
         string? lastReportedKey = null;
@@ -484,7 +483,7 @@ public sealed class Plugin : BaseUnityPlugin
         {
             while (!ct.IsCancellationRequested)
             {
-                await Task.Delay(2000, ct);
+                await System.Threading.Tasks.Task.Delay(2000, ct);
                 var now = Stopwatch.GetTimestamp();
                 var updateCount = Interlocked.Read(ref _updateCount);
                 var lastUpdate = Volatile.Read(ref _lastUpdateTimestamp);
