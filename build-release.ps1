@@ -9,27 +9,27 @@ $fontDll = Join-Path $fontAssetRoot 'COTL_KoreanFontFix.dll'
 $fontBundle = Join-Path $fontAssetRoot 'koreanfont.bundle'
 $hosting = Join-Path $root 'release-hosting'
 
-Write-Host '[0/9] Verifying RC18 source identity and removing stale compiler outputs...'
+Write-Host '[0/9] Verifying RC19 source identity and removing stale compiler outputs...'
 $criticalSources = @{
-  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = '6ac8e90f8c3fa66a58dd0d32a0b906e75fbc256486ab01f18dbcec99fc6c0fa3'
+  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = 'a93c1d5edf62e97012d440610bbfad186bbe30503af62dd0016e474e72c703d0'
   'src\ChzzkOfTheLamb.Mod\Network\ModBridgeClient.cs' = '2c1162ac922e54cd38da6b6d0406c4c31febcb013a1728208461819b65a59f48'
   'src\ChzzkOfTheLamb.Mod\Game\IndoctrinationRafflePatch.cs' = '81260035a8f74e613b414576d1065373c76fcdccca000a790097fa4047b2f9cb'
   'src\ChzzkOfTheLamb.Mod\Game\FollowerService.cs' = '1c0ee08c2ce668ebb15cd41cf757bd6b4d28cc3e1ee37bf3e4a5ac1a0f8ba02f'
   'src\ChzzkOfTheLamb.Protocol\GameMessages.cs' = '2cbf4ef7e8c9427f006745b9737bf2c5f63cf58dca26463b404bc316d162e1b2'
-  'src\ChzzkOfTheLamb.Companion\Program.cs' = 'f5690acb740533d9604df78e6503283d485202a898f723c048d6c5d62ca2675d'
+  'src\ChzzkOfTheLamb.Companion\Program.cs' = 'c1172ccf79612d3556125544446e8611e230a32b0ea1fa17e0d8d314d77b6a59'
   'src\ChzzkOfTheLamb.Companion\GameBridge\GameBridgeServer.cs' = 'c3b7f7a0ed22594bc1f2ec4b8ffeafc1712180979522ea708701e64ddeb5bf17'
   'src\ChzzkOfTheLamb.Companion\Appearance\AppearanceStore.cs' = '6726689d6ffcef4c31d4064649fdc7be38c28d219fdf8eb7cb9db4afa75b893b'
-  'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj' = 'e33d2cd5d6951938e0b76c33faea4e010643a265bb6713080ed67d70df9f77f5'
+  'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj' = '7bdf689a603d1836165c23b7fee38b05faed6c37fd9e98f065fb82b6082d86f5'
 }
 foreach ($relativePath in $criticalSources.Keys) {
   $sourcePath = Join-Path $root $relativePath
-  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC18 source: $relativePath" }
+  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC19 source: $relativePath" }
   $actualHash = (Get-FileHash $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actualHash -ne $criticalSources[$relativePath]) {
-    throw "Critical RC18 source does not match the reviewed version: $relativePath"
+    throw "Critical RC19 source does not match the reviewed version: $relativePath"
   }
 }
-Write-Host '[VERIFY] Critical RC18 source hashes OK.'
+Write-Host '[VERIFY] Critical RC19 source hashes OK.'
 
 Get-ChildItem -Path (Join-Path $root 'src') -Directory -Recurse -Force |
   Where-Object { $_.Name -in @('bin', 'obj') } |
@@ -74,21 +74,21 @@ function Test-ByteSequence([byte[]]$Haystack, [byte[]]$Needle) {
   }
   return $false
 }
-$buildTag = 'rc18-state-sync-auto-unlock'
+$buildTag = 'rc19-safe-game-status-sync'
 $hasBuildTag = (Test-ByteSequence $modBytes ([System.Text.Encoding]::UTF8.GetBytes($buildTag))) -or
                (Test-ByteSequence $modBytes ([System.Text.Encoding]::Unicode.GetBytes($buildTag)))
 if (-not $hasBuildTag) {
-  throw 'Built mod DLL does not contain the RC18 build tag. Refusing to package a stale DLL.'
+  throw 'Built mod DLL does not contain the RC19 build tag. Refusing to package a stale DLL.'
 }
-Write-Host "[VERIFY] RC18 mod build tag found; SHA-256=$((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"
+Write-Host "[VERIFY] RC19 mod build tag found; SHA-256=$((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"
 
 Write-Host '[5/9] Publishing Companion self-contained single-file...'
 dotnet publish (Join-Path $root 'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $companionOut
 $companionExe = Join-Path $companionOut 'ChzzkOfTheLamb.Companion.exe'
 if (-not (Test-Path $companionExe)) { throw "Companion EXE was not produced: $companionExe" }
 $companionVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($companionExe)
-if ($companionVersion.FileVersion -ne '1.0.0.18') { throw "Unexpected Companion file version: $($companionVersion.FileVersion)" }
-Write-Host '[VERIFY] RC18 Companion version tag found.'
+if ($companionVersion.FileVersion -ne '1.0.0.19') { throw "Unexpected Companion file version: $($companionVersion.FileVersion)" }
+Write-Host '[VERIFY] RC19 Companion version tag found.'
 
 Write-Host '[6/9] Creating normalized downloadable component ZIPs...'
 $temp = Join-Path $distRoot '_component-build'

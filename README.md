@@ -1,4 +1,4 @@
-# ChzzkOfTheLamb v1.0.0 RC18 source release
+# ChzzkOfTheLamb v1.0.0 RC19 source release
 
 외부 배포를 위한 release candidate 소스입니다.
 
@@ -10,18 +10,27 @@
 Release Companion은 AWS CLI/SSO를 사용하지 않으며 CHZZK Client Secret을 포함하지 않습니다.
 Streamer OAuth는 AWS Auth Gateway를 통해 처리합니다.
 
-## RC18 matched test pair
+## RC19 matched test pair
 
-The RC14-installed Companion is not updated by building only the game plugin. Build both RC18
+The RC14-installed Companion is not updated by building only the game plugin. Build both RC19
 components together:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build-test-pair.ps1
 ```
 
-Close the installed RC14 Companion and run `dist\rc18-companion\ChzzkOfTheLamb.Companion.exe`.
-Replace the two game DLLs with the files under `dist\rc18-plugin`. The Companion title must show
-`v1.0.0-rc18`, and the game log must show `[BUILD=rc18-state-sync-auto-unlock]` before testing.
+Close the installed Companion and run `dist\rc19-companion\ChzzkOfTheLamb.Companion.exe`.
+Replace the two game DLLs with the files under `dist\rc19-plugin`. The Companion title must show
+`v1.0.0-rc19`, and the game log must show `[BUILD=rc19-safe-game-status-sync]` before testing.
+
+## RC19 safe GAME_STATUS synchronization
+
+- Keeps the mandatory handshake limited to the confirmed-safe `InGame`, save ID, and Mod version probes.
+- Removes optional game-version and dungeon-area evaluation from the handshake path that gates every catalog/roster request.
+- Adds Companion `[BRIDGE][STATE][TX-OK] GET_GAME_STATUS delivered to Mod socket` confirmation.
+- Retains Mod `[TX-START]` / `[TX-OK]` and Companion `[RX]` logs so both directions are independently visible.
+- Preserves automatic appearance unlock publishing from RC18.
+- See `docs/RC19_GAME_STATUS_SYNC_FIX.md` for the evidence and exact verification sequence.
 
 
 ## External release packaging
@@ -73,7 +82,7 @@ RC3 release packaging bundles COTL Korean Font Fix 4.2.1 (`COTL_KoreanFontFix.dl
 
 ## RC17 state synchronization and reliable raffle delivery
 
-- Adds a `[BUILD=rc18-state-sync-auto-unlock]` startup fingerprint so installed Mod freshness is visible in `LogOutput.log` even though the public plugin version remains `1.0.0`.
+- Adds a `[BUILD=rc19-safe-game-status-sync]` startup fingerprint so installed Mod freshness is visible in `LogOutput.log` even though the public plugin version remains `1.0.0`.
 - Companion requests `GAME_STATUS` immediately after the WebSocket opens instead of treating transport connection as completed application synchronization.
 - Mod state sends report `TX-START`, `TX-OK`, and `TX-FAILED`, and failed initial synchronization retries.
 - A valid save immediately triggers appearance catalog and follower roster requests.

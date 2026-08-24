@@ -21,7 +21,7 @@ public sealed class Plugin : BaseUnityPlugin
     public const string PluginGuid = "com.chzzkofthelamb.integration";
     public const string PluginName = "CHZZK Companion Integration";
     public const string PluginVersion = "1.0.0";
-    public const string BuildTag = "rc18-state-sync-auto-unlock";
+    public const string BuildTag = "rc19-safe-game-status-sync";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private ModBridgeClient? _bridge;
@@ -67,6 +67,7 @@ public sealed class Plugin : BaseUnityPlugin
 
         Harmony.CreateAndPatchAll(typeof(Plugin).Assembly, PluginGuid);
         Logger.LogInfo($"{PluginName} {PluginVersion} loaded [BUILD={BuildTag}]");
+        Logger.LogInfo("[BRIDGE][STATE] safe core status snapshot enabled; optional game-version/area probes are excluded from the sync handshake");
 
         // The bridge performs localhost networking only. Game mutations remain queued and
         // are still executed by Update on Unity's main thread. Start immediately instead of
@@ -278,7 +279,20 @@ public sealed class Plugin : BaseUnityPlugin
 
     private GameStatusEvent BuildGameStatusSafely()
     {
-        var status = new GameStatusEvent { ModVersion = PluginVersion };
+        // GAME_STATUS is the gate for every later catalog/roster request. Keep this mandatory
+        // handshake limited to probes already proven safe on the user's runtime. RC14-RC18
+        // reached GetCurrentSaveId() and then stopped before TX-START while evaluating optional
+        // game-version/area metadata. A blocked optional probe must never suppress SAVE/CATALOG.
+        //
+        // DonationEffectService remains authoritative when a donation is actually applied and
+        // corrects a BASE-selected effect to a dungeon effect when necessary, so the conservative
+        // BASE value here does not allow an effect to execute in the wrong context.
+        var status = new GameStatusEvent
+        {
+            ModVersion = PluginVersion,
+            GameVersion = string.Empty,
+            Area = "UNKNOWN"
+        };
         try { status.InGame = PlayerFarming.Instance != null; }
         catch (Exception ex) { Logger.LogWarning($"[BRIDGE][STATE] in-game probe failed: {ex.GetBaseException().Message}"); }
 
@@ -286,16 +300,7 @@ public sealed class Plugin : BaseUnityPlugin
         {
             try { status.SaveId = _saves?.GetCurrentSaveId() ?? "unknown"; }
             catch (Exception ex) { Logger.LogWarning($"[BRIDGE][STATE] save probe failed: {ex.GetBaseException().Message}"); }
-        }
-
-        try { status.GameVersion = UnityEngine.Application.version ?? string.Empty; }
-        catch (Exception ex) { Logger.LogWarning($"[BRIDGE][STATE] game-version probe failed: {ex.GetBaseException().Message}"); }
-
-        try { status.Area = DonationEffectService.GetCurrentArea(); }
-        catch (Exception ex)
-        {
-            status.Area = status.InGame ? "BASE" : "UNKNOWN";
-            Logger.LogWarning($"[BRIDGE][STATE] area probe failed; fallback={status.Area}: {ex.GetBaseException().Message}");
+            status.Area = "BASE";
         }
 
         return status;

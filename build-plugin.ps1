@@ -1,10 +1,10 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $project = Join-Path $root 'src\ChzzkOfTheLamb.Mod\ChzzkOfTheLamb.Mod.csproj'
-$dist = Join-Path $root 'dist\rc18-plugin'
+$dist = Join-Path $root 'dist\rc19-plugin'
 
 $criticalSources = @{
-  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = '6ac8e90f8c3fa66a58dd0d32a0b906e75fbc256486ab01f18dbcec99fc6c0fa3'
+  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = 'a93c1d5edf62e97012d440610bbfad186bbe30503af62dd0016e474e72c703d0'
   'src\ChzzkOfTheLamb.Mod\Network\ModBridgeClient.cs' = '2c1162ac922e54cd38da6b6d0406c4c31febcb013a1728208461819b65a59f48'
   'src\ChzzkOfTheLamb.Mod\Game\IndoctrinationRafflePatch.cs' = '81260035a8f74e613b414576d1065373c76fcdccca000a790097fa4047b2f9cb'
   'src\ChzzkOfTheLamb.Mod\Game\FollowerService.cs' = '1c0ee08c2ce668ebb15cd41cf757bd6b4d28cc3e1ee37bf3e4a5ac1a0f8ba02f'
@@ -13,10 +13,10 @@ $criticalSources = @{
 
 foreach ($relativePath in $criticalSources.Keys) {
   $sourcePath = Join-Path $root $relativePath
-  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC18 source: $relativePath" }
+  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC19 source: $relativePath" }
   $actualHash = (Get-FileHash $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actualHash -ne $criticalSources[$relativePath]) {
-    throw "Critical RC18 source does not match the reviewed version: $relativePath"
+    throw "Critical RC19 source does not match the reviewed version: $relativePath"
   }
 }
 
@@ -47,11 +47,11 @@ function Test-ByteSequence([byte[]]$Haystack, [byte[]]$Needle) {
 
 $modDll = Join-Path $dist 'ChzzkOfTheLamb.Mod.dll'
 $bytes = [System.IO.File]::ReadAllBytes($modDll)
-$tag = 'rc18-state-sync-auto-unlock'
+$tag = 'rc19-safe-game-status-sync'
 $tagFound = (Test-ByteSequence $bytes ([System.Text.Encoding]::UTF8.GetBytes($tag))) -or
             (Test-ByteSequence $bytes ([System.Text.Encoding]::Unicode.GetBytes($tag)))
-if (-not $tagFound) { throw 'RC18 build tag missing from compiled DLL; stale build rejected.' }
+if (-not $tagFound) { throw 'RC19 build tag missing from compiled DLL; stale build rejected.' }
 
-Write-Host '[OK] RC18 state sync + automatic appearance unlock plugin built and verified.'
+Write-Host '[OK] RC19 safe game-status sync + automatic appearance unlock plugin built and verified.'
 Write-Host "Output: $dist"
 Write-Host "Mod SHA-256: $((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"

@@ -11,7 +11,7 @@ using ChzzkOfTheLamb.Companion.Rules;
 using ChzzkOfTheLamb.Companion.Storage;
 using ChzzkOfTheLamb.Protocol;
 
-const string ReleaseVersion = "1.0.0-rc18";
+const string ReleaseVersion = "1.0.0-rc19";
 const string ProductionApiBase = "https://y0eblkdmu5.execute-api.ap-northeast-2.amazonaws.com";
 const string ProductionFrontendUrl = "https://d1gvw9ccym1qvn.cloudfront.net";
 
@@ -174,6 +174,8 @@ async Task RequestInitialGameStateAsync()
         var sent = await bridge.SendAsync(GameMessageTypes.GetGameStatus, new { }, stop.Token);
         if (!sent)
             Console.WriteLine("[BRIDGE][STATE][TX-FAILED] GET_GAME_STATUS; waiting for Mod heartbeat/reconnect");
+        else
+            Console.WriteLine("[BRIDGE][STATE][TX-OK] GET_GAME_STATUS delivered to Mod socket");
     }
     catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
     catch (Exception ex)
