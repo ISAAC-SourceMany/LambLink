@@ -19,7 +19,7 @@ public sealed class Plugin : BaseUnityPlugin
     public const string PluginGuid = "com.chzzkofthelamb.integration";
     public const string PluginName = "CHZZK Companion Integration";
     public const string PluginVersion = "1.0.0";
-    public const string BuildTag = "rc13-legacy-raffle-restore";
+    public const string BuildTag = "rc14-exact-dev-raffle";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private ModBridgeClient? _bridge;
@@ -94,10 +94,65 @@ public sealed class Plugin : BaseUnityPlugin
 
     internal static void NotifyIndoctrinationMenuOpened(object[] args)
     {
+        // RC14: restore the exact dev10z raffle-start flow that was proven in-game.
+        // Do not route the known-good ShowIndoctrinationMenu trigger through the newer
+        // generic request/in-flight helper. The Follower argument from this method is
+        // authoritative and the legacy flow already produced source=arg:Follower.
         var self = _instance;
-        if (self == null) return;
-        self.Logger.LogInfo($"[RAFFLE][UI-FALLBACK] indoctrination UI signal: bridgeConnected={self._bridge?.IsConnected == true}, args={args?.Length ?? 0}");
-        self.RequestRaffleForCurrentRecruit(args ?? Array.Empty<object>(), "ui-fallback");
+        if (self == null)
+            return;
+
+        try
+        {
+            self.Logger.LogInfo($"[RAFFLE][DEV-RESTORE] NotifyIndoctrinationMenuOpened entered; bridgeConnected={self._bridge?.IsConnected == true}, followersReady={self._followers != null}, savesReady={self._saves != null}, args={args?.Length ?? 0}");
+
+            if (self._bridge?.IsConnected != true || self._followers == null || self._saves == null)
+            {
+                self.Logger.LogWarning("[RAFFLE][DEV-RESTORE] prerequisites not ready; raffle request skipped but remains retryable.");
+                return;
+            }
+
+            var safeArgs = args ?? Array.Empty<object>();
+            for (var i = 0; i < safeArgs.Length; i++)
+            {
+                var arg = safeArgs[i];
+                self.Logger.LogInfo($"[RAFFLE][DEV-RESTORE] arg[{i}]={(arg == null ? "<null>" : arg.GetType().FullName)}");
+            }
+
+            var recruitId = self._followers.ResolveIndoctrinationRecruitId(safeArgs, out var source);
+            if (!recruitId.HasValue)
+            {
+                var argTypes = string.Join(", ", safeArgs.Where(x => x != null).Select(x => x.GetType().FullName));
+                self.Logger.LogWarning($"[RAFFLE][DEV-RESTORE] recruit ID unresolved. args=[{argTypes}]");
+                return;
+            }
+
+            self.Logger.LogInfo($"[RAFFLE][DEV-RESTORE] recruit resolved: id={recruitId.Value}, source={source}");
+
+            lock (self._raffleStateGate)
+            {
+                if (self._handledRecruitIds.Contains(recruitId.Value) || !self._announcedRecruitIds.Add(recruitId.Value))
+                {
+                    self.Logger.LogInfo($"[RAFFLE][DEV-RESTORE] trigger ignored for recruit {recruitId.Value} (already handled/announced).");
+                    return;
+                }
+            }
+
+            var request = new RaffleRequestedEvent
+            {
+                Reason = "indoctrination_started",
+                RecruitFollowerId = recruitId.Value,
+                SaveId = self._saves.GetCurrentSaveId()
+            };
+
+            // Keep the exact known-good ordering: log first, then dispatch immediately.
+            self.Logger.LogInfo($"CHZZK raffle requested at indoctrination start for game recruit {recruitId.Value} (source={source})");
+            _ = self._bridge.SendAsync(GameMessageTypes.RaffleRequested, request);
+        }
+        catch (Exception ex)
+        {
+            self.Logger.LogError($"[RAFFLE][DEV-RESTORE][ERROR] {ex}");
+        }
     }
 
     private void RequestRaffleForCurrentRecruit(object[] args, string triggerSource)
