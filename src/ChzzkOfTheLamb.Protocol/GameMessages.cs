@@ -13,6 +13,7 @@ public static class GameMessageTypes
     public const string GetAppearanceCatalog = "GET_FOLLOWER_APPEARANCE_CATALOG";
     public const string GetFollowerRoster = "GET_FOLLOWER_ROSTER";
     public const string GetGameStatus = "GET_GAME_STATUS";
+    public const string RaffleRequestAck = "RAFFLE_REQUEST_ACK";
     public const string SyncChzzkFollowerMarkers = "SYNC_CHZZK_FOLLOWER_MARKERS";
     public const string Ping = "PING";
 
@@ -139,6 +140,11 @@ public sealed class GameStatusEvent
     public string ModVersion { get; set; } = string.Empty;
     public string GameVersion { get; set; } = string.Empty;
     public string Area { get; set; } = "UNKNOWN";
+    // True only when the persistent Unity main-thread runtime pump has ticked recently.
+    // Companion uses this distinction to avoid reporting a socket-only connection as a
+    // ready game integration; a cache fallback may repeat the most recent proven state.
+    public bool RuntimePumpActive { get; set; }
+    public long RuntimeUpdateCount { get; set; }
 }
 
 public sealed class AppearanceCatalogRequest
@@ -206,4 +212,11 @@ public sealed class RaffleRequestedEvent
     public string Reason { get; set; } = "recruit_available";
     public int RecruitFollowerId { get; set; }
     public string SaveId { get; set; } = "unknown";
+}
+
+public sealed class RaffleRequestAck
+{
+    public int RecruitFollowerId { get; set; }
+    public bool Accepted { get; set; }
+    public string Status { get; set; } = string.Empty;
 }

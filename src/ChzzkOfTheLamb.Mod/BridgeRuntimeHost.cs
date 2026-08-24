@@ -15,15 +15,22 @@ public sealed class BridgeRuntimeHost : MonoBehaviour
 {
     private static BridgeRuntimeHost? _instance;
     private Action? _tick;
+    private Action? _shutdown;
     private ManualLogSource? _log;
     private bool _firstUpdateLogged;
     private bool _applicationQuitting;
 
-    internal static void Install(Action tick, ManualLogSource log)
+    internal static void Install(Action tick, Action shutdown, ManualLogSource log)
     {
         if (_instance != null)
         {
+            // A second Plugin instance must not leave the first instance's WebSocket and
+            // watchdog running. The persistent host owns replacement/application shutdown;
+            // ordinary Plugin.OnDestroy remains intentionally non-destructive.
+            try { _instance._shutdown?.Invoke(); }
+            catch (Exception ex) { log.LogWarning($"[DIAG][RUNTIME-HOST][REPLACE-SHUTDOWN-FAILED] {ex}"); }
             _instance._tick = tick;
+            _instance._shutdown = shutdown;
             _instance._log = log;
             log.LogInfo("[DIAG][RUNTIME-HOST][REUSED] existing persistent dispatcher updated");
             return;
@@ -36,9 +43,10 @@ public sealed class BridgeRuntimeHost : MonoBehaviour
         UnityEngine.Object.DontDestroyOnLoad(hostObject);
         var host = hostObject.AddComponent<BridgeRuntimeHost>();
         host._tick = tick;
+        host._shutdown = shutdown;
         host._log = log;
         _instance = host;
-        log.LogInfo($"[DIAG][RUNTIME-HOST][INSTALLED] object={hostObject.name}, instance={hostObject.GetInstanceID()}, thread={Thread.CurrentThread.ManagedThreadId}");
+        log.LogInfo($"[DIAG][RUNTIME-HOST][INSTALLED] object={hostObject.name}, instance={hostObject.GetInstanceID()}, activeSelf={hostObject.activeSelf}, activeInHierarchy={hostObject.activeInHierarchy}, enabled={host.enabled}, thread={Thread.CurrentThread.ManagedThreadId}");
     }
 
     private void Update()
@@ -46,7 +54,7 @@ public sealed class BridgeRuntimeHost : MonoBehaviour
         if (!_firstUpdateLogged)
         {
             _firstUpdateLogged = true;
-            _log?.LogInfo($"[DIAG][RUNTIME-HOST][FIRST-UPDATE] thread={Thread.CurrentThread.ManagedThreadId}");
+            _log?.LogInfo($"[DIAG][RUNTIME-HOST][FIRST-UPDATE] frame={Time.frameCount}, active={gameObject.activeInHierarchy}, enabled={enabled}, thread={Thread.CurrentThread.ManagedThreadId}");
         }
 
         try { _tick?.Invoke(); }
@@ -57,6 +65,8 @@ public sealed class BridgeRuntimeHost : MonoBehaviour
     {
         _applicationQuitting = true;
         _log?.LogInfo("[DIAG][RUNTIME-HOST][APPLICATION-QUIT]");
+        try { _shutdown?.Invoke(); }
+        catch (Exception ex) { _log?.LogWarning($"[DIAG][RUNTIME-HOST][SHUTDOWN-FAILED] {ex}"); }
     }
 
     private void OnDestroy()

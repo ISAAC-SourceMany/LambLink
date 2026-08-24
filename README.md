@@ -1,4 +1,4 @@
-# ChzzkOfTheLamb v1.0.0 RC22 source release
+# ChzzkOfTheLamb v1.0.0 RC23 source release
 
 외부 배포를 위한 release candidate 소스입니다.
 
@@ -17,28 +17,29 @@ Streamer OAuth는 AWS Auth Gateway를 통해 처리합니다.
 - Stops every build script immediately when a `dotnet` command returns a non-zero exit code.
 - Verifies expected DLL/EXE files exist before copying or packaging them.
 
-## RC22 matched test pair
+## RC23 matched test pair
 
-The installed Companion is not updated by building only the game plugin. Build both RC22
+The installed Companion is not updated by building only the game plugin. Build both RC23
 components together:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build-test-pair.ps1
 ```
 
-Close the installed Companion and run `dist\rc22-companion\ChzzkOfTheLamb.Companion.exe`.
-Replace the two game DLLs with the files under `dist\rc22-plugin`. The Companion title must show
-`v1.0.0-rc22`, and the game log must show `[BUILD=rc22-persistent-runtime-host]` before testing.
+Close the installed Companion and run `dist\rc23-companion\ChzzkOfTheLamb.Companion.exe`.
+Replace the two game DLLs with the files under `dist\rc23-plugin`. The Companion title must show
+`v1.0.0-rc23`, and the game log must show `[BUILD=rc23-end-to-end-ack-sync]` before testing.
 
-## RC22 persistent runtime host
+## RC23 end-to-end readiness and delivery confirmation
 
-- Moves Unity main-thread command dispatch from `BaseUnityPlugin.Update()` to an explicitly
-  created `DontDestroyOnLoad` GameObject.
-- Keeps the localhost bridge alive if the game's startup lifecycle destroys or disables the
-  original BepInEx plugin component.
-- Continues reconnecting after abnormal WebSocket closure.
-- Logs full Mod and Companion WebSocket exceptions, socket state, and cleanup reason.
-- See `docs/RC22_PERSISTENT_RUNTIME_HOST.md`.
+- Keeps the independent `DontDestroyOnLoad` main-thread host and gives it ownership of graceful
+  application/replacement shutdown so duplicate bridge loops cannot accumulate.
+- Distinguishes socket connectivity from a status produced by the Unity runtime pump.
+- Retries `GET_GAME_STATUS` every 2 seconds until the pump is proven active, then retries the
+  active-save catalog/roster every 5 seconds until a non-empty catalog arrives.
+- Keeps an automatic raffle request pending until Companion returns an application-level ACK;
+  WebSocket write completion alone is no longer treated as delivery.
+- See `docs/RC23_END_TO_END_ACK_SYNC.md`.
 
 ## Corrective dispatch and one-run diagnostics
 
@@ -46,7 +47,7 @@ Replace the two game DLLs with the files under `dist\rc22-plugin`. The Companion
 - Sends an immediate `GAME_STATUS` from a thread-safe cache when `GET_GAME_STATUS` is decoded,
   then sends the authoritative Unity-main-thread snapshot.
 - Correlates Companion TX, Mod RX, Mod queue/dispatch, Mod TX, and Companion RX with numbered logs.
-- Mirrors the full Companion console to `%LOCALAPPDATA%\ChzzkOfTheLamb\companion-rc22.log`.
+- Mirrors the full Companion console to `%LOCALAPPDATA%\ChzzkOfTheLamb\companion-rc23.log`.
 - Runs a non-Unity watchdog that reports `NO-UPDATE` or the exact last main-thread stage after 5 seconds.
 - Splits catalog generation into save, type, singleton, unlock, palette, individual form, sort, and TX stages.
 - See `docs/RC21_DIAGNOSTIC_WATCHDOG_FALLBACK.md` for the single-run decision table.

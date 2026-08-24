@@ -13,13 +13,13 @@ using ChzzkOfTheLamb.Companion.Rules;
 using ChzzkOfTheLamb.Companion.Storage;
 using ChzzkOfTheLamb.Protocol;
 
-const string ReleaseVersion = "1.0.0-rc22";
+const string ReleaseVersion = "1.0.0-rc23";
 const string ProductionApiBase = "https://y0eblkdmu5.execute-api.ap-northeast-2.amazonaws.com";
 const string ProductionFrontendUrl = "https://d1gvw9ccym1qvn.cloudfront.net";
 
 var dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ChzzkOfTheLamb");
 Directory.CreateDirectory(dataDir);
-var diagnosticLogPath = Path.Combine(dataDir, "companion-rc22.log");
+var diagnosticLogPath = Path.Combine(dataDir, "companion-rc23.log");
 using var diagnosticLogWriter = new StreamWriter(
     new FileStream(diagnosticLogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite),
     new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)) { AutoFlush = true };
@@ -161,36 +161,98 @@ var latestRosterFollowersById = new Dictionary<int, FollowerRosterEntry>();
 DateTimeOffset latestRosterAt = DateTimeOffset.MinValue;
 string? lastRosterFingerprint = null;
 long bridgeDispatchSequence = 0;
+long gameConnectionGeneration = 0;
+long catalogSyncGeneration = 0;
+long lastRuntimePumpStatusUnixMs = 0;
+var gameSyncPhase = "DISCONNECTED";
 
 await using var bridge = new GameBridgeServer();
 bridge.ConnectionChanged += connected =>
 {
+    var generation = Interlocked.Increment(ref gameConnectionGeneration);
     Console.WriteLine(connected ? "[GAME] connected" : "[GAME] disconnected");
     if (connected)
     {
         currentSaveId = "unknown";
         lastGameStatus = null;
-        _ = RequestInitialGameStateAsync();
+        latestCatalogCount = 0;
+        latestCatalogSaveId = "unknown";
+        Interlocked.Exchange(ref lastRuntimePumpStatusUnixMs, 0);
+        gameSyncPhase = "SOCKET_CONNECTED";
+        _ = MaintainInitialGameStateSyncAsync(generation);
     }
+    else gameSyncPhase = "DISCONNECTED";
 };
 
 string lastNameplateSyncSignature = string.Empty;
 
-async Task RequestInitialGameStateAsync()
+async Task MaintainInitialGameStateSyncAsync(long generation)
 {
-    try
+    var attempt = 0;
+    while (!stop.IsCancellationRequested
+           && bridge.IsGameConnected
+           && Volatile.Read(ref gameConnectionGeneration) == generation
+           && lastGameStatus?.RuntimePumpActive != true)
     {
-        Console.WriteLine("[BRIDGE][STATE][TX] GET_GAME_STATUS");
-        var sent = await bridge.SendAsync(GameMessageTypes.GetGameStatus, new { }, stop.Token);
-        if (!sent)
-            Console.WriteLine("[BRIDGE][STATE][TX-FAILED] GET_GAME_STATUS; waiting for Mod heartbeat/reconnect");
-        else
-            Console.WriteLine("[BRIDGE][STATE][TX-OK] GET_GAME_STATUS delivered to Mod socket");
+        attempt++;
+        try
+        {
+            gameSyncPhase = "WAITING_FOR_RUNTIME_PUMP";
+            Console.WriteLine($"[BRIDGE][STATE][TX] GET_GAME_STATUS attempt={attempt}, generation={generation}");
+            var sent = await bridge.SendAsync(GameMessageTypes.GetGameStatus, new { }, stop.Token);
+            Console.WriteLine(sent
+                ? $"[BRIDGE][STATE][TX-OK] GET_GAME_STATUS delivered; awaiting pump-active GAME_STATUS, attempt={attempt}"
+                : $"[BRIDGE][STATE][TX-FAILED] GET_GAME_STATUS attempt={attempt}; retrying");
+            await Task.Delay(TimeSpan.FromSeconds(2), stop.Token);
+        }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested) { break; }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[BRIDGE][STATE][TX-FAILED] GET_GAME_STATUS attempt={attempt}: {ex}");
+            try { await Task.Delay(TimeSpan.FromSeconds(2), stop.Token); } catch { break; }
+        }
     }
-    catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
-    catch (Exception ex)
+
+    if (lastGameStatus?.RuntimePumpActive == true)
+        Console.WriteLine($"[BRIDGE][STATE][SYNC] runtime pump confirmed after {attempt} request(s), updates={lastGameStatus.RuntimeUpdateCount}");
+}
+
+void StartCatalogSync(string saveId)
+{
+    var syncGeneration = Interlocked.Increment(ref catalogSyncGeneration);
+    var connectionGeneration = Volatile.Read(ref gameConnectionGeneration);
+    _ = MaintainCatalogSyncAsync(syncGeneration, connectionGeneration, saveId);
+}
+
+async Task MaintainCatalogSyncAsync(long syncGeneration, long connectionGeneration, string saveId)
+{
+    var attempt = 0;
+    while (!stop.IsCancellationRequested
+           && bridge.IsGameConnected
+           && Volatile.Read(ref catalogSyncGeneration) == syncGeneration
+           && Volatile.Read(ref gameConnectionGeneration) == connectionGeneration
+           && string.Equals(currentSaveId, saveId, StringComparison.Ordinal)
+           && (!string.Equals(latestCatalogSaveId, saveId, StringComparison.Ordinal) || latestCatalogCount <= 0))
     {
-        Console.WriteLine($"[BRIDGE][STATE][TX-FAILED] GET_GAME_STATUS: {ex.GetBaseException().Message}");
+        attempt++;
+        try
+        {
+            gameSyncPhase = "WAITING_FOR_CATALOG";
+            Console.WriteLine($"[BRIDGE][SYNC] requesting appearance catalog and follower roster for save={saveId}, attempt={attempt}");
+            await bridge.SendAsync(GameMessageTypes.GetAppearanceCatalog, new AppearanceCatalogRequest
+            {
+                IncludeModded = settings.Appearance.IncludeModdedForms,
+                IncludeSpecial = settings.Appearance.IncludeSpecialForms
+            }, stop.Token);
+            await bridge.SendAsync(GameMessageTypes.GetFollowerRoster, new { }, stop.Token);
+            await Task.Delay(TimeSpan.FromSeconds(5), stop.Token);
+        }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested) { break; }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[BRIDGE][SYNC][FAILED] save={saveId}, attempt={attempt}: {ex}");
+            try { await Task.Delay(TimeSpan.FromSeconds(5), stop.Token); } catch { break; }
+        }
     }
 }
 
@@ -206,11 +268,19 @@ bridge.MessageReceived += envelope =>
             case GameMessageTypes.GameStatus:
             {
                 var status = JsonSerializer.Deserialize<GameStatusEvent>(envelope.PayloadJson)!;
+                if (!status.RuntimePumpActive && lastGameStatus?.RuntimePumpActive == true)
+                {
+                    Console.WriteLine($"[BRIDGE][STATE][RX-IGNORED] cache fallback arrived after pump-active status; save={status.SaveId}, updates={status.RuntimeUpdateCount}");
+                    break;
+                }
                 var previousSave = currentSaveId;
                 currentSaveId = status.SaveId;
-                Console.WriteLine($"[BRIDGE][STATE][RX] GAME_STATUS inGame={status.InGame}, save={status.SaveId}, area={status.Area}, mod={status.ModVersion}");
+                if (status.RuntimePumpActive)
+                    Interlocked.Exchange(ref lastRuntimePumpStatusUnixMs, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                Console.WriteLine($"[BRIDGE][STATE][RX] GAME_STATUS pump={status.RuntimePumpActive}, updates={status.RuntimeUpdateCount}, inGame={status.InGame}, save={status.SaveId}, area={status.Area}, mod={status.ModVersion}");
 
                 var changed = lastGameStatus is null
+                              || lastGameStatus.RuntimePumpActive != status.RuntimePumpActive
                               || lastGameStatus.InGame != status.InGame
                               || !string.Equals(lastGameStatus.SaveId, status.SaveId, StringComparison.Ordinal)
                               || !string.Equals(lastGameStatus.ModVersion, status.ModVersion, StringComparison.Ordinal)
@@ -221,17 +291,21 @@ bridge.MessageReceived += envelope =>
                     Console.WriteLine($"[GAME] inGame={status.InGame} save={status.SaveId} area={status.Area} mod={status.ModVersion} game={status.GameVersion}");
 
                 // Refresh the catalog automatically when a save becomes available or changes.
-                if (status.InGame && status.SaveId != "unknown"
+                if (status.RuntimePumpActive && status.InGame && status.SaveId != "unknown"
                     && (!string.Equals(previousSave, status.SaveId, StringComparison.Ordinal)
+                        || lastGameStatus?.RuntimePumpActive != true
                         || lastGameStatus?.InGame != true))
                 {
-                    Console.WriteLine($"[BRIDGE][SYNC] requesting appearance catalog and follower roster for save={status.SaveId}");
-                    _ = bridge.SendAsync(GameMessageTypes.GetAppearanceCatalog, new AppearanceCatalogRequest
-                    {
-                        IncludeModded = settings.Appearance.IncludeModdedForms,
-                        IncludeSpecial = settings.Appearance.IncludeSpecialForms
-                    }, stop.Token);
-                    _ = bridge.SendAsync(GameMessageTypes.GetFollowerRoster, new { }, stop.Token);
+                    gameSyncPhase = "SAVE_READY";
+                    StartCatalogSync(status.SaveId);
+                }
+                else if (status.RuntimePumpActive)
+                {
+                    if (!status.InGame) gameSyncPhase = "MAIN_MENU";
+                    else if (status.SaveId == "unknown") gameSyncPhase = "WAITING_FOR_SAVE";
+                    else if (string.Equals(latestCatalogSaveId, status.SaveId, StringComparison.Ordinal) && latestCatalogCount > 0)
+                        gameSyncPhase = "READY";
+                    else gameSyncPhase = "WAITING_FOR_CATALOG";
                 }
 
                 lastGameStatus = status;
@@ -249,6 +323,9 @@ bridge.MessageReceived += envelope =>
                 // synchronization source if the periodic GAME_STATUS has not caught up yet.
                 if (!string.IsNullOrWhiteSpace(catalog.SaveId) && catalog.SaveId != "unknown")
                     currentSaveId = catalog.SaveId;
+                if (catalog.Forms.Count > 0
+                    && string.Equals(catalog.SaveId, currentSaveId, StringComparison.Ordinal))
+                    gameSyncPhase = "READY";
                 var fingerprint = BuildCatalogFingerprint(catalog);
                 var catalogChanged = !string.Equals(lastCatalogFingerprint, fingerprint, StringComparison.Ordinal);
                 Console.WriteLine($"[APPEARANCE] loaded {catalog.Forms.Count} forms for save {catalog.SaveId}" +
@@ -369,23 +446,37 @@ bridge.MessageReceived += envelope =>
             case GameMessageTypes.RaffleRequested:
             {
                 var request = JsonSerializer.Deserialize<RaffleRequestedEvent>(envelope.PayloadJson)!;
-                if (request.RecruitFollowerId <= 0) break;
-
+                var accepted = request.RecruitFollowerId > 0;
+                var ackStatus = accepted ? "received" : "invalid-recruit-id";
                 var startNow = false;
-                lock (raffleQueueGate)
+                if (accepted)
                 {
-                    if (currentRecruitFollowerId == request.RecruitFollowerId || queuedRecruitIds.Contains(request.RecruitFollowerId))
-                        break;
-
-                    if (currentRecruitFollowerId.HasValue || raffle.IsOpen)
+                    lock (raffleQueueGate)
                     {
-                        pendingRaffleRequests.Enqueue(request);
-                        queuedRecruitIds.Add(request.RecruitFollowerId);
-                        Console.WriteLine($"[RAFFLE] queued game recruit {request.RecruitFollowerId}; queue={pendingRaffleRequests.Count}");
+                        if (currentRecruitFollowerId == request.RecruitFollowerId || queuedRecruitIds.Contains(request.RecruitFollowerId))
+                            ackStatus = currentRecruitFollowerId == request.RecruitFollowerId ? "already-active" : "already-queued";
+                        else if (currentRecruitFollowerId.HasValue || raffle.IsOpen)
+                        {
+                            pendingRaffleRequests.Enqueue(request);
+                            queuedRecruitIds.Add(request.RecruitFollowerId);
+                            ackStatus = "queued";
+                            Console.WriteLine($"[RAFFLE] queued game recruit {request.RecruitFollowerId}; queue={pendingRaffleRequests.Count}");
+                        }
+                        else
+                        {
+                            startNow = true;
+                            ackStatus = "started";
+                        }
                     }
-                    else startNow = true;
                 }
                 if (startNow) BeginRaffleFor(request);
+                _ = bridge.SendAsync(GameMessageTypes.RaffleRequestAck, new RaffleRequestAck
+                {
+                    RecruitFollowerId = request.RecruitFollowerId,
+                    Accepted = accepted,
+                    Status = ackStatus
+                }, stop.Token);
+                Console.WriteLine($"[RAFFLE][ACK-TX] recruit={request.RecruitFollowerId}, accepted={accepted}, status={ackStatus}");
                 break;
             }
         }
@@ -954,8 +1045,22 @@ async Task ConsoleLoopAsync()
                 }, stop.Token);
                 break;
             case "status":
-                Console.WriteLine($"MODE={(developmentMode ? "DEV" : "CHZZK")}, CHZZK={(developmentMode ? "disabled" : streamerChannelName)}, GAME={bridge.IsGameConnected}, SAVE={currentSaveId}, RECRUIT={currentRecruitFollowerId?.ToString() ?? "none"}, RAFFLE={raffle.IsOpen}, participants={raffle.ParticipantCount}, queue={pendingRaffleRequests.Count}, CLOUD={(cloud?.IsAuthenticated == true ? "connected" : "off")}, CATALOG={latestCatalogCount}, CATALOG_SAVE={latestCatalogSaveId}");
+            {
+                var lastPumpUnixMs = Interlocked.Read(ref lastRuntimePumpStatusUnixMs);
+                var pumpAgeSeconds = lastPumpUnixMs <= 0
+                    ? -1
+                    : (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - lastPumpUnixMs) / 1000.0;
+                var gameReady = bridge.IsGameConnected
+                                && lastGameStatus?.RuntimePumpActive == true
+                                && pumpAgeSeconds >= 0 && pumpAgeSeconds <= 15
+                                && lastGameStatus?.InGame == true
+                                && currentSaveId != "unknown";
+                var displayedSyncPhase = bridge.IsGameConnected && pumpAgeSeconds > 15
+                    ? "PUMP_STALE"
+                    : gameSyncPhase;
+                Console.WriteLine($"MODE={(developmentMode ? "DEV" : "CHZZK")}, CHZZK={(developmentMode ? "disabled" : streamerChannelName)}, GAME={gameReady}, GAME_SOCKET={bridge.IsGameConnected}, GAME_READY={gameReady}, SYNC={displayedSyncPhase}, PUMP_AGE={(pumpAgeSeconds < 0 ? "none" : pumpAgeSeconds.ToString("F1") + "s")}, SAVE={currentSaveId}, RECRUIT={currentRecruitFollowerId?.ToString() ?? "none"}, RAFFLE={raffle.IsOpen}, participants={raffle.ParticipantCount}, queue={pendingRaffleRequests.Count}, CLOUD={(cloud?.IsAuthenticated == true ? "connected" : "off")}, CATALOG={latestCatalogCount}, CATALOG_SAVE={latestCatalogSaveId}");
                 break;
+            }
             case "help":
                 PrintCommands();
                 break;

@@ -21,9 +21,11 @@ public sealed class Plugin : BaseUnityPlugin
     public const string PluginGuid = "com.chzzkofthelamb.integration";
     public const string PluginName = "CHZZK Companion Integration";
     public const string PluginVersion = "1.0.0";
-    public const string BuildTag = "rc22-persistent-runtime-host";
+    public const string BuildTag = "rc23-end-to-end-ack-sync";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
+    private readonly CancellationTokenSource _runtimeLifetime = new();
+    private int _runtimeShutdownRequested;
     private ModBridgeClient? _bridge;
     private FollowerService? _followers;
     private FollowerAppearanceService? _appearances;
@@ -77,13 +79,13 @@ public sealed class Plugin : BaseUnityPlugin
             }
         };
 
-        BridgeRuntimeHost.Install(RunMainThreadUpdate, Logger);
+        BridgeRuntimeHost.Install(RunMainThreadUpdate, RequestRuntimeShutdown, Logger);
 
         Harmony.CreateAndPatchAll(typeof(Plugin).Assembly, PluginGuid);
         Logger.LogInfo($"{PluginName} {PluginVersion} loaded [BUILD={BuildTag}]");
         Logger.LogInfo($"[DIAG][BOOT] mainThread={_mainThreadId}, runtimeHost=persistent-game-object, watchdog=enabled, network-cache-fallback=enabled");
         Logger.LogInfo("[BRIDGE][MAIN-THREAD] persistent runtime host dispatches commands before optional follower maintenance");
-        _ = RunDiagnosticWatchdogAsync(CancellationToken.None);
+        _ = RunDiagnosticWatchdogAsync(_runtimeLifetime.Token);
 
         // The bridge performs localhost networking only. Game mutations remain queued and
         // are still executed by Update on Unity's main thread. Start immediately instead of
@@ -98,7 +100,7 @@ public sealed class Plugin : BaseUnityPlugin
         if (_bridgeStarted || _bridge == null) return;
         _bridgeStarted = true;
         Logger.LogInfo($"[BRIDGE][START] reason={reason}, endpoint=ws://127.0.0.1:17771/game");
-        _ = _bridge.RunAsync(CancellationToken.None);
+        _ = _bridge.RunAsync(_runtimeLifetime.Token);
     }
 
     private void OnDestroy()
@@ -107,6 +109,14 @@ public sealed class Plugin : BaseUnityPlugin
         // though the integration must remain alive. The independent runtime host and bridge are
         // intentionally not cancelled here.
         Logger.LogWarning("[DIAG][PLUGIN-DESTROY] BepInEx plugin component destroyed; persistent runtime host and bridge remain active");
+    }
+
+    private void RequestRuntimeShutdown()
+    {
+        if (Interlocked.Exchange(ref _runtimeShutdownRequested, 1) != 0) return;
+        Logger.LogInfo("[DIAG][RUNTIME-SHUTDOWN] persistent host requested bridge/watchdog shutdown");
+        try { _runtimeLifetime.Cancel(); }
+        catch (Exception ex) { Logger.LogWarning($"[DIAG][RUNTIME-SHUTDOWN-FAILED] {ex.GetBaseException().Message}"); }
     }
 
     // Runs on the WebSocket receive thread. It never calls Unity or game APIs.
@@ -129,24 +139,31 @@ public sealed class Plugin : BaseUnityPlugin
         {
             for (var attempt = 1; attempt <= 3; attempt++)
             {
-                if (attempt > 1) await System.Threading.Tasks.Task.Delay(attempt == 2 ? 1000 : 2000);
+                if (attempt > 1) await System.Threading.Tasks.Task.Delay(attempt == 2 ? 1000 : 2000, _runtimeLifetime.Token);
                 var saveId = _saves?.LastResolvedSaveId ?? "unknown";
                 if (string.Equals(saveId, "unknown", StringComparison.Ordinal)) saveId = _cachedSaveId;
                 var inGame = _cachedInGame || !string.Equals(saveId, "unknown", StringComparison.Ordinal);
+                var updateCount = Interlocked.Read(ref _updateCount);
+                var lastUpdate = Volatile.Read(ref _lastUpdateTimestamp);
+                var pumpActive = updateCount > 0 && lastUpdate > 0
+                                 && (Stopwatch.GetTimestamp() - lastUpdate) * 1000.0 / Stopwatch.Frequency < 5000;
                 var status = new GameStatusEvent
                 {
                     InGame = inGame,
                     SaveId = saveId,
                     ModVersion = PluginVersion,
                     GameVersion = string.Empty,
-                    Area = inGame ? "BASE" : _cachedArea
+                    Area = inGame ? "BASE" : _cachedArea,
+                    RuntimePumpActive = pumpActive,
+                    RuntimeUpdateCount = updateCount
                 };
-                Logger.LogInfo($"[BRIDGE][STATE][FALLBACK-TX-START] rx={receiveSequence}, attempt={attempt}/3, inGame={status.InGame}, save={status.SaveId}, source=thread-safe-cache");
-                var sent = _bridge != null && await _bridge.TrySendAsync(GameMessageTypes.GameStatus, status);
+                Logger.LogInfo($"[BRIDGE][STATE][FALLBACK-TX-START] rx={receiveSequence}, attempt={attempt}/3, pump={status.RuntimePumpActive}, updates={status.RuntimeUpdateCount}, inGame={status.InGame}, save={status.SaveId}, source=thread-safe-cache");
+                var sent = _bridge != null && await _bridge.TrySendAsync(GameMessageTypes.GameStatus, status, _runtimeLifetime.Token);
                 Logger.LogInfo($"[BRIDGE][STATE][FALLBACK-TX-{(sent ? "OK" : "FAILED")}] rx={receiveSequence}, attempt={attempt}/3, inGame={status.InGame}, save={status.SaveId}");
                 if (!sent || !string.Equals(saveId, "unknown", StringComparison.Ordinal)) break;
             }
         }
+        catch (OperationCanceledException) when (_runtimeLifetime.IsCancellationRequested) { }
         catch (Exception ex)
         {
             Logger.LogError($"[BRIDGE][STATE][FALLBACK-TX-FAILED] rx={receiveSequence}: {ex}");
@@ -178,10 +195,10 @@ public sealed class Plugin : BaseUnityPlugin
         self.Logger.LogInfo($"[RAFFLE][PATCH] ShowIndoctrinationMenu Prefix fired; args={args.Length}, bridgeConnected={self._bridge?.IsConnected == true}");
 
         var recruitId = self._followers.ResolveIndoctrinationRecruitId(args, out var source);
-        if (!recruitId.HasValue)
+        if (!recruitId.HasValue || recruitId.Value <= 0)
         {
             var argTypes = string.Join(", ", args.Where(x => x != null).Select(x => x.GetType().FullName));
-            self.Logger.LogWarning($"Indoctrination menu opened but recruit ID could not be resolved. args=[{argTypes}]");
+            self.Logger.LogWarning($"Indoctrination menu opened but a positive recruit ID could not be resolved. value={recruitId?.ToString() ?? "null"}, args=[{argTypes}]");
             return;
         }
 
@@ -261,6 +278,13 @@ public sealed class Plugin : BaseUnityPlugin
                     case GameMessageTypes.SyncChzzkFollowerMarkers:
                         _followers!.SyncChzzkFollowerMarkersFromJson(command.PayloadJson);
                         break;
+                    case GameMessageTypes.RaffleRequestAck:
+                    {
+                        var ack = JsonConvert.DeserializeObject<RaffleRequestAck>(command.PayloadJson)
+                                  ?? throw new InvalidOperationException("Invalid raffle request acknowledgement.");
+                        HandleRaffleRequestAck(ack);
+                        break;
+                    }
                     case GameMessageTypes.GetGameStatus:
                         Logger.LogInfo($"[BRIDGE][STATE] GET_GAME_STATUS dispatched on Unity main thread; id={sequence}");
                         _initialStateSyncPending = true;
@@ -357,7 +381,7 @@ public sealed class Plugin : BaseUnityPlugin
         _statusSendReason = reason;
         _statusSendPayload = status;
         Logger.LogInfo($"[BRIDGE][STATE][TX-START] reason={reason}, inGame={status.InGame}, save={status.SaveId}, area={status.Area}");
-        _statusSendTask = _bridge.TrySendAsync(GameMessageTypes.GameStatus, status);
+        _statusSendTask = _bridge.TrySendAsync(GameMessageTypes.GameStatus, status, _runtimeLifetime.Token);
     }
 
     private GameStatusEvent BuildGameStatusSafely(string reason)
@@ -376,7 +400,9 @@ public sealed class Plugin : BaseUnityPlugin
         {
             ModVersion = PluginVersion,
             GameVersion = string.Empty,
-            Area = "UNKNOWN"
+            Area = "UNKNOWN",
+            RuntimePumpActive = true,
+            RuntimeUpdateCount = Interlocked.Read(ref _updateCount)
         };
         SetDiagnosticStage($"STATUS/{reason}/IN-GAME-PROBE");
         try
@@ -438,7 +464,7 @@ public sealed class Plugin : BaseUnityPlugin
         var request = _pendingRaffleRequests.Values.OrderBy(x => x.RecruitFollowerId).First();
         _raffleSendRecruitId = request.RecruitFollowerId;
         Logger.LogInfo($"[RAFFLE][TX-START] recruit={request.RecruitFollowerId}, save={request.SaveId}");
-        _raffleSendTask = _bridge.TrySendAsync(GameMessageTypes.RaffleRequested, request);
+        _raffleSendTask = _bridge.TrySendAsync(GameMessageTypes.RaffleRequested, request, _runtimeLifetime.Token);
     }
 
     private void PollRaffleSendCompletion()
@@ -453,10 +479,13 @@ public sealed class Plugin : BaseUnityPlugin
 
         if (success)
         {
-            _pendingRaffleRequests.Remove(recruitId);
-            _pendingRaffleQueuedAt.Remove(recruitId);
-            _announcedRecruitIds.Add(recruitId);
-            Logger.LogInfo($"CHZZK raffle requested at indoctrination start for game recruit {recruitId}; delivery confirmed");
+            // A successful WebSocket write is not proof that Companion dispatched the event.
+            // Keep the request pending until the application-level acknowledgement arrives.
+            _nextRaffleSendAt = UnityEngine.Time.unscaledTime + 2f;
+            if (_pendingRaffleRequests.ContainsKey(recruitId))
+                Logger.LogInfo($"[RAFFLE][TX-WRITTEN] recruit={recruitId}; awaiting Companion ACK, retryIn=2s");
+            else
+                Logger.LogInfo($"[RAFFLE][TX-WRITTEN] recruit={recruitId}; ACK already received");
         }
         else
         {
@@ -466,6 +495,23 @@ public sealed class Plugin : BaseUnityPlugin
 
         _raffleSendTask = null;
         _raffleSendRecruitId = null;
+    }
+
+    private void HandleRaffleRequestAck(RaffleRequestAck ack)
+    {
+        if (ack.RecruitFollowerId <= 0) return;
+
+        var wasPending = _pendingRaffleRequests.Remove(ack.RecruitFollowerId);
+        _pendingRaffleQueuedAt.Remove(ack.RecruitFollowerId);
+        if (ack.Accepted)
+        {
+            _announcedRecruitIds.Add(ack.RecruitFollowerId);
+            Logger.LogInfo($"[RAFFLE][ACK] recruit={ack.RecruitFollowerId}, accepted=true, status={ack.Status}, wasPending={wasPending}; delivery confirmed by Companion");
+        }
+        else
+        {
+            Logger.LogError($"[RAFFLE][ACK] recruit={ack.RecruitFollowerId}, accepted=false, status={ack.Status}, wasPending={wasPending}; request will not be retried");
+        }
     }
 
     private void SetDiagnosticStage(string stage)

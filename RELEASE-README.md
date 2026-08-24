@@ -83,9 +83,9 @@ ZIP 압축 해제와 실제 파일 설치/복사를 WinForms UI 스레드에서 
 - User data under `%LOCALAPPDATA%\ChzzkOfTheLamb` is not deleted by Companion program updates.
 - Installation log records `[PROCESS]`, `[EXTRACT]`, and `[INSTALL]` timings for diagnosis.
 
-### RC22 verification
-Companion must display `v1.0.0-rc22`. `BepInEx/LogOutput.log` must contain
-`[BUILD=rc22-persistent-runtime-host]`, `[DIAG][RUNTIME-HOST][INSTALLED]`,
+### RC23 verification
+Companion must display `v1.0.0-rc23`. `BepInEx/LogOutput.log` must contain
+`[BUILD=rc23-end-to-end-ack-sync]`, `[DIAG][RUNTIME-HOST][INSTALLED]`,
 `[DIAG][RUNTIME-HOST][FIRST-UPDATE]`, `[DIAG][UPDATE][FIRST]`, Mod
 `[BRIDGE][RX][FRAME]`, `[BRIDGE][RX][QUEUED]`, `[BRIDGE][STATE][FALLBACK-TX-OK]`,
 and `[BRIDGE][DISPATCH][BEGIN/END]`. Catalog completion is proven by
@@ -93,4 +93,6 @@ and `[BRIDGE][DISPATCH][BEGIN/END]`. Catalog completion is proven by
 If a call does not return, `[DIAG][WATCHDOG][NO-UPDATE]` or
 `[DIAG][WATCHDOG][STALLED] stage=...` names the last active stage. Companion must contain
 numbered `[Bridge][TX]`, `[Bridge][RX]`, and `[BRIDGE][DISPATCH]` pairs. Only after `status`
-reports `GAME=True`, `SAVE=slot_...`, and `CATALOG>0` should automatic `!신도` raffle entry be tested.
+reports `GAME=True`, `GAME_SOCKET=True`, `GAME_READY=True`, `SYNC=READY`,
+`SAVE=slot_...`, and `CATALOG>0` should automatic `!신도` raffle entry be tested. Automatic
+raffle delivery is complete only after the Mod logs `[RAFFLE][ACK] ... accepted=true`.

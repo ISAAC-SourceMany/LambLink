@@ -13,31 +13,31 @@ function Assert-NativeSuccess([string]$Step) {
   if ($LASTEXITCODE -ne 0) { throw "$Step failed with exit code $LASTEXITCODE." }
 }
 
-Write-Host '[0/9] Verifying RC22 source identity and removing stale compiler outputs...'
+Write-Host '[0/9] Verifying RC23 source identity and removing stale compiler outputs...'
 $criticalSources = @{
-  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = 'c06129967e637abd53babe59e1248f51bf489562bb5a4feb98b3fd1bd9307521'
-  'src\ChzzkOfTheLamb.Mod\BridgeRuntimeHost.cs' = 'd9722fc1c14faa2a04829333151e1c5506b8d95505a4abafe6801290c924a7a7'
+  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = '8015e903fe668ea2c1a8d45fd98076272654f63ecd2cf1492387341533e68221'
+  'src\ChzzkOfTheLamb.Mod\BridgeRuntimeHost.cs' = '9261721e2708f59debb6785e2eeec611063738bd36744a55dec94f529ae3bc6b'
   'src\ChzzkOfTheLamb.Mod\Network\ModBridgeClient.cs' = 'dbe786dbd6cfa0df9144c87820e696b5ec076a8ee9c3f5b018b358179ff15595'
   'src\ChzzkOfTheLamb.Mod\Game\IndoctrinationRafflePatch.cs' = '81260035a8f74e613b414576d1065373c76fcdccca000a790097fa4047b2f9cb'
   'src\ChzzkOfTheLamb.Mod\Game\FollowerService.cs' = '6883d37210328c161ead327c6d4c9ff1576c96aa8793790872d4d8791f7a0ee9'
   'src\ChzzkOfTheLamb.Mod\Game\FollowerAppearanceService.cs' = 'e840ef802b18b8c52155c01f63bf0e1d3bc8d69e2f433407f7c2d7eb3e08ddc4'
   'src\ChzzkOfTheLamb.Mod\Game\GameSaveService.cs' = '5b48b8ce1f0c50ae47a9e160ce4244ab9b3712c2cc96e8cc55678163ded72c5d'
-  'src\ChzzkOfTheLamb.Protocol\GameMessages.cs' = 'd64b622d34e9956dbdf953a1e36c8a0cf4b94be1ad0635a07f46c7ff0e180c1e'
-  'src\ChzzkOfTheLamb.Companion\Program.cs' = '70568e938ed0750f166175d73631b6ad0bb90de80e82856f20930d9caf66a00b'
+  'src\ChzzkOfTheLamb.Protocol\GameMessages.cs' = '1d9cb42458aa55a72a3ff305c2b54680a1acefada2a032cc98da2b9c08078204'
+  'src\ChzzkOfTheLamb.Companion\Program.cs' = '34c1a3fe30f9199e591b4cceccfa9fbafb89917a5f24b6297a012c2770e11030'
   'src\ChzzkOfTheLamb.Companion\GameBridge\GameBridgeServer.cs' = '6199cf43fea8adbcb9b166f31370975f2ac954af3834bbdf3866142e55fe8da9'
   'src\ChzzkOfTheLamb.Companion\Diagnostics\TeeTextWriter.cs' = '3edd24b12f8aaac9a1de768be84d0d6711c1b30c28a8bff39507912ffffcd305'
   'src\ChzzkOfTheLamb.Companion\Appearance\AppearanceStore.cs' = '6726689d6ffcef4c31d4064649fdc7be38c28d219fdf8eb7cb9db4afa75b893b'
-  'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj' = '59d0d38d20ca91f93bf52880a5d38f867a0247078186b9eb157dc7e3cab56aaa'
+  'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj' = '8a8bad365624568b36e0b6f3741243d39d17bb803918a69076746ab33f5842e3'
 }
 foreach ($relativePath in $criticalSources.Keys) {
   $sourcePath = Join-Path $root $relativePath
-  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC22 source: $relativePath" }
+  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC23 source: $relativePath" }
   $actualHash = (Get-FileHash $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actualHash -ne $criticalSources[$relativePath]) {
-    throw "Critical RC22 source does not match the reviewed version: $relativePath"
+    throw "Critical RC23 source does not match the reviewed version: $relativePath"
   }
 }
-Write-Host '[VERIFY] Critical RC22 source hashes OK.'
+Write-Host '[VERIFY] Critical RC23 source hashes OK.'
 
 Get-ChildItem -Path (Join-Path $root 'src') -Directory -Recurse -Force |
   Where-Object { $_.Name -in @('bin', 'obj') } |
@@ -84,13 +84,13 @@ function Test-ByteSequence([byte[]]$Haystack, [byte[]]$Needle) {
   }
   return $false
 }
-$buildTag = 'rc22-persistent-runtime-host'
+$buildTag = 'rc23-end-to-end-ack-sync'
 $hasBuildTag = (Test-ByteSequence $modBytes ([System.Text.Encoding]::UTF8.GetBytes($buildTag))) -or
                (Test-ByteSequence $modBytes ([System.Text.Encoding]::Unicode.GetBytes($buildTag)))
 if (-not $hasBuildTag) {
-  throw 'Built mod DLL does not contain the RC22 build tag. Refusing to package a stale DLL.'
+  throw 'Built mod DLL does not contain the RC23 build tag. Refusing to package a stale DLL.'
 }
-Write-Host "[VERIFY] RC22 mod build tag found; SHA-256=$((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"
+Write-Host "[VERIFY] RC23 mod build tag found; SHA-256=$((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"
 
 Write-Host '[5/9] Publishing Companion self-contained single-file...'
 dotnet publish (Join-Path $root 'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $companionOut
@@ -98,8 +98,8 @@ Assert-NativeSuccess 'Release Companion publish'
 $companionExe = Join-Path $companionOut 'ChzzkOfTheLamb.Companion.exe'
 if (-not (Test-Path $companionExe)) { throw "Companion EXE was not produced: $companionExe" }
 $companionVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($companionExe)
-if ($companionVersion.FileVersion -ne '1.0.0.22') { throw "Unexpected Companion file version: $($companionVersion.FileVersion)" }
-Write-Host '[VERIFY] RC22 Companion version tag found.'
+if ($companionVersion.FileVersion -ne '1.0.0.23') { throw "Unexpected Companion file version: $($companionVersion.FileVersion)" }
+Write-Host '[VERIFY] RC23 Companion version tag found.'
 
 Write-Host '[6/9] Creating normalized downloadable component ZIPs...'
 $temp = Join-Path $distRoot '_component-build'
