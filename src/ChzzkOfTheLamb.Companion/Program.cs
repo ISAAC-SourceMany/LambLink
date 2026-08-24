@@ -11,7 +11,7 @@ using ChzzkOfTheLamb.Companion.Rules;
 using ChzzkOfTheLamb.Companion.Storage;
 using ChzzkOfTheLamb.Protocol;
 
-const string ReleaseVersion = "1.0.0-rc17";
+const string ReleaseVersion = "1.0.0-rc18";
 const string ProductionApiBase = "https://y0eblkdmu5.execute-api.ap-northeast-2.amazonaws.com";
 const string ProductionFrontendUrl = "https://d1gvw9ccym1qvn.cloudfront.net";
 
@@ -225,9 +225,11 @@ bridge.MessageReceived += envelope =>
             case GameMessageTypes.AppearanceCatalog:
             {
                 var catalog = JsonSerializer.Deserialize<FollowerAppearanceCatalog>(envelope.PayloadJson)!;
-                appearances.UpdateCatalog(catalog);
+                var newlyAllowedForms = appearances.UpdateCatalog(catalog);
                 latestCatalogCount = catalog.Forms.Count;
                 latestCatalogSaveId = catalog.SaveId;
+                if (newlyAllowedForms.Count > 0)
+                    Console.WriteLine($"[APPEARANCE][AUTO-ALLOW] newly unlocked forms enabled for viewers: {string.Join(", ", newlyAllowedForms)}");
                 // Catalog messages are emitted from the active save. Use them as a safe
                 // synchronization source if the periodic GAME_STATUS has not caught up yet.
                 if (!string.IsNullOrWhiteSpace(catalog.SaveId) && catalog.SaveId != "unknown")
@@ -432,6 +434,11 @@ async Task HandleRaffleWinnerAsync(RaffleEntry? winner)
     }
 
     selectedAppearance ??= appearances.Get(streamerChannelId, winner.ViewerId);
+    if (selectedAppearance is not null && !appearances.Validate(selectedAppearance))
+    {
+        Console.WriteLine($"[APPEARANCE] saved viewer selection is unavailable in the current save; using the recruit's game/default appearance instead: {selectedAppearance.FormId}");
+        selectedAppearance = null;
+    }
 
     await bridge.SendAsync(GameMessageTypes.ApplyRecruitIdentity, new ApplyRecruitIdentityCommand
     {
@@ -526,7 +533,16 @@ async Task UploadLatestCatalogAsync()
         return;
     }
 
-    var allowedFormIds = appearances.AllowedFormIds.ToArray();
+    // Persisted allow/deny policy is shared across save slots, but the cloud payload must
+    // expose only forms that the currently active save reports as unlocked. This prevents a
+    // form unlocked in one slot from leaking into another slot's viewer catalog.
+    var unlockedFormIds = catalog.Forms
+        .Where(x => x.IsUnlocked)
+        .Select(x => x.FormId)
+        .ToHashSet(StringComparer.Ordinal);
+    var allowedFormIds = appearances.AllowedFormIds
+        .Where(unlockedFormIds.Contains)
+        .ToArray();
     if (cloud?.IsAuthenticated != true && !await TryConnectCloudAsync(logFailure: false)) return;
     Exception? lastError = null;
     for (var attempt = 1; attempt <= 3 && !stop.IsCancellationRequested; attempt++)

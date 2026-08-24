@@ -1,4 +1,4 @@
-# ChzzkOfTheLamb v1.0.0 RC17 source release
+# ChzzkOfTheLamb v1.0.0 RC18 source release
 
 외부 배포를 위한 release candidate 소스입니다.
 
@@ -9,6 +9,19 @@
 
 Release Companion은 AWS CLI/SSO를 사용하지 않으며 CHZZK Client Secret을 포함하지 않습니다.
 Streamer OAuth는 AWS Auth Gateway를 통해 처리합니다.
+
+## RC18 matched test pair
+
+The RC14-installed Companion is not updated by building only the game plugin. Build both RC18
+components together:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build-test-pair.ps1
+```
+
+Close the installed RC14 Companion and run `dist\rc18-companion\ChzzkOfTheLamb.Companion.exe`.
+Replace the two game DLLs with the files under `dist\rc18-plugin`. The Companion title must show
+`v1.0.0-rc18`, and the game log must show `[BUILD=rc18-state-sync-auto-unlock]` before testing.
 
 
 ## External release packaging
@@ -49,9 +62,18 @@ RC3 release packaging bundles COTL Korean Font Fix 4.2.1 (`COTL_KoreanFontFix.dl
 - Adds `[RAFFLE][FALLBACK]` open/close diagnostics.
 - Fixes the nullable `args` warning path by normalizing to an empty array.
 
+## RC18 automatic appearance unlock publishing
+
+- Newly unlocked normal follower forms are automatically added to the viewer allow-list.
+- Explicit `form deny <id>` choices are stored separately and never auto-enabled later.
+- Explicit `form allow <id>` removes the saved denial and restores the form.
+- Existing RC17/older allow-list data is migrated once without discarding prior choices.
+- Companion logs `[APPEARANCE][AUTO-ALLOW]` when a new form becomes available to viewers.
+- See `docs/RC18_AUTO_UNLOCK_APPEARANCE.md` for migration and verification details.
+
 ## RC17 state synchronization and reliable raffle delivery
 
-- Adds a `[BUILD=rc17-state-sync-reliable-raffle]` startup fingerprint so installed Mod freshness is visible in `LogOutput.log` even though the public plugin version remains `1.0.0`.
+- Adds a `[BUILD=rc18-state-sync-auto-unlock]` startup fingerprint so installed Mod freshness is visible in `LogOutput.log` even though the public plugin version remains `1.0.0`.
 - Companion requests `GAME_STATUS` immediately after the WebSocket opens instead of treating transport connection as completed application synchronization.
 - Mod state sends report `TX-START`, `TX-OK`, and `TX-FAILED`, and failed initial synchronization retries.
 - A valid save immediately triggers appearance catalog and follower roster requests.

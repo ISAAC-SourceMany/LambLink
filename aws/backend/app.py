@@ -210,6 +210,8 @@ def validate_appearance(catalog: dict[str, Any], appearance: dict[str, Any]):
     form = next((x for x in catalog.get("forms", []) if x.get("formId") == form_id), None)
     if not form:
         raise ValueError("form does not exist in the current streamer catalog")
+    if not form.get("isUnlocked", True):
+        raise ValueError("form is not unlocked in the current game save")
     variant = appearance.get("variantId")
     color = appearance.get("colorId")
     variants = form.get("variantIds") or []
