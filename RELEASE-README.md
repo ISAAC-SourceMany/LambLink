@@ -83,9 +83,11 @@ ZIP 압축 해제와 실제 파일 설치/복사를 WinForms UI 스레드에서 
 - User data under `%LOCALAPPDATA%\ChzzkOfTheLamb` is not deleted by Companion program updates.
 - Installation log records `[PROCESS]`, `[EXTRACT]`, and `[INSTALL]` timings for diagnosis.
 
-### RC23 verification
-Companion must display `v1.0.0-rc23`. `BepInEx/LogOutput.log` must contain
-`[BUILD=rc23-end-to-end-ack-sync]`, `[DIAG][RUNTIME-HOST][INSTALLED]`,
+### RC24 verification
+Companion must display `v1.0.0-rc24`. `BepInEx/LogOutput.log` must contain
+`[BUILD=rc24-raffle-lifecycle-cotl-api-order]`,
+`[DEPENDENCY] COTL_API=io.github.xhayper.COTL_API`,
+`[RAFFLE][PATCH-VERIFY] ... installed=True`, `[DIAG][RUNTIME-HOST][INSTALLED]`,
 `[DIAG][RUNTIME-HOST][FIRST-UPDATE]`, `[DIAG][UPDATE][FIRST]`, Mod
 `[BRIDGE][RX][FRAME]`, `[BRIDGE][RX][QUEUED]`, `[BRIDGE][STATE][FALLBACK-TX-OK]`,
 and `[BRIDGE][DISPATCH][BEGIN/END]`. Catalog completion is proven by
@@ -96,3 +98,7 @@ numbered `[Bridge][TX]`, `[Bridge][RX]`, and `[BRIDGE][DISPATCH]` pairs. Only af
 reports `GAME=True`, `GAME_SOCKET=True`, `GAME_READY=True`, `SYNC=READY`,
 `SAVE=slot_...`, and `CATALOG>0` should automatic `!신도` raffle entry be tested. Automatic
 raffle delivery is complete only after the Mod logs `[RAFFLE][ACK] ... accepted=true`.
+When a round ends, Companion must log `[RAFFLE][ROUND-CLOSED-TX] ... sent=True` and the Mod
+must log `[RAFFLE][ROUND-CLOSED]`. A no-participant/cancelled round must report
+`allowRetry=True`; reopening the same pending recruit then starts another round. `status` should
+report `OVERLAY=ready` while the OBS browser source is loaded and polling.

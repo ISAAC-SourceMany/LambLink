@@ -13,13 +13,13 @@ using ChzzkOfTheLamb.Companion.Rules;
 using ChzzkOfTheLamb.Companion.Storage;
 using ChzzkOfTheLamb.Protocol;
 
-const string ReleaseVersion = "1.0.0-rc23";
+const string ReleaseVersion = "1.0.0-rc24";
 const string ProductionApiBase = "https://y0eblkdmu5.execute-api.ap-northeast-2.amazonaws.com";
 const string ProductionFrontendUrl = "https://d1gvw9ccym1qvn.cloudfront.net";
 
 var dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ChzzkOfTheLamb");
 Directory.CreateDirectory(dataDir);
-var diagnosticLogPath = Path.Combine(dataDir, "companion-rc23.log");
+var diagnosticLogPath = Path.Combine(dataDir, "companion-rc24.log");
 using var diagnosticLogWriter = new StreamWriter(
     new FileStream(diagnosticLogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite),
     new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)) { AutoFlush = true };
@@ -424,7 +424,11 @@ bridge.MessageReceived += envelope =>
                 }
                 else Console.WriteLine($"[RAFFLE] identity apply failed: {result.Error}");
 
-                currentRecruitFollowerId = null;
+                lock (raffleQueueGate) currentRecruitFollowerId = null;
+                _ = NotifyRaffleRoundClosedAsync(
+                    result.RecruitFollowerId,
+                    result.Success ? "identity-applied" : "identity-apply-failed",
+                    allowRetry: !result.Success);
                 StartNextQueuedRaffle();
                 break;
             }
@@ -504,7 +508,14 @@ raffle.Cancelled += () =>
 {
     Console.WriteLine("[RAFFLE] cancelled; recruit keeps its game/default identity.");
     overlay.ShowCancelled();
-    lock (raffleQueueGate) currentRecruitFollowerId = null;
+    int? cancelledRecruitId;
+    lock (raffleQueueGate)
+    {
+        cancelledRecruitId = currentRecruitFollowerId;
+        currentRecruitFollowerId = null;
+    }
+    if (cancelledRecruitId.HasValue)
+        _ = NotifyRaffleRoundClosedAsync(cancelledRecruitId.Value, "cancelled", allowRetry: true);
     StartNextQueuedRaffle();
 };
 raffle.Completed += winner =>
@@ -519,7 +530,14 @@ async Task HandleRaffleWinnerAsync(RaffleEntry? winner)
     if (winner is null)
     {
         Console.WriteLine("[RAFFLE] no participants; recruit keeps its game/default identity.");
-        currentRecruitFollowerId = null;
+        int? emptyRecruitId;
+        lock (raffleQueueGate)
+        {
+            emptyRecruitId = currentRecruitFollowerId;
+            currentRecruitFollowerId = null;
+        }
+        if (emptyRecruitId.HasValue)
+            await NotifyRaffleRoundClosedAsync(emptyRecruitId.Value, "no-participants", allowRetry: true);
         StartNextQueuedRaffle();
         return;
     }
@@ -573,6 +591,25 @@ void BeginRaffleFor(RaffleRequestedEvent request)
     Console.WriteLine($"[RAFFLE] game recruit detected: ID={request.RecruitFollowerId}, save={request.SaveId}");
     if (settings.Raffle.AutoStartOnGameRequest)
         _ = raffle.StartAsync(settings.Raffle.DurationSeconds, stop.Token);
+}
+
+async Task NotifyRaffleRoundClosedAsync(int recruitFollowerId, string status, bool allowRetry)
+{
+    if (recruitFollowerId <= 0) return;
+
+    var message = new RaffleRoundClosed
+    {
+        RecruitFollowerId = recruitFollowerId,
+        Status = status,
+        AllowRetry = allowRetry
+    };
+    for (var attempt = 1; attempt <= 3 && !stop.IsCancellationRequested; attempt++)
+    {
+        var sent = await bridge.SendAsync(GameMessageTypes.RaffleRoundClosed, message, stop.Token);
+        Console.WriteLine($"[RAFFLE][ROUND-CLOSED-TX] recruit={recruitFollowerId}, status={status}, allowRetry={allowRetry}, attempt={attempt}/3, sent={sent}");
+        if (sent) return;
+        if (attempt < 3) await Task.Delay(250 * attempt, stop.Token);
+    }
 }
 
 async Task<bool> TryConnectCloudAsync(bool logFailure)
@@ -1058,7 +1095,8 @@ async Task ConsoleLoopAsync()
                 var displayedSyncPhase = bridge.IsGameConnected && pumpAgeSeconds > 15
                     ? "PUMP_STALE"
                     : gameSyncPhase;
-                Console.WriteLine($"MODE={(developmentMode ? "DEV" : "CHZZK")}, CHZZK={(developmentMode ? "disabled" : streamerChannelName)}, GAME={gameReady}, GAME_SOCKET={bridge.IsGameConnected}, GAME_READY={gameReady}, SYNC={displayedSyncPhase}, PUMP_AGE={(pumpAgeSeconds < 0 ? "none" : pumpAgeSeconds.ToString("F1") + "s")}, SAVE={currentSaveId}, RECRUIT={currentRecruitFollowerId?.ToString() ?? "none"}, RAFFLE={raffle.IsOpen}, participants={raffle.ParticipantCount}, queue={pendingRaffleRequests.Count}, CLOUD={(cloud?.IsAuthenticated == true ? "connected" : "off")}, CATALOG={latestCatalogCount}, CATALOG_SAVE={latestCatalogSaveId}");
+                var overlayPollAge = overlay.StatePollAgeSeconds;
+                Console.WriteLine($"MODE={(developmentMode ? "DEV" : "CHZZK")}, CHZZK={(developmentMode ? "disabled" : streamerChannelName)}, GAME={gameReady}, GAME_SOCKET={bridge.IsGameConnected}, GAME_READY={gameReady}, SYNC={displayedSyncPhase}, PUMP_AGE={(pumpAgeSeconds < 0 ? "none" : pumpAgeSeconds.ToString("F1") + "s")}, SAVE={currentSaveId}, RECRUIT={currentRecruitFollowerId?.ToString() ?? "none"}, RAFFLE={raffle.IsOpen}, participants={raffle.ParticipantCount}, queue={pendingRaffleRequests.Count}, OVERLAY={(overlay.IsClientPolling ? "ready" : "not-polling")}, OVERLAY_POLL_AGE={(overlayPollAge < 0 ? "none" : overlayPollAge.ToString("F1") + "s")}, CLOUD={(cloud?.IsAuthenticated == true ? "connected" : "off")}, CATALOG={latestCatalogCount}, CATALOG_SAVE={latestCatalogSaveId}");
                 break;
             }
             case "help":

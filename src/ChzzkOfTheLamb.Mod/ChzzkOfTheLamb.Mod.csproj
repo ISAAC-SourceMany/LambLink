@@ -14,7 +14,7 @@
     <PackageReference Include="BepInEx.Core" Version="5.4.21" />
     <PackageReference Include="UnityEngine.Modules" Version="2019.4.40" IncludeAssets="compile" />
     <PackageReference Include="CultOfTheLamb.GameLibs" Version="*-*" />
-    <PackageReference Include="COTL_API" Version="*" />
+    <PackageReference Include="COTL_API" Version="0.3.4" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework.TrimEnd(`0123456789`))' == 'net'">

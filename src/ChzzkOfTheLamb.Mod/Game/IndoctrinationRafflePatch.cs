@@ -11,6 +11,8 @@ namespace ChzzkOfTheLamb.Mod.Game;
 [HarmonyPatch]
 internal static class IndoctrinationRafflePatch
 {
+    private static MethodBase[] _resolvedTargets = Array.Empty<MethodBase>();
+
     private static IEnumerable<MethodBase> TargetMethods()
     {
         var uiManager = AccessTools.TypeByName("Lamb.UI.UIManager");
@@ -23,9 +25,20 @@ internal static class IndoctrinationRafflePatch
             .Where(m => string.Equals(m.Name, "ShowIndoctrinationMenu", StringComparison.Ordinal))
             .Cast<MethodBase>()
             .ToArray();
+        _resolvedTargets = targets;
         if (targets.Length == 0) Plugin.LogRafflePatchTarget(null);
         else foreach (var target in targets) Plugin.LogRafflePatchTarget(target);
         return targets;
+    }
+
+    internal static void VerifyInstallation(string ownerId)
+    {
+        foreach (var target in _resolvedTargets)
+        {
+            var patchInfo = Harmony.GetPatchInfo(target);
+            var owners = patchInfo?.Prefixes.Select(x => x.owner).Distinct().ToArray() ?? Array.Empty<string>();
+            Plugin.LogRafflePatchVerification(target, owners.Contains(ownerId), string.Join(",", owners));
+        }
     }
 
     private static void Prefix(object[] __args)

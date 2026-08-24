@@ -14,6 +14,7 @@ public static class GameMessageTypes
     public const string GetFollowerRoster = "GET_FOLLOWER_ROSTER";
     public const string GetGameStatus = "GET_GAME_STATUS";
     public const string RaffleRequestAck = "RAFFLE_REQUEST_ACK";
+    public const string RaffleRoundClosed = "RAFFLE_ROUND_CLOSED";
     public const string SyncChzzkFollowerMarkers = "SYNC_CHZZK_FOLLOWER_MARKERS";
     public const string Ping = "PING";
 
@@ -219,4 +220,16 @@ public sealed class RaffleRequestAck
     public int RecruitFollowerId { get; set; }
     public bool Accepted { get; set; }
     public string Status { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Companion -> Mod lifecycle notification. This releases the Mod-side duplicate guard
+/// after a raffle is cancelled or finishes without a participant, so reopening the same
+/// pending recruit's indoctrination menu can start a new round.
+/// </summary>
+public sealed class RaffleRoundClosed
+{
+    public int RecruitFollowerId { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public bool AllowRetry { get; set; }
 }

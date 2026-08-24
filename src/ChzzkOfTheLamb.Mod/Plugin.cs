@@ -15,13 +15,15 @@ using Newtonsoft.Json;
 namespace ChzzkOfTheLamb.Mod;
 
 [BepInPlugin(PluginGuid, PluginName, PluginVersion)]
+[BepInDependency(CotlApiGuid, BepInDependency.DependencyFlags.HardDependency)]
 public sealed class Plugin : BaseUnityPlugin
 {
     private static Plugin? _instance;
     public const string PluginGuid = "com.chzzkofthelamb.integration";
     public const string PluginName = "CHZZK Companion Integration";
     public const string PluginVersion = "1.0.0";
-    public const string BuildTag = "rc23-end-to-end-ack-sync";
+    public const string CotlApiGuid = "io.github.xhayper.COTL_API";
+    public const string BuildTag = "rc24-raffle-lifecycle-cotl-api-order";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private readonly CancellationTokenSource _runtimeLifetime = new();
@@ -33,6 +35,7 @@ public sealed class Plugin : BaseUnityPlugin
     private GameSaveService? _saves;
     private float _nextStatusAt;
     private readonly HashSet<int> _announcedRecruitIds = new();
+    private readonly Dictionary<int, float> _announcedRecruitAt = new();
     private readonly HashSet<int> _handledRecruitIds = new();
     private readonly Dictionary<int, RaffleRequestedEvent> _pendingRaffleRequests = new();
     private readonly Dictionary<int, float> _pendingRaffleQueuedAt = new();
@@ -82,7 +85,9 @@ public sealed class Plugin : BaseUnityPlugin
         BridgeRuntimeHost.Install(RunMainThreadUpdate, RequestRuntimeShutdown, Logger);
 
         Harmony.CreateAndPatchAll(typeof(Plugin).Assembly, PluginGuid);
+        IndoctrinationRafflePatch.VerifyInstallation(PluginGuid);
         Logger.LogInfo($"{PluginName} {PluginVersion} loaded [BUILD={BuildTag}]");
+        Logger.LogInfo($"[DEPENDENCY] COTL_API={CotlApiGuid} hard dependency loaded before CHZZK integration");
         Logger.LogInfo($"[DIAG][BOOT] mainThread={_mainThreadId}, runtimeHost=persistent-game-object, watchdog=enabled, network-cache-fallback=enabled");
         Logger.LogInfo("[BRIDGE][MAIN-THREAD] persistent runtime host dispatches commands before optional follower maintenance");
         _ = RunDiagnosticWatchdogAsync(_runtimeLifetime.Token);
@@ -202,11 +207,12 @@ public sealed class Plugin : BaseUnityPlugin
             return;
         }
 
-        if (self._handledRecruitIds.Contains(recruitId.Value)
-            || self._announcedRecruitIds.Contains(recruitId.Value)
-            || self._pendingRaffleRequests.ContainsKey(recruitId.Value))
+        var handled = self._handledRecruitIds.Contains(recruitId.Value);
+        var announced = self._announcedRecruitIds.Contains(recruitId.Value);
+        var pending = self._pendingRaffleRequests.ContainsKey(recruitId.Value);
+        if (handled || announced || pending)
         {
-            self.Logger.LogInfo($"Indoctrination raffle trigger ignored for recruit {recruitId.Value} (already handled/announced/pending).");
+            self.Logger.LogInfo($"[RAFFLE][GUARD] recruit={recruitId.Value}, handled={handled}, activeOrAnnounced={announced}, pendingDelivery={pending}; duplicate menu callback ignored");
             return;
         }
 
@@ -226,6 +232,12 @@ public sealed class Plugin : BaseUnityPlugin
             ? "NOT_FOUND"
             : $"{target.DeclaringType?.FullName}.{target.Name}({string.Join(",", target.GetParameters().Select(p => p.ParameterType.Name))})";
         _instance?.Logger.LogInfo($"[RAFFLE][PATCH] automatic Harmony target={signature}");
+    }
+
+    internal static void LogRafflePatchVerification(MethodBase target, bool installed, string owners)
+    {
+        var signature = $"{target.DeclaringType?.FullName}.{target.Name}({string.Join(",", target.GetParameters().Select(p => p.ParameterType.Name))})";
+        _instance?.Logger.LogInfo($"[RAFFLE][PATCH-VERIFY] target={signature}, owner={PluginGuid}, installed={installed}, prefixOwners=[{owners}]");
     }
 
     // Unity main thread: all Cult of the Lamb API calls are dispatched here.
@@ -283,6 +295,13 @@ public sealed class Plugin : BaseUnityPlugin
                         var ack = JsonConvert.DeserializeObject<RaffleRequestAck>(command.PayloadJson)
                                   ?? throw new InvalidOperationException("Invalid raffle request acknowledgement.");
                         HandleRaffleRequestAck(ack);
+                        break;
+                    }
+                    case GameMessageTypes.RaffleRoundClosed:
+                    {
+                        var closed = JsonConvert.DeserializeObject<RaffleRoundClosed>(command.PayloadJson)
+                                     ?? throw new InvalidOperationException("Invalid raffle round-closed notification.");
+                        HandleRaffleRoundClosed(closed);
                         break;
                     }
                     case GameMessageTypes.GetGameStatus:
@@ -365,6 +384,7 @@ public sealed class Plugin : BaseUnityPlugin
         }
 
         SetDiagnosticStage("UPDATE/RAFFLE-SCHEDULER");
+        ExpireStaleRaffleGuards();
         TryStartPendingRaffleSend();
 
         SetDiagnosticStage("UPDATE/FOLLOWER-TICK");
@@ -506,11 +526,41 @@ public sealed class Plugin : BaseUnityPlugin
         if (ack.Accepted)
         {
             _announcedRecruitIds.Add(ack.RecruitFollowerId);
+            _announcedRecruitAt[ack.RecruitFollowerId] = UnityEngine.Time.unscaledTime;
             Logger.LogInfo($"[RAFFLE][ACK] recruit={ack.RecruitFollowerId}, accepted=true, status={ack.Status}, wasPending={wasPending}; delivery confirmed by Companion");
         }
         else
         {
             Logger.LogError($"[RAFFLE][ACK] recruit={ack.RecruitFollowerId}, accepted=false, status={ack.Status}, wasPending={wasPending}; request will not be retried");
+        }
+    }
+
+    private void HandleRaffleRoundClosed(RaffleRoundClosed closed)
+    {
+        if (closed.RecruitFollowerId <= 0) return;
+
+        _pendingRaffleRequests.Remove(closed.RecruitFollowerId);
+        _pendingRaffleQueuedAt.Remove(closed.RecruitFollowerId);
+        var wasAnnounced = _announcedRecruitIds.Remove(closed.RecruitFollowerId);
+        _announcedRecruitAt.Remove(closed.RecruitFollowerId);
+        if (!closed.AllowRetry)
+            _handledRecruitIds.Add(closed.RecruitFollowerId);
+
+        Logger.LogInfo($"[RAFFLE][ROUND-CLOSED] recruit={closed.RecruitFollowerId}, status={closed.Status}, allowRetry={closed.AllowRetry}, releasedAnnouncementGuard={wasAnnounced}, handled={_handledRecruitIds.Contains(closed.RecruitFollowerId)}");
+    }
+
+    private void ExpireStaleRaffleGuards()
+    {
+        if (_announcedRecruitAt.Count == 0) return;
+
+        const float staleAfterSeconds = 600f;
+        var now = UnityEngine.Time.unscaledTime;
+        foreach (var entry in _announcedRecruitAt.ToArray())
+        {
+            if (now - entry.Value < staleAfterSeconds) continue;
+            _announcedRecruitAt.Remove(entry.Key);
+            _announcedRecruitIds.Remove(entry.Key);
+            Logger.LogWarning($"[RAFFLE][GUARD-EXPIRED] recruit={entry.Key}, ageSeconds={now - entry.Value:F1}; Companion round-close was not received, retry is permitted");
         }
     }
 

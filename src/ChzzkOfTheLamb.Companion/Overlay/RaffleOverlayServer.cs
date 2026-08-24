@@ -22,6 +22,9 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
     private string? _donationNickname;
     private long _donationAmount;
     private string? _donationEventName;
+    private long _overlayPageRequests;
+    private long _stateRequests;
+    private DateTimeOffset? _lastStateRequestAt;
     private readonly Dictionary<string, List<ScheduledOverlayBuff>> _buffQueues = new(StringComparer.Ordinal);
 
     public RaffleOverlayServer(int port = 17883)
@@ -30,6 +33,26 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
     }
 
     public string OverlayUrl => $"http://127.0.0.1:{_port}/overlay";
+
+    public bool IsClientPolling
+    {
+        get
+        {
+            lock (_gate)
+                return _lastStateRequestAt.HasValue && DateTimeOffset.UtcNow - _lastStateRequestAt.Value < TimeSpan.FromSeconds(3);
+        }
+    }
+
+    public double StatePollAgeSeconds
+    {
+        get
+        {
+            lock (_gate)
+                return _lastStateRequestAt.HasValue
+                    ? Math.Max(0, (DateTimeOffset.UtcNow - _lastStateRequestAt.Value).TotalSeconds)
+                    : -1;
+        }
+    }
 
     public void Start()
     {
@@ -43,6 +66,10 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
 
     public void Open(int durationSeconds, string command)
     {
+        bool clientPolling;
+        long pageRequests;
+        long stateRequests;
+        string activeCommand;
         lock (_gate)
         {
             _phase = "raffle";
@@ -51,7 +78,12 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
             _visibleUntil = null;
             _participantCount = 0;
             _winnerNickname = null;
+            clientPolling = _lastStateRequestAt.HasValue && DateTimeOffset.UtcNow - _lastStateRequestAt.Value < TimeSpan.FromSeconds(3);
+            pageRequests = _overlayPageRequests;
+            stateRequests = _stateRequests;
+            activeCommand = _command;
         }
+        Console.WriteLine($"[OVERLAY][RAFFLE-OPEN] duration={Math.Max(1, durationSeconds)}s, command={activeCommand}, clientPolling={clientPolling}, pageRequests={pageRequests}, statePolls={stateRequests}");
     }
 
     public void SetParticipantCount(int count)
@@ -282,6 +314,15 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
 
                 if (path.Equals("/overlay/state", StringComparison.OrdinalIgnoreCase))
                 {
+                    bool firstPoll;
+                    lock (_gate)
+                    {
+                        firstPoll = _stateRequests == 0;
+                        _stateRequests++;
+                        _lastStateRequestAt = DateTimeOffset.UtcNow;
+                    }
+                    if (firstPoll)
+                        Console.WriteLine($"[OVERLAY][CLIENT] state polling active: remote={client.Client.RemoteEndPoint}");
                     var json = JsonSerializer.Serialize(Snapshot(), new JsonSerializerOptions
                     {
                         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -293,6 +334,9 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
 
                 if (path.Equals("/overlay", StringComparison.OrdinalIgnoreCase) || path.Equals("/", StringComparison.OrdinalIgnoreCase))
                 {
+                    long pageRequest;
+                    lock (_gate) pageRequest = ++_overlayPageRequests;
+                    Console.WriteLine($"[OVERLAY][CLIENT] page loaded: request={pageRequest}, remote={client.Client.RemoteEndPoint}");
                     await WriteResponseAsync(stream, "200 OK", "text/html; charset=utf-8", OverlayHtml, ct,
                         "Cache-Control: no-store\r\n");
                     return;
