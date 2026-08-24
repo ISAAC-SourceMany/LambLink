@@ -83,9 +83,10 @@ ZIP 압축 해제와 실제 파일 설치/복사를 WinForms UI 스레드에서 
 - User data under `%LOCALAPPDATA%\ChzzkOfTheLamb` is not deleted by Companion program updates.
 - Installation log records `[PROCESS]`, `[EXTRACT]`, and `[INSTALL]` timings for diagnosis.
 
-### RC21 verification
-Companion must display `v1.0.0-rc21`. `BepInEx/LogOutput.log` must contain
-`[BUILD=rc21-diagnostic-watchdog-fallback]`, `[DIAG][UPDATE][FIRST]`, Mod
+### RC22 verification
+Companion must display `v1.0.0-rc22`. `BepInEx/LogOutput.log` must contain
+`[BUILD=rc22-persistent-runtime-host]`, `[DIAG][RUNTIME-HOST][INSTALLED]`,
+`[DIAG][RUNTIME-HOST][FIRST-UPDATE]`, `[DIAG][UPDATE][FIRST]`, Mod
 `[BRIDGE][RX][FRAME]`, `[BRIDGE][RX][QUEUED]`, `[BRIDGE][STATE][FALLBACK-TX-OK]`,
 and `[BRIDGE][DISPATCH][BEGIN/END]`. Catalog completion is proven by
 `[APPEARANCE][BUILD][END]` and `[APPEARANCE][TX] save=slot_...`.

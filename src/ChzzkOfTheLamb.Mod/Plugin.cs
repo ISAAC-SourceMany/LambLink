@@ -21,7 +21,7 @@ public sealed class Plugin : BaseUnityPlugin
     public const string PluginGuid = "com.chzzkofthelamb.integration";
     public const string PluginName = "CHZZK Companion Integration";
     public const string PluginVersion = "1.0.0";
-    public const string BuildTag = "rc21-diagnostic-watchdog-fallback";
+    public const string BuildTag = "rc22-persistent-runtime-host";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private ModBridgeClient? _bridge;
@@ -42,7 +42,6 @@ public sealed class Plugin : BaseUnityPlugin
     private System.Threading.Tasks.Task<bool>? _raffleSendTask;
     private int? _raffleSendRecruitId;
     private float _nextRaffleSendAt;
-    private readonly CancellationTokenSource _lifetime = new();
     private volatile string _cachedSaveId = "unknown";
     private volatile string _cachedArea = "UNKNOWN";
     private volatile bool _cachedInGame;
@@ -78,11 +77,13 @@ public sealed class Plugin : BaseUnityPlugin
             }
         };
 
+        BridgeRuntimeHost.Install(RunMainThreadUpdate, Logger);
+
         Harmony.CreateAndPatchAll(typeof(Plugin).Assembly, PluginGuid);
         Logger.LogInfo($"{PluginName} {PluginVersion} loaded [BUILD={BuildTag}]");
-        Logger.LogInfo($"[DIAG][BOOT] mainThread={_mainThreadId}, watchdog=enabled, network-cache-fallback=enabled");
-        Logger.LogInfo("[BRIDGE][MAIN-THREAD] command dispatch and mandatory state synchronization run before optional follower maintenance");
-        _ = RunDiagnosticWatchdogAsync(_lifetime.Token);
+        Logger.LogInfo($"[DIAG][BOOT] mainThread={_mainThreadId}, runtimeHost=persistent-game-object, watchdog=enabled, network-cache-fallback=enabled");
+        Logger.LogInfo("[BRIDGE][MAIN-THREAD] persistent runtime host dispatches commands before optional follower maintenance");
+        _ = RunDiagnosticWatchdogAsync(CancellationToken.None);
 
         // The bridge performs localhost networking only. Game mutations remain queued and
         // are still executed by Update on Unity's main thread. Start immediately instead of
@@ -97,13 +98,15 @@ public sealed class Plugin : BaseUnityPlugin
         if (_bridgeStarted || _bridge == null) return;
         _bridgeStarted = true;
         Logger.LogInfo($"[BRIDGE][START] reason={reason}, endpoint=ws://127.0.0.1:17771/game");
-        _ = _bridge.RunAsync(_lifetime.Token);
+        _ = _bridge.RunAsync(CancellationToken.None);
     }
 
     private void OnDestroy()
     {
-        try { _lifetime.Cancel(); } catch { }
-        _lifetime.Dispose();
+        // The game's startup lifecycle can destroy/disable the BepInEx plugin component even
+        // though the integration must remain alive. The independent runtime host and bridge are
+        // intentionally not cancelled here.
+        Logger.LogWarning("[DIAG][PLUGIN-DESTROY] BepInEx plugin component destroyed; persistent runtime host and bridge remain active");
     }
 
     // Runs on the WebSocket receive thread. It never calls Unity or game APIs.
@@ -126,7 +129,7 @@ public sealed class Plugin : BaseUnityPlugin
         {
             for (var attempt = 1; attempt <= 3; attempt++)
             {
-                if (attempt > 1) await System.Threading.Tasks.Task.Delay(attempt == 2 ? 1000 : 2000, _lifetime.Token);
+                if (attempt > 1) await System.Threading.Tasks.Task.Delay(attempt == 2 ? 1000 : 2000);
                 var saveId = _saves?.LastResolvedSaveId ?? "unknown";
                 if (string.Equals(saveId, "unknown", StringComparison.Ordinal)) saveId = _cachedSaveId;
                 var inGame = _cachedInGame || !string.Equals(saveId, "unknown", StringComparison.Ordinal);
@@ -139,12 +142,11 @@ public sealed class Plugin : BaseUnityPlugin
                     Area = inGame ? "BASE" : _cachedArea
                 };
                 Logger.LogInfo($"[BRIDGE][STATE][FALLBACK-TX-START] rx={receiveSequence}, attempt={attempt}/3, inGame={status.InGame}, save={status.SaveId}, source=thread-safe-cache");
-                var sent = _bridge != null && await _bridge.TrySendAsync(GameMessageTypes.GameStatus, status, _lifetime.Token);
+                var sent = _bridge != null && await _bridge.TrySendAsync(GameMessageTypes.GameStatus, status);
                 Logger.LogInfo($"[BRIDGE][STATE][FALLBACK-TX-{(sent ? "OK" : "FAILED")}] rx={receiveSequence}, attempt={attempt}/3, inGame={status.InGame}, save={status.SaveId}");
                 if (!sent || !string.Equals(saveId, "unknown", StringComparison.Ordinal)) break;
             }
         }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         catch (Exception ex)
         {
             Logger.LogError($"[BRIDGE][STATE][FALLBACK-TX-FAILED] rx={receiveSequence}: {ex}");
@@ -170,7 +172,7 @@ public sealed class Plugin : BaseUnityPlugin
     internal static void NotifyIndoctrinationMenuOpened(object[] args)
     {
         var self = _instance;
-        if (self == null || self._followers == null || self._saves == null)
+        if (ReferenceEquals(self, null) || self._followers == null || self._saves == null)
             return;
 
         self.Logger.LogInfo($"[RAFFLE][PATCH] ShowIndoctrinationMenu Prefix fired; args={args.Length}, bridgeConnected={self._bridge?.IsConnected == true}");
@@ -210,12 +212,12 @@ public sealed class Plugin : BaseUnityPlugin
     }
 
     // Unity main thread: all Cult of the Lamb API calls are dispatched here.
-    private void Update()
+    internal void RunMainThreadUpdate()
     {
         var updateNumber = Interlocked.Increment(ref _updateCount);
         Volatile.Write(ref _lastUpdateTimestamp, Stopwatch.GetTimestamp());
         if (updateNumber == 1)
-            Logger.LogInfo($"[DIAG][UPDATE][FIRST] thread={Thread.CurrentThread.ManagedThreadId}, expectedMainThread={_mainThreadId}, queue={_queue.Count}");
+            Logger.LogInfo($"[DIAG][UPDATE][FIRST] source=persistent-runtime-host, thread={Thread.CurrentThread.ManagedThreadId}, expectedMainThread={_mainThreadId}, queue={_queue.Count}");
 
         SetDiagnosticStage("UPDATE/POLL-COMPLETIONS");
         PollStatusSendCompletion();

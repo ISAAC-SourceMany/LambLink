@@ -128,10 +128,11 @@ public sealed class GameBridgeServer : IAsyncDisposable
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            Console.WriteLine($"[Bridge] game disconnected: {ex.Message}");
+            Console.WriteLine($"[Bridge][RX][DISCONNECTED] socket={ws.State}, type={ex.GetType().FullName}, error={ex}");
         }
         finally
         {
+            Console.WriteLine($"[Bridge][RX][LOOP-END] socket={ws.State}, cancellationRequested={ct.IsCancellationRequested}");
             if (ReferenceEquals(_game, ws))
             {
                 _game = null;

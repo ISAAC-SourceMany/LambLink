@@ -74,15 +74,17 @@ public sealed class ModBridgeClient(ConcurrentQueue<GameCommandEnvelope> queue, 
                     }
                     else log.LogWarning($"[BRIDGE][RX][EMPTY] id={sequence}, bytes={bytes.Length}");
                 }
+                log.LogWarning($"[BRIDGE][RX][LOOP-END] socket={ws.State}, cancellationRequested={ct.IsCancellationRequested}");
             }
             catch (Exception ex)
             {
-                log.LogWarning($"[BRIDGE][DISCONNECTED] {ex.GetBaseException().Message}; retrying in 3s");
+                log.LogWarning($"[BRIDGE][DISCONNECTED] type={ex.GetType().FullName}, cancellationRequested={ct.IsCancellationRequested}, error={ex}; retrying in 3s");
                 try { await System.Threading.Tasks.Task.Delay(3000, ct); } catch { }
             }
             finally
             {
                 _socket = null;
+                log.LogInfo($"[BRIDGE][CONNECTION-CLEANUP] cancellationRequested={ct.IsCancellationRequested}");
                 ConnectionChanged?.Invoke(false);
             }
         }

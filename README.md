@@ -1,4 +1,4 @@
-# ChzzkOfTheLamb v1.0.0 RC21 source release — build fix 1
+# ChzzkOfTheLamb v1.0.0 RC22 source release
 
 외부 배포를 위한 release candidate 소스입니다.
 
@@ -17,26 +17,36 @@ Streamer OAuth는 AWS Auth Gateway를 통해 처리합니다.
 - Stops every build script immediately when a `dotnet` command returns a non-zero exit code.
 - Verifies expected DLL/EXE files exist before copying or packaging them.
 
-## RC21 matched test pair
+## RC22 matched test pair
 
-The installed Companion is not updated by building only the game plugin. Build both RC21
+The installed Companion is not updated by building only the game plugin. Build both RC22
 components together:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build-test-pair.ps1
 ```
 
-Close the installed Companion and run `dist\rc21-companion\ChzzkOfTheLamb.Companion.exe`.
-Replace the two game DLLs with the files under `dist\rc21-plugin`. The Companion title must show
-`v1.0.0-rc21`, and the game log must show `[BUILD=rc21-diagnostic-watchdog-fallback]` before testing.
+Close the installed Companion and run `dist\rc22-companion\ChzzkOfTheLamb.Companion.exe`.
+Replace the two game DLLs with the files under `dist\rc22-plugin`. The Companion title must show
+`v1.0.0-rc22`, and the game log must show `[BUILD=rc22-persistent-runtime-host]` before testing.
 
-## RC21 corrective dispatch and one-run diagnostics
+## RC22 persistent runtime host
+
+- Moves Unity main-thread command dispatch from `BaseUnityPlugin.Update()` to an explicitly
+  created `DontDestroyOnLoad` GameObject.
+- Keeps the localhost bridge alive if the game's startup lifecycle destroys or disables the
+  original BepInEx plugin component.
+- Continues reconnecting after abnormal WebSocket closure.
+- Logs full Mod and Companion WebSocket exceptions, socket state, and cleanup reason.
+- See `docs/RC22_PERSISTENT_RUNTIME_HOST.md`.
+
+## Corrective dispatch and one-run diagnostics
 
 - Dispatches WebSocket commands before all optional follower/UI maintenance.
 - Sends an immediate `GAME_STATUS` from a thread-safe cache when `GET_GAME_STATUS` is decoded,
   then sends the authoritative Unity-main-thread snapshot.
 - Correlates Companion TX, Mod RX, Mod queue/dispatch, Mod TX, and Companion RX with numbered logs.
-- Mirrors the full Companion console to `%LOCALAPPDATA%\ChzzkOfTheLamb\companion-rc21.log`.
+- Mirrors the full Companion console to `%LOCALAPPDATA%\ChzzkOfTheLamb\companion-rc22.log`.
 - Runs a non-Unity watchdog that reports `NO-UPDATE` or the exact last main-thread stage after 5 seconds.
 - Splits catalog generation into save, type, singleton, unlock, palette, individual form, sort, and TX stages.
 - See `docs/RC21_DIAGNOSTIC_WATCHDOG_FALLBACK.md` for the single-run decision table.
