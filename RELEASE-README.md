@@ -84,4 +84,4 @@ ZIP 압축 해제와 실제 파일 설치/복사를 WinForms UI 스레드에서 
 - Installation log records `[PROCESS]`, `[EXTRACT]`, and `[INSTALL]` timings for diagnosis.
 
 ### RC14 verification
-`BepInEx/LogOutput.log` must contain `CHZZK Companion Integration 1.0.0 loaded [BUILD=rc14]` and `[RAFFLE][PATCH] explicit raffle hook installation complete` before testing `!신도`.
+`BepInEx/LogOutput.log` must contain `CHZZK Companion Integration 1.0.0 loaded [BUILD=rc16-dev10z-raffle-immediate-bridge]`, `[BRIDGE][START] reason=plugin-awake`, and `[BRIDGE][CONNECTED]` before testing automatic `!신도` raffle entry.

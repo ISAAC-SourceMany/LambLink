@@ -51,7 +51,7 @@ RC3 release packaging bundles COTL Korean Font Fix 4.2.1 (`COTL_KoreanFontFix.dl
 
 ## RC14 raffle trigger hardening
 
-- Adds a `[BUILD=rc14]` startup fingerprint so installed Mod freshness is visible in `LogOutput.log` even though the public plugin version remains `1.0.0`.
+- Adds a `[BUILD=rc16-dev10z-raffle-immediate-bridge]` startup fingerprint so installed Mod freshness is visible in `LogOutput.log` even though the public plugin version remains `1.0.0`.
 - Stops relying on Harmony assembly scanning for the production raffle trigger. `IndoctrinationRafflePatch.Install()` now explicitly resolves and patches every `Lamb.UI.UIManager.ShowIndoctrinationMenu` overload.
 - Also patches `Lamb.UI.UIAppearanceMenuController_Form.OnShowStarted()` as a second independent trigger tied to the actual indoctrination appearance screen.
 - Runtime fallback now detects an active `UIAppearanceMenuController_Form` instance first and passes that instance into recruit resolution; exact GameObject-name lookup is only secondary.

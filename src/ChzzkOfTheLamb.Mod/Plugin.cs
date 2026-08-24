@@ -19,7 +19,7 @@ public sealed class Plugin : BaseUnityPlugin
     public const string PluginGuid = "com.chzzkofthelamb.integration";
     public const string PluginName = "CHZZK Companion Integration";
     public const string PluginVersion = "1.0.0";
-    public const string BuildTag = "rc14-exact-dev-raffle";
+    public const string BuildTag = "rc16-dev10z-raffle-immediate-bridge";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private ModBridgeClient? _bridge;
@@ -31,10 +31,7 @@ public sealed class Plugin : BaseUnityPlugin
     private float _nextRecruitScanAt;
     private readonly HashSet<int> _announcedRecruitIds = new();
     private readonly HashSet<int> _handledRecruitIds = new();
-    private readonly HashSet<int> _raffleRequestInFlight = new();
-    private readonly object _raffleStateGate = new();
     private bool _bridgeStarted;
-    private float _nextBridgeStartCheckAt;
 
     private void Awake()
     {
@@ -45,17 +42,14 @@ public sealed class Plugin : BaseUnityPlugin
         _donations = new DonationEffectService(Logger);
         _bridge = new ModBridgeClient(_queue, Logger);
 
-        // RC13: use the same assembly-scan HarmonyPatch/TargetMethod mechanism as the
-        // dev10z build where the raffle trigger was proven in-game. Do not manually
-        // re-patch IndoctrinationRafflePatch here.
         Harmony.CreateAndPatchAll(typeof(Plugin).Assembly, PluginGuid);
         Logger.LogInfo($"{PluginName} {PluginVersion} loaded [BUILD={BuildTag}]");
 
-        // The bridge is pure localhost networking. Starting it in Awake is safe because all
-        // game API mutations still remain queued and are executed from Update on Unity's
-        // main thread. Do not gate the socket connection on SceneManager.GetActiveScene():
-        // some COTL scene configurations keep an unexpected active-scene value long after
-        // the game is playable, which can leave the Companion waiting forever.
+        // The bridge performs localhost networking only. Game mutations remain queued and
+        // are still executed by Update on Unity's main thread. Start immediately instead of
+        // waiting for an active-scene name: some COTL configurations keep Splash/blank as
+        // the active scene after the game becomes playable, which prevented RC15 from ever
+        // attempting the Companion connection.
         EnsureBridgeStarted("plugin-awake");
     }
 
@@ -65,11 +59,6 @@ public sealed class Plugin : BaseUnityPlugin
         _bridgeStarted = true;
         Logger.LogInfo($"[BRIDGE][START] reason={reason}, endpoint=ws://127.0.0.1:17771/game");
         _ = _bridge.RunAsync(CancellationToken.None);
-    }
-
-    internal static void LogRafflePatchDiagnostic(string message)
-    {
-        _instance?.Logger.LogInfo($"[RAFFLE][PATCH] {message}");
     }
 
     internal static void RefreshFollowerNameplate(object uiFollowerName)
@@ -84,180 +73,39 @@ public sealed class Plugin : BaseUnityPlugin
         }
     }
 
-    internal static void NotifyRecruitInteractionStarted(object[] args, string methodName)
-    {
-        var self = _instance;
-        if (self == null) return;
-        self.Logger.LogInfo($"[RAFFLE][INTERACTION] vanilla recruit interaction started: method={methodName}, bridgeConnected={self._bridge?.IsConnected == true}, args={args?.Length ?? 0}");
-        self.RequestRaffleForCurrentRecruit(args ?? Array.Empty<object>(), $"interaction:{methodName}");
-    }
-
     internal static void NotifyIndoctrinationMenuOpened(object[] args)
     {
-        // RC14: restore the exact dev10z raffle-start flow that was proven in-game.
-        // Do not route the known-good ShowIndoctrinationMenu trigger through the newer
-        // generic request/in-flight helper. The Follower argument from this method is
-        // authoritative and the legacy flow already produced source=arg:Follower.
         var self = _instance;
-        if (self == null)
+        if (self == null || self._bridge?.IsConnected != true || self._followers == null || self._saves == null)
             return;
 
-        try
-        {
-            self.Logger.LogInfo($"[RAFFLE][DEV-RESTORE] NotifyIndoctrinationMenuOpened entered; bridgeConnected={self._bridge?.IsConnected == true}, followersReady={self._followers != null}, savesReady={self._saves != null}, args={args?.Length ?? 0}");
-
-            if (self._bridge?.IsConnected != true || self._followers == null || self._saves == null)
-            {
-                self.Logger.LogWarning("[RAFFLE][DEV-RESTORE] prerequisites not ready; raffle request skipped but remains retryable.");
-                return;
-            }
-
-            var safeArgs = args ?? Array.Empty<object>();
-            for (var i = 0; i < safeArgs.Length; i++)
-            {
-                var arg = safeArgs[i];
-                self.Logger.LogInfo($"[RAFFLE][DEV-RESTORE] arg[{i}]={(arg == null ? "<null>" : arg.GetType().FullName)}");
-            }
-
-            var recruitId = self._followers.ResolveIndoctrinationRecruitId(safeArgs, out var source);
-            if (!recruitId.HasValue)
-            {
-                var argTypes = string.Join(", ", safeArgs.Where(x => x != null).Select(x => x.GetType().FullName));
-                self.Logger.LogWarning($"[RAFFLE][DEV-RESTORE] recruit ID unresolved. args=[{argTypes}]");
-                return;
-            }
-
-            self.Logger.LogInfo($"[RAFFLE][DEV-RESTORE] recruit resolved: id={recruitId.Value}, source={source}");
-
-            lock (self._raffleStateGate)
-            {
-                if (self._handledRecruitIds.Contains(recruitId.Value) || !self._announcedRecruitIds.Add(recruitId.Value))
-                {
-                    self.Logger.LogInfo($"[RAFFLE][DEV-RESTORE] trigger ignored for recruit {recruitId.Value} (already handled/announced).");
-                    return;
-                }
-            }
-
-            var request = new RaffleRequestedEvent
-            {
-                Reason = "indoctrination_started",
-                RecruitFollowerId = recruitId.Value,
-                SaveId = self._saves.GetCurrentSaveId()
-            };
-
-            // Keep the exact known-good ordering: log first, then dispatch immediately.
-            self.Logger.LogInfo($"CHZZK raffle requested at indoctrination start for game recruit {recruitId.Value} (source={source})");
-            _ = self._bridge.SendAsync(GameMessageTypes.RaffleRequested, request);
-        }
-        catch (Exception ex)
-        {
-            self.Logger.LogError($"[RAFFLE][DEV-RESTORE][ERROR] {ex}");
-        }
-    }
-
-    private void RequestRaffleForCurrentRecruit(object[] args, string triggerSource)
-    {
-        EnsureBridgeStarted(triggerSource);
-
-        if (_followers == null || _saves == null || _bridge == null)
-        {
-            Logger.LogWarning($"[RAFFLE][REQUEST] services unavailable; trigger={triggerSource}");
-            return;
-        }
-
-        var recruitId = _followers.ResolveIndoctrinationRecruitId(args, out var recruitSource);
+        var recruitId = self._followers.ResolveIndoctrinationRecruitId(args, out var source);
         if (!recruitId.HasValue)
         {
             var argTypes = string.Join(", ", args.Where(x => x != null).Select(x => x.GetType().FullName));
-            Logger.LogWarning($"[RAFFLE][REQUEST] recruit ID unresolved; trigger={triggerSource}, args=[{argTypes}]");
+            self.Logger.LogWarning($"Indoctrination menu opened but recruit ID could not be resolved. args=[{argTypes}]");
             return;
         }
 
-        if (!_bridge.IsConnected)
+        if (self._handledRecruitIds.Contains(recruitId.Value) || !self._announcedRecruitIds.Add(recruitId.Value))
         {
-            Logger.LogWarning($"[RAFFLE][REQUEST] recruit={recruitId.Value} resolved (source={recruitSource}) but bridge is disconnected; trigger={triggerSource}. Request NOT marked announced.");
+            self.Logger.LogInfo($"Indoctrination raffle trigger ignored for recruit {recruitId.Value} (already handled/announced).");
             return;
         }
 
-        lock (_raffleStateGate)
-        {
-            if (_handledRecruitIds.Contains(recruitId.Value) || _announcedRecruitIds.Contains(recruitId.Value) || _raffleRequestInFlight.Contains(recruitId.Value))
-            {
-                Logger.LogInfo($"[RAFFLE][REQUEST] ignored duplicate recruit={recruitId.Value}; trigger={triggerSource}");
-                return;
-            }
-            _raffleRequestInFlight.Add(recruitId.Value);
-        }
-
-        var request = new RaffleRequestedEvent
+        self.Logger.LogInfo($"CHZZK raffle requested at indoctrination start for game recruit {recruitId.Value} (source={source})");
+        _ = self._bridge.SendAsync(GameMessageTypes.RaffleRequested, new RaffleRequestedEvent
         {
             Reason = "indoctrination_started",
             RecruitFollowerId = recruitId.Value,
-            SaveId = _saves.GetCurrentSaveId()
-        };
-
-        Logger.LogInfo($"[RAFFLE][REQUEST] sending recruit={recruitId.Value}, trigger={triggerSource}, recruitSource={recruitSource}, save={request.SaveId}");
-        _ = SendRaffleRequestAsync(recruitId.Value, request, triggerSource);
-    }
-
-    private async System.Threading.Tasks.Task SendRaffleRequestAsync(int recruitId, RaffleRequestedEvent request, string triggerSource)
-    {
-        var sent = false;
-        try
-        {
-            sent = _bridge != null && await _bridge.TrySendAsync(GameMessageTypes.RaffleRequested, request);
-            if (sent)
-            {
-                lock (_raffleStateGate) _announcedRecruitIds.Add(recruitId);
-                Logger.LogInfo($"CHZZK raffle requested at recruit interaction start for game recruit {recruitId} (trigger={triggerSource})");
-            }
-            else
-            {
-                Logger.LogWarning($"[RAFFLE][REQUEST] send failed/not connected for recruit={recruitId}; trigger={triggerSource}. Trigger remains retryable.");
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning($"[RAFFLE][REQUEST] send exception for recruit={recruitId}: {ex.GetBaseException().Message}. Trigger remains retryable.");
-        }
-        finally
-        {
-            lock (_raffleStateGate) _raffleRequestInFlight.Remove(recruitId);
-        }
-    }
-
-    private static string GetHierarchyPath(UnityEngine.Transform transform)
-    {
-        try
-        {
-            var parts = new Stack<string>();
-            var current = transform;
-            var guard = 0;
-            while (current != null && guard++ < 12)
-            {
-                parts.Push(current.gameObject.name);
-                current = current.parent;
-            }
-            return string.Join("/", parts);
-        }
-        catch
-        {
-            return transform?.gameObject?.name ?? "(unknown)";
-        }
+            SaveId = self._saves.GetCurrentSaveId()
+        });
     }
 
     // Unity main thread: all Cult of the Lamb API calls are dispatched here.
     private void Update()
     {
         _followers?.Tick();
-
-        // Fallback only. The normal path starts the bridge in Awake. Keeping this check
-        // protects against an unexpected initialization failure without depending on scene names.
-        if (!_bridgeStarted && UnityEngine.Time.unscaledTime >= _nextBridgeStartCheckAt)
-        {
-            _nextBridgeStartCheckAt = UnityEngine.Time.unscaledTime + 1f;
-            EnsureBridgeStarted("update-fallback");
-        }
 
         while (_queue.TryDequeue(out var command))
         {
@@ -270,14 +118,14 @@ public sealed class Plugin : BaseUnityPlugin
                         // Development-only transport/API test. Production raffles never create a second recruit.
                         var result = _followers!.SpawnFromJson(command.PayloadJson);
                         if (result.Success && result.FollowerId.HasValue)
-                            lock (_raffleStateGate) _handledRecruitIds.Add(result.FollowerId.Value);
+                            _handledRecruitIds.Add(result.FollowerId.Value);
                         _ = _bridge!.SendAsync(GameMessageTypes.FollowerSpawnResult, result);
                         break;
                     }
                     case GameMessageTypes.ApplyRecruitIdentity:
                     {
                         var result = _followers!.ApplyIdentityFromJson(command.PayloadJson);
-                        if (result.Success) lock (_raffleStateGate) _handledRecruitIds.Add(result.RecruitFollowerId);
+                        if (result.Success) _handledRecruitIds.Add(result.RecruitFollowerId);
                         _ = _bridge!.SendAsync(GameMessageTypes.RecruitIdentityResult, result);
                         break;
                     }
@@ -332,20 +180,16 @@ public sealed class Plugin : BaseUnityPlugin
         }
 
         // Pending recruits are only scanned for lifecycle cleanup.
-        // RC11 starts raffles from the vanilla FollowerRecruit interaction lifecycle.
-        // UI hooks are compatibility fallbacks only.
+        // The raffle itself is triggered by UIManager.ShowIndoctrinationMenu via Harmony,
+        // i.e. when the streamer actually starts indoctrinating a recruit.
         if (UnityEngine.Time.unscaledTime >= _nextRecruitScanAt)
         {
             _nextRecruitScanAt = UnityEngine.Time.unscaledTime + 1f;
             if (PlayerFarming.Instance != null)
             {
                 var live = new HashSet<int>(_followers!.GetPendingRecruitIds());
-                lock (_raffleStateGate)
-                {
-                    _announcedRecruitIds.RemoveWhere(id => !live.Contains(id));
-                    _handledRecruitIds.RemoveWhere(id => !live.Contains(id));
-                    _raffleRequestInFlight.RemoveWhere(id => !live.Contains(id));
-                }
+                _announcedRecruitIds.RemoveWhere(id => !live.Contains(id));
+                _handledRecruitIds.RemoveWhere(id => !live.Contains(id));
             }
         }
 

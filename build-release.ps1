@@ -9,6 +9,28 @@ $fontDll = Join-Path $fontAssetRoot 'COTL_KoreanFontFix.dll'
 $fontBundle = Join-Path $fontAssetRoot 'koreanfont.bundle'
 $hosting = Join-Path $root 'release-hosting'
 
+Write-Host '[0/9] Verifying RC16 source identity and removing stale compiler outputs...'
+$criticalSources = @{
+  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = 'afcf18a87f2ccd4195e1ccaa3033c1ee76996acce6a9de26831ec1efd6577a0c'
+  'src\ChzzkOfTheLamb.Mod\Game\IndoctrinationRafflePatch.cs' = '1634cf8a2d480437145067f433cf271018e1a3b50c7e032c27ab2f360a3dd49b'
+  'src\ChzzkOfTheLamb.Mod\Game\FollowerService.cs' = '1c0ee08c2ce668ebb15cd41cf757bd6b4d28cc3e1ee37bf3e4a5ac1a0f8ba02f'
+  'src\ChzzkOfTheLamb.Protocol\GameMessages.cs' = '80d837a5e3190f3747ff2b83deaf0c38512cb86c1aad492b1262fd7b4d3c467d'
+}
+foreach ($relativePath in $criticalSources.Keys) {
+  $sourcePath = Join-Path $root $relativePath
+  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC16 source: $relativePath" }
+  $actualHash = (Get-FileHash $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($actualHash -ne $criticalSources[$relativePath]) {
+    throw "Critical RC16 source does not match the reviewed version: $relativePath"
+  }
+}
+Write-Host '[VERIFY] Critical RC16 source hashes OK.'
+
+Get-ChildItem -Path (Join-Path $root 'src') -Directory -Recurse -Force |
+  Where-Object { $_.Name -in @('bin', 'obj') } |
+  Sort-Object FullName -Descending |
+  Remove-Item -Recurse -Force
+
 Write-Host '[1/9] Validating Korean font patch assets...'
 if (-not (Test-Path $fontDll)) { throw "Missing: $fontDll" }
 if (-not (Test-Path $fontBundle)) { throw "Missing: $fontBundle" }
@@ -34,8 +56,34 @@ $modBin = Join-Path $root 'src\ChzzkOfTheLamb.Mod\bin\Release'
 Copy-Item (Join-Path $modBin 'ChzzkOfTheLamb.Mod.dll') $pluginOut -Force
 Copy-Item (Join-Path $modBin 'ChzzkOfTheLamb.Protocol.dll') $pluginOut -Force
 
+$modDll = Join-Path $pluginOut 'ChzzkOfTheLamb.Mod.dll'
+$modBytes = [System.IO.File]::ReadAllBytes($modDll)
+function Test-ByteSequence([byte[]]$Haystack, [byte[]]$Needle) {
+  if ($Needle.Length -eq 0 -or $Haystack.Length -lt $Needle.Length) { return $false }
+  for ($i = 0; $i -le $Haystack.Length - $Needle.Length; $i++) {
+    $matched = $true
+    for ($j = 0; $j -lt $Needle.Length; $j++) {
+      if ($Haystack[$i + $j] -ne $Needle[$j]) { $matched = $false; break }
+    }
+    if ($matched) { return $true }
+  }
+  return $false
+}
+$buildTag = 'rc16-dev10z-raffle-immediate-bridge'
+$hasBuildTag = (Test-ByteSequence $modBytes ([System.Text.Encoding]::UTF8.GetBytes($buildTag))) -or
+               (Test-ByteSequence $modBytes ([System.Text.Encoding]::Unicode.GetBytes($buildTag)))
+if (-not $hasBuildTag) {
+  throw 'Built mod DLL does not contain the RC16 build tag. Refusing to package a stale DLL.'
+}
+Write-Host "[VERIFY] RC16 mod build tag found; SHA-256=$((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"
+
 Write-Host '[5/9] Publishing Companion self-contained single-file...'
 dotnet publish (Join-Path $root 'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $companionOut
+$companionExe = Join-Path $companionOut 'ChzzkOfTheLamb.Companion.exe'
+if (-not (Test-Path $companionExe)) { throw "Companion EXE was not produced: $companionExe" }
+$companionVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($companionExe)
+if ($companionVersion.FileVersion -ne '1.0.0.16') { throw "Unexpected Companion file version: $($companionVersion.FileVersion)" }
+Write-Host '[VERIFY] RC16 Companion version tag found.'
 
 Write-Host '[6/9] Creating normalized downloadable component ZIPs...'
 $temp = Join-Path $distRoot '_component-build'
