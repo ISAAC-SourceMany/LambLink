@@ -34,6 +34,9 @@ public sealed class FollowerService(
     private string _chzzkMarkerSaveId = "unknown";
     private readonly Dictionary<int, ChzzkFollowerMarker> _chzzkFollowerMarkers = new();
     private readonly HashSet<int> _loggedDecoratedNameplates = new();
+    private float _nameplateRefreshUntil;
+    private float _nextNameplateRefreshAt;
+    private int _nameplateRefreshPasses;
 
     public FollowerRosterSnapshot BuildRoster()
     {
@@ -198,6 +201,7 @@ public sealed class FollowerService(
     public void Tick()
     {
         ProcessPendingIdentityUiRefresh();
+        ProcessPendingNameplateRefresh();
 
         if (!_devSpawnGuardFollowerId.HasValue) return;
 
@@ -520,13 +524,16 @@ public sealed class FollowerService(
             var previousName = ReadStringMember(target, "Name") ?? string.Empty;
             var displayName = BuildFollowerName(command.Nickname);
 
-            RememberChzzkFollower(command.RecruitFollowerId, command.ViewerId, command.Nickname, result.SaveId);
-
             if (!FollowerAppearanceService.TryWrite(target, new[] { "Name" }, displayName))
                 throw new InvalidOperationException("FollowerInfo.Name could not be written on this game build.");
 
             if (!appearances.TryApply(target, command.Appearance))
                 throw new InvalidOperationException("Follower appearance could not be applied.");
+
+            // Register the marker only after the persistent name has changed. Registering it
+            // first makes a visible UIFollowerName compare the new expected nickname with the
+            // recruit's old vanilla name and incorrectly discard the marker as a reused ID.
+            RememberChzzkFollower(command.RecruitFollowerId, command.ViewerId, command.Nickname, result.SaveId);
 
             log.LogInfo($"CHZZK identity data written: recruit={command.RecruitFollowerId}, form={command.Appearance?.FormId ?? "<game-default>"}, color={command.Appearance?.ColorId ?? "<game-default>"}, variant={command.Appearance?.VariantId ?? "<game-default>"}, skinName={ReadFirstMemberValue(target, new[] { "SkinName" }) ?? "<null>"}, skinCharacter={ReadFirstMemberValue(target, new[] { "SkinCharacter" }) ?? "<null>"}, skinColour={ReadFirstMemberValue(target, new[] { "SkinColour", "SkinColor" }) ?? "<null>"}, skinVariation={ReadFirstMemberValue(target, new[] { "SkinVariation", "SkinVariant" }) ?? "<null>"}");
 
@@ -850,7 +857,7 @@ public sealed class FollowerService(
         }
 
         log.LogInfo($"CHZZK follower markers synced: save={saveId}, count={_chzzkFollowerMarkers.Count}, ids=[{string.Join(",", _chzzkFollowerMarkers.Keys.OrderBy(x => x))}]");
-        RegenerateVisibleFollowerNameplates();
+        ArmVisibleNameplateRefresh("marker-sync");
     }
 
     private void RememberChzzkFollower(int followerId, string viewerId, string nickname, string saveId)
@@ -870,7 +877,7 @@ public sealed class FollowerService(
             Nickname = NormalizeLegacyChzzkStoredName(nickname)
         };
         _loggedDecoratedNameplates.Remove(followerId);
-        RegenerateVisibleFollowerNameplates();
+        ArmVisibleNameplateRefresh($"identity-applied:{followerId}");
     }
 
     public void RefreshFollowerNameplate(object uiFollowerName)
@@ -982,9 +989,7 @@ public sealed class FollowerService(
         TrySetEnumProperty(badgeText, "alignment", "Right");
 
         var sourceFontSize = Math.Max(12f, ReadFloatProperty(nameText, "fontSize"));
-        var preferredWidth = ReadFloatProperty(nameText, "preferredWidth");
-        if (preferredWidth <= 1f)
-            preferredWidth = Math.Max(sourceFontSize, plainName.Length * sourceFontSize * 0.55f);
+        var preferredWidth = ResolveNamePreferredWidth(nameText, plainName, sourceFontSize, out var widthSource, out var rawPreferredWidth);
         var sourceHeight = Math.Max(18f, sourceRect.rect.height);
         var badgeWidth = Math.Max(54f, sourceFontSize * 3.9f);
 
@@ -1002,7 +1007,7 @@ public sealed class FollowerService(
 
         if (created)
         {
-            log.LogInfo($"[NAMEPLATE] badge created followerId={followerId}, name='{plainName}', textType={nameText.GetType().FullName}, preferredWidth={preferredWidth:0.##}, badgeX={badgeRect.anchoredPosition.x:0.##}, badgeWidth={badgeWidth:0.##}");
+            log.LogInfo($"[NAMEPLATE] badge created followerId={followerId}, name='{plainName}', textType={nameText.GetType().FullName}, rawPreferredWidth={rawPreferredWidth:0.##}, resolvedWidth={preferredWidth:0.##}, widthSource={widthSource}, badgeX={badgeRect.anchoredPosition.x:0.##}, badgeWidth={badgeWidth:0.##}");
         }
 
         return badgeText;
@@ -1066,6 +1071,74 @@ public sealed class FollowerService(
             return value == null ? 0f : Convert.ToSingle(value);
         }
         catch { return 0f; }
+    }
+
+    private static float ResolveNamePreferredWidth(
+        object nameText,
+        string plainName,
+        float sourceFontSize,
+        out string source,
+        out float rawPreferredWidth)
+    {
+        rawPreferredWidth = ReadFloatProperty(nameText, "preferredWidth");
+        var measuredWidth = 0f;
+
+        try
+        {
+            // TMP preferredWidth may still describe the previous/empty frame immediately after
+            // UIFollowerName.SetText. Force its mesh once, then ask TMP to measure this exact name.
+            AccessTools.Method(nameText.GetType(), "ForceMeshUpdate", Type.EmptyTypes)?.Invoke(nameText, null);
+            var getPreferredValues = AccessTools.Method(nameText.GetType(), "GetPreferredValues", new[] { typeof(string) });
+            var measured = getPreferredValues?.Invoke(nameText, new object[] { plainName });
+            if (measured is UnityEngine.Vector2 vector && IsFinitePositive(vector.x))
+                measuredWidth = vector.x;
+        }
+        catch { }
+
+        // This conservative floor is also the fallback for game/TMP versions where the public
+        // measurement method is unavailable. It specifically rejects transient values such as
+        // the 2px width observed for a long Korean nickname in RC25.
+        var estimatedWidth = Math.Max(sourceFontSize, plainName.Length * sourceFontSize * 0.55f);
+        var bestMeasured = Math.Max(rawPreferredWidth, measuredWidth);
+        if (!IsFinitePositive(bestMeasured) || bestMeasured < estimatedWidth * 0.35f)
+        {
+            source = "estimated-stale-layout-fallback";
+            return estimatedWidth;
+        }
+
+        source = measuredWidth >= rawPreferredWidth ? "tmp-GetPreferredValues" : "tmp-preferredWidth";
+        return bestMeasured;
+    }
+
+    private static bool IsFinitePositive(float value)
+    {
+        return value > 0f && !float.IsNaN(value) && !float.IsInfinity(value);
+    }
+
+    private void ArmVisibleNameplateRefresh(string reason)
+    {
+        _nameplateRefreshUntil = Time.unscaledTime + 2.0f;
+        _nextNameplateRefreshAt = Time.unscaledTime + 0.05f;
+        _nameplateRefreshPasses = 0;
+        RegenerateVisibleFollowerNameplates();
+        log.LogInfo($"[NAMEPLATE][REFRESH] armed reason={reason}, duration=2s");
+    }
+
+    private void ProcessPendingNameplateRefresh()
+    {
+        if (_nameplateRefreshUntil <= 0f) return;
+        var now = Time.unscaledTime;
+        if (now > _nameplateRefreshUntil)
+        {
+            log.LogInfo($"[NAMEPLATE][REFRESH] finished passes={_nameplateRefreshPasses}");
+            _nameplateRefreshUntil = 0f;
+            return;
+        }
+        if (now < _nextNameplateRefreshAt) return;
+
+        _nextNameplateRefreshAt = now + 0.20f;
+        _nameplateRefreshPasses++;
+        RegenerateVisibleFollowerNameplates();
     }
 
     private void RegenerateVisibleFollowerNameplates()

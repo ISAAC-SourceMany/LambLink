@@ -1,4 +1,4 @@
-# ChzzkOfTheLamb v1.0.0 RC25 source release
+# ChzzkOfTheLamb v1.0.0 RC26 source release
 
 외부 배포를 위한 release candidate 소스입니다.
 
@@ -17,19 +17,30 @@ Streamer OAuth는 AWS Auth Gateway를 통해 처리합니다.
 - Stops every build script immediately when a `dotnet` command returns a non-zero exit code.
 - Verifies expected DLL/EXE files exist before copying or packaging them.
 
-## RC25 matched test pair
+## RC26 matched test pair
 
-The installed Companion is not updated by building only the game plugin. Build both RC25
+The installed Companion is not updated by building only the game plugin. Build both RC26
 components together:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build-test-pair.ps1
 ```
 
-Close the installed Companion and run `dist\rc25-companion\ChzzkOfTheLamb.Companion.exe`.
-Replace the two game DLLs with the files under `dist\rc25-plugin`. The Companion title must show
-`v1.0.0-rc25`, and the game log must show
-`[BUILD=rc25-cotl-api-runtime-dependency-build-fix]` before testing.
+Close the installed Companion and run `dist\rc26-companion\ChzzkOfTheLamb.Companion.exe`.
+Replace the two game DLLs with the files under `dist\rc26-plugin`. The Companion title must show
+`v1.0.0-rc26`, and the game log must show
+`[BUILD=rc26-nameplate-layout-lifecycle-fix]` before testing.
+
+## RC26 CHZZK nameplate correction
+
+- Applies the CHZZK marker only after the raffle winner's persistent follower name is written,
+  preventing the visible nameplate from dropping a valid marker as a reused follower ID.
+- Measures the exact nickname through TMP and rejects transient/stale widths such as the observed
+  `2px` value; the separate green `Chzzk` badge is placed to the actual left edge of the name.
+- Refreshes visible nameplates for a bounded two-second post-layout window and patches every
+  `UIFollowerName.SetText` overload.
+- Logs Harmony installation state and the raw/resolved width used for every newly created badge.
+- See `docs/RC26_NAMEPLATE_LAYOUT_LIFECYCLE_FIX.md`.
 
 ## RC25 COTL_API build correction
 
@@ -70,7 +81,7 @@ Replace the two game DLLs with the files under `dist\rc25-plugin`. The Companion
 - Sends an immediate `GAME_STATUS` from a thread-safe cache when `GET_GAME_STATUS` is decoded,
   then sends the authoritative Unity-main-thread snapshot.
 - Correlates Companion TX, Mod RX, Mod queue/dispatch, Mod TX, and Companion RX with numbered logs.
-- Mirrors the full Companion console to `%LOCALAPPDATA%\ChzzkOfTheLamb\companion-rc25.log`.
+- Mirrors the full Companion console to `%LOCALAPPDATA%\ChzzkOfTheLamb\companion-rc26.log`.
 - Runs a non-Unity watchdog that reports `NO-UPDATE` or the exact last main-thread stage after 5 seconds.
 - Splits catalog generation into save, type, singleton, unlock, palette, individual form, sort, and TX stages.
 - See `docs/RC21_DIAGNOSTIC_WATCHDOG_FALLBACK.md` for the single-run decision table.

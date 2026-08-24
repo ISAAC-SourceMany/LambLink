@@ -23,7 +23,7 @@ public sealed class Plugin : BaseUnityPlugin
     public const string PluginName = "CHZZK Companion Integration";
     public const string PluginVersion = "1.0.0";
     public const string CotlApiGuid = "io.github.xhayper.COTL_API";
-    public const string BuildTag = "rc25-cotl-api-runtime-dependency-build-fix";
+    public const string BuildTag = "rc26-nameplate-layout-lifecycle-fix";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private readonly CancellationTokenSource _runtimeLifetime = new();
@@ -86,6 +86,7 @@ public sealed class Plugin : BaseUnityPlugin
 
         Harmony.CreateAndPatchAll(typeof(Plugin).Assembly, PluginGuid);
         IndoctrinationRafflePatch.VerifyInstallation(PluginGuid);
+        FollowerNameplatePatch.VerifyInstallation(PluginGuid, Logger);
         Logger.LogInfo($"{PluginName} {PluginVersion} loaded [BUILD={BuildTag}]");
         Logger.LogInfo($"[DEPENDENCY] COTL_API={CotlApiGuid} hard dependency loaded before CHZZK integration");
         Logger.LogInfo($"[DIAG][BOOT] mainThread={_mainThreadId}, runtimeHost=persistent-game-object, watchdog=enabled, network-cache-fallback=enabled");

@@ -83,9 +83,9 @@ ZIP 압축 해제와 실제 파일 설치/복사를 WinForms UI 스레드에서 
 - User data under `%LOCALAPPDATA%\ChzzkOfTheLamb` is not deleted by Companion program updates.
 - Installation log records `[PROCESS]`, `[EXTRACT]`, and `[INSTALL]` timings for diagnosis.
 
-### RC25 verification
-Companion must display `v1.0.0-rc25`. `BepInEx/LogOutput.log` must contain
-`[BUILD=rc25-cotl-api-runtime-dependency-build-fix]`,
+### RC26 verification
+Companion must display `v1.0.0-rc26`. `BepInEx/LogOutput.log` must contain
+`[BUILD=rc26-nameplate-layout-lifecycle-fix]`,
 `[DEPENDENCY] COTL_API=io.github.xhayper.COTL_API`,
 `[RAFFLE][PATCH-VERIFY] ... installed=True`, `[DIAG][RUNTIME-HOST][INSTALLED]`,
 `[DIAG][RUNTIME-HOST][FIRST-UPDATE]`, `[DIAG][UPDATE][FIRST]`, Mod
@@ -102,3 +102,10 @@ When a round ends, Companion must log `[RAFFLE][ROUND-CLOSED-TX] ... sent=True` 
 must log `[RAFFLE][ROUND-CLOSED]`. A no-participant/cancelled round must report
 `allowRetry=True`; reopening the same pending recruit then starts another round. `status` should
 report `OVERLAY=ready` while the OBS browser source is loaded and polling.
+
+For CHZZK follower nameplates, startup must log
+`[NAMEPLATE][PATCH-VERIFY] ... installed=True`. After marker synchronization, the Mod must log
+`[NAMEPLATE][REFRESH] armed` and a newly created badge must report a sensible `resolvedWidth`.
+For a long nickname, `rawPreferredWidth=2` is acceptable only when `widthSource` is
+`estimated-stale-layout-fallback` and `resolvedWidth` is substantially larger. The green `Chzzk`
+label remains a separate TMP object positioned immediately left of the vanilla follower name.

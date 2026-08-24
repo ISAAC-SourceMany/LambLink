@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using BepInEx.Logging;
 using HarmonyLib;
 
 namespace ChzzkOfTheLamb.Mod.Game;
@@ -11,16 +13,35 @@ namespace ChzzkOfTheLamb.Mod.Game;
 [HarmonyPatch]
 internal static class FollowerNameplatePatch
 {
-    private static MethodBase? TargetMethod()
+    private static IEnumerable<MethodBase> TargetMethods()
     {
         var type = AccessTools.TypeByName("UIFollowerName");
-        if (type == null) return null;
+        if (type == null) return Array.Empty<MethodBase>();
         return AccessTools.GetDeclaredMethods(type)
-            .FirstOrDefault(m => string.Equals(m.Name, "SetText", StringComparison.Ordinal));
+            .Where(m => string.Equals(m.Name, "SetText", StringComparison.Ordinal))
+            .Cast<MethodBase>()
+            .ToArray();
     }
 
     private static void Postfix(object __instance)
     {
         Plugin.RefreshFollowerNameplate(__instance);
+    }
+
+    internal static void VerifyInstallation(string owner, ManualLogSource log)
+    {
+        var targets = TargetMethods().ToArray();
+        if (targets.Length == 0)
+        {
+            log.LogError("[NAMEPLATE][PATCH-VERIFY] UIFollowerName.SetText target count=0");
+            return;
+        }
+
+        foreach (var target in targets)
+        {
+            var installed = Harmony.GetPatchInfo(target)?.Postfixes.Any(x => x.owner == owner) == true;
+            var parameters = string.Join(",", target.GetParameters().Select(x => x.ParameterType.Name));
+            log.LogInfo($"[NAMEPLATE][PATCH-VERIFY] target={target.DeclaringType?.FullName}.{target.Name}({parameters}), installed={installed}");
+        }
     }
 }
