@@ -428,6 +428,10 @@ public sealed class FollowerService(
 
     public IReadOnlyList<int> GetPendingRecruitIds()
     {
+        // DataManager owns the persistent pending-recruit list. Do not perform a global
+        // FindObjectsOfType<FollowerRecruit>() scan from the Mod's recurring Update path: on the
+        // current Unity/COTL runtime that scan can prevent the main-thread dispatcher from ever
+        // reaching GAME_STATUS and catalog commands.
         var result = new HashSet<int>();
         try
         {
@@ -445,18 +449,6 @@ public sealed class FollowerService(
         }
         catch { }
 
-        try
-        {
-            foreach (var recruit in UnityEngine.Object.FindObjectsOfType<FollowerRecruit>())
-            {
-                if (recruit == null) continue;
-                var info = FollowerAppearanceService.FindFollowerInfo(recruit, 5);
-                var id = info == null ? null : ReadFollowerId(info);
-                if (id.HasValue) result.Add(id.Value);
-            }
-        }
-        catch { }
-
         return result.OrderBy(x => x).ToList();
     }
 
@@ -466,19 +458,21 @@ public sealed class FollowerService(
         source = "none";
         try
         {
-            var pending = new HashSet<int>(GetPendingRecruitIds());
+            // The UI hook arguments identify the recruit directly and are the authoritative,
+            // cheapest source. Resolve them before consulting any fallback collection.
             foreach (var arg in args)
             {
                 if (arg is null) continue;
                 var info = FollowerAppearanceService.FindFollowerInfo(arg, 6) ?? arg;
                 var id = ReadFollowerId(info);
-                if (id.HasValue && (pending.Count == 0 || pending.Contains(id.Value)))
+                if (id.HasValue)
                 {
                     source = $"arg:{arg.GetType().FullName}";
                     return id.Value;
                 }
             }
 
+            var pending = new HashSet<int>(GetPendingRecruitIds());
             if (pending.Count == 1)
             {
                 source = "single-pending-fallback";

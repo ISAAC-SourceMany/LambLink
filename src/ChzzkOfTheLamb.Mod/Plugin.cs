@@ -21,7 +21,7 @@ public sealed class Plugin : BaseUnityPlugin
     public const string PluginGuid = "com.chzzkofthelamb.integration";
     public const string PluginName = "CHZZK Companion Integration";
     public const string PluginVersion = "1.0.0";
-    public const string BuildTag = "rc19-safe-game-status-sync";
+    public const string BuildTag = "rc20-main-thread-scan-fix";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private ModBridgeClient? _bridge;
@@ -30,7 +30,6 @@ public sealed class Plugin : BaseUnityPlugin
     private DonationEffectService? _donations;
     private GameSaveService? _saves;
     private float _nextStatusAt;
-    private float _nextRecruitScanAt;
     private readonly HashSet<int> _announcedRecruitIds = new();
     private readonly HashSet<int> _handledRecruitIds = new();
     private readonly Dictionary<int, RaffleRequestedEvent> _pendingRaffleRequests = new();
@@ -68,6 +67,7 @@ public sealed class Plugin : BaseUnityPlugin
         Harmony.CreateAndPatchAll(typeof(Plugin).Assembly, PluginGuid);
         Logger.LogInfo($"{PluginName} {PluginVersion} loaded [BUILD={BuildTag}]");
         Logger.LogInfo("[BRIDGE][STATE] safe core status snapshot enabled; optional game-version/area probes are excluded from the sync handshake");
+        Logger.LogInfo("[BRIDGE][MAIN-THREAD] periodic global FollowerRecruit scan disabled; network state dispatch runs before optional gameplay maintenance");
 
         // The bridge performs localhost networking only. Game mutations remain queued and
         // are still executed by Update on Unity's main thread. Start immediately instead of
@@ -226,33 +226,10 @@ public sealed class Plugin : BaseUnityPlugin
             }
         }
 
-        // Pending recruits are only scanned for lifecycle cleanup.
-        // The raffle itself is triggered by UIManager.ShowIndoctrinationMenu via Harmony,
-        // i.e. when the streamer actually starts indoctrinating a recruit.
-        if (UnityEngine.Time.unscaledTime >= _nextRecruitScanAt)
-        {
-            _nextRecruitScanAt = UnityEngine.Time.unscaledTime + 1f;
-            if (PlayerFarming.Instance != null)
-            {
-                var live = new HashSet<int>(_followers!.GetPendingRecruitIds());
-                _announcedRecruitIds.RemoveWhere(id => !live.Contains(id));
-                _handledRecruitIds.RemoveWhere(id => !live.Contains(id));
-                foreach (var staleId in _pendingRaffleRequests.Keys
-                             .Where(id => !live.Contains(id)
-                                          && (!_pendingRaffleQueuedAt.TryGetValue(id, out var queuedAt)
-                                              || UnityEngine.Time.unscaledTime - queuedAt >= 3f))
-                             .ToList())
-                {
-                    _pendingRaffleRequests.Remove(staleId);
-                    _pendingRaffleQueuedAt.Remove(staleId);
-                    Logger.LogInfo($"[RAFFLE][QUEUE] dropped stale recruit={staleId}; recruit is no longer pending");
-                }
-            }
-        }
-
-        TryStartPendingRaffleSend();
-
-        // Low-frequency status heartbeat for the Companion. Avoids network threads touching game APIs.
+        // Transport/application synchronization must run before any optional gameplay maintenance.
+        // RC14-RC19 performed a global FollowerRecruit object scan before this block. On the
+        // affected Unity runtime that scan never returned, so queued GET_GAME_STATUS commands and
+        // every later catalog request remained unprocessed even though the WebSocket was open.
         if (_initialStateSyncPending && _bridge?.IsConnected == true && _statusSendTask == null)
         {
             _initialStateSyncPending = false;
@@ -264,6 +241,8 @@ public sealed class Plugin : BaseUnityPlugin
             _nextStatusAt = UnityEngine.Time.unscaledTime + 5f;
             TryStartGameStatusSend("periodic-heartbeat");
         }
+
+        TryStartPendingRaffleSend();
     }
 
     private void TryStartGameStatusSend(string reason)

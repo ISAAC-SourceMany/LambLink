@@ -9,27 +9,27 @@ $fontDll = Join-Path $fontAssetRoot 'COTL_KoreanFontFix.dll'
 $fontBundle = Join-Path $fontAssetRoot 'koreanfont.bundle'
 $hosting = Join-Path $root 'release-hosting'
 
-Write-Host '[0/9] Verifying RC19 source identity and removing stale compiler outputs...'
+Write-Host '[0/9] Verifying RC20 source identity and removing stale compiler outputs...'
 $criticalSources = @{
-  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = 'a93c1d5edf62e97012d440610bbfad186bbe30503af62dd0016e474e72c703d0'
-  'src\ChzzkOfTheLamb.Mod\Network\ModBridgeClient.cs' = '2c1162ac922e54cd38da6b6d0406c4c31febcb013a1728208461819b65a59f48'
+  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = 'fdb33cd78d26b3de5c260ebd3f82ddc8e649cbc04c895032757d0addd16d2272'
+  'src\ChzzkOfTheLamb.Mod\Network\ModBridgeClient.cs' = '03f7669401ab04095627dc18da4f4e2a143e7214fa782f0bd1dda5bbe3d1748b'
   'src\ChzzkOfTheLamb.Mod\Game\IndoctrinationRafflePatch.cs' = '81260035a8f74e613b414576d1065373c76fcdccca000a790097fa4047b2f9cb'
-  'src\ChzzkOfTheLamb.Mod\Game\FollowerService.cs' = '1c0ee08c2ce668ebb15cd41cf757bd6b4d28cc3e1ee37bf3e4a5ac1a0f8ba02f'
+  'src\ChzzkOfTheLamb.Mod\Game\FollowerService.cs' = '6883d37210328c161ead327c6d4c9ff1576c96aa8793790872d4d8791f7a0ee9'
   'src\ChzzkOfTheLamb.Protocol\GameMessages.cs' = '2cbf4ef7e8c9427f006745b9737bf2c5f63cf58dca26463b404bc316d162e1b2'
-  'src\ChzzkOfTheLamb.Companion\Program.cs' = 'c1172ccf79612d3556125544446e8611e230a32b0ea1fa17e0d8d314d77b6a59'
+  'src\ChzzkOfTheLamb.Companion\Program.cs' = 'cd8bcfbf0297aa11bdd9e6487e030f7f0b1f4dccf57050344ed55336cb8ce613'
   'src\ChzzkOfTheLamb.Companion\GameBridge\GameBridgeServer.cs' = 'c3b7f7a0ed22594bc1f2ec4b8ffeafc1712180979522ea708701e64ddeb5bf17'
   'src\ChzzkOfTheLamb.Companion\Appearance\AppearanceStore.cs' = '6726689d6ffcef4c31d4064649fdc7be38c28d219fdf8eb7cb9db4afa75b893b'
-  'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj' = '7bdf689a603d1836165c23b7fee38b05faed6c37fd9e98f065fb82b6082d86f5'
+  'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj' = 'e317fe5e42a12c4396ef9080b177c302c0f6bb1b00a47ae1d14329ad942b19d7'
 }
 foreach ($relativePath in $criticalSources.Keys) {
   $sourcePath = Join-Path $root $relativePath
-  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC19 source: $relativePath" }
+  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC20 source: $relativePath" }
   $actualHash = (Get-FileHash $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actualHash -ne $criticalSources[$relativePath]) {
-    throw "Critical RC19 source does not match the reviewed version: $relativePath"
+    throw "Critical RC20 source does not match the reviewed version: $relativePath"
   }
 }
-Write-Host '[VERIFY] Critical RC19 source hashes OK.'
+Write-Host '[VERIFY] Critical RC20 source hashes OK.'
 
 Get-ChildItem -Path (Join-Path $root 'src') -Directory -Recurse -Force |
   Where-Object { $_.Name -in @('bin', 'obj') } |
@@ -74,21 +74,21 @@ function Test-ByteSequence([byte[]]$Haystack, [byte[]]$Needle) {
   }
   return $false
 }
-$buildTag = 'rc19-safe-game-status-sync'
+$buildTag = 'rc20-main-thread-scan-fix'
 $hasBuildTag = (Test-ByteSequence $modBytes ([System.Text.Encoding]::UTF8.GetBytes($buildTag))) -or
                (Test-ByteSequence $modBytes ([System.Text.Encoding]::Unicode.GetBytes($buildTag)))
 if (-not $hasBuildTag) {
-  throw 'Built mod DLL does not contain the RC19 build tag. Refusing to package a stale DLL.'
+  throw 'Built mod DLL does not contain the RC20 build tag. Refusing to package a stale DLL.'
 }
-Write-Host "[VERIFY] RC19 mod build tag found; SHA-256=$((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"
+Write-Host "[VERIFY] RC20 mod build tag found; SHA-256=$((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"
 
 Write-Host '[5/9] Publishing Companion self-contained single-file...'
 dotnet publish (Join-Path $root 'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $companionOut
 $companionExe = Join-Path $companionOut 'ChzzkOfTheLamb.Companion.exe'
 if (-not (Test-Path $companionExe)) { throw "Companion EXE was not produced: $companionExe" }
 $companionVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($companionExe)
-if ($companionVersion.FileVersion -ne '1.0.0.19') { throw "Unexpected Companion file version: $($companionVersion.FileVersion)" }
-Write-Host '[VERIFY] RC19 Companion version tag found.'
+if ($companionVersion.FileVersion -ne '1.0.0.20') { throw "Unexpected Companion file version: $($companionVersion.FileVersion)" }
+Write-Host '[VERIFY] RC20 Companion version tag found.'
 
 Write-Host '[6/9] Creating normalized downloadable component ZIPs...'
 $temp = Join-Path $distRoot '_component-build'

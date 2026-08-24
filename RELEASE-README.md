@@ -83,5 +83,5 @@ ZIP 압축 해제와 실제 파일 설치/복사를 WinForms UI 스레드에서 
 - User data under `%LOCALAPPDATA%\ChzzkOfTheLamb` is not deleted by Companion program updates.
 - Installation log records `[PROCESS]`, `[EXTRACT]`, and `[INSTALL]` timings for diagnosis.
 
-### RC19 verification
-Companion must display `v1.0.0-rc19`. `BepInEx/LogOutput.log` must contain `CHZZK Companion Integration 1.0.0 loaded [BUILD=rc19-safe-game-status-sync]`, `[BRIDGE][STATE][TX-START]`, `[BRIDGE][STATE][TX-OK]`, and `[APPEARANCE][TX] save=slot_...`. Companion must contain `[BRIDGE][STATE][TX-OK] GET_GAME_STATUS delivered to Mod socket`, `[BRIDGE][STATE][RX] GAME_STATUS`, and `[BRIDGE][SYNC] requesting appearance catalog`. Only after `status` reports `GAME=True`, `SAVE=slot_...`, and `CATALOG>0` should automatic `!신도` raffle entry be tested. Unlocking a new normal form should additionally print `[APPEARANCE][AUTO-ALLOW]` and publish it to the viewer page automatically.
+### RC20 verification
+Companion must display `v1.0.0-rc20`. `BepInEx/LogOutput.log` must contain `[BUILD=rc20-main-thread-scan-fix]`, `[BRIDGE][RX-QUEUED] type=GET_GAME_STATUS`, `[BRIDGE][STATE] GET_GAME_STATUS received from Companion`, Mod `[BRIDGE][STATE][TX-START]`, Mod `[BRIDGE][STATE][TX-OK]`, and `[APPEARANCE][TX] save=slot_...`. Companion must contain `[BRIDGE][STATE][TX-OK] GET_GAME_STATUS delivered to Mod socket`, `[BRIDGE][STATE][RX] GAME_STATUS`, and `[BRIDGE][SYNC] requesting appearance catalog`. Only after `status` reports `GAME=True`, `SAVE=slot_...`, and `CATALOG>0` should automatic `!신도` raffle entry be tested.

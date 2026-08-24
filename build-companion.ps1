@@ -1,22 +1,22 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $project = Join-Path $root 'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj'
-$dist = Join-Path $root 'dist\rc19-companion'
+$dist = Join-Path $root 'dist\rc20-companion'
 
 $criticalSources = @{
-  'src\ChzzkOfTheLamb.Companion\Program.cs' = 'c1172ccf79612d3556125544446e8611e230a32b0ea1fa17e0d8d314d77b6a59'
+  'src\ChzzkOfTheLamb.Companion\Program.cs' = 'cd8bcfbf0297aa11bdd9e6487e030f7f0b1f4dccf57050344ed55336cb8ce613'
   'src\ChzzkOfTheLamb.Companion\GameBridge\GameBridgeServer.cs' = 'c3b7f7a0ed22594bc1f2ec4b8ffeafc1712180979522ea708701e64ddeb5bf17'
   'src\ChzzkOfTheLamb.Companion\Appearance\AppearanceStore.cs' = '6726689d6ffcef4c31d4064649fdc7be38c28d219fdf8eb7cb9db4afa75b893b'
-  'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj' = '7bdf689a603d1836165c23b7fee38b05faed6c37fd9e98f065fb82b6082d86f5'
+  'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj' = 'e317fe5e42a12c4396ef9080b177c302c0f6bb1b00a47ae1d14329ad942b19d7'
   'src\ChzzkOfTheLamb.Protocol\GameMessages.cs' = '2cbf4ef7e8c9427f006745b9737bf2c5f63cf58dca26463b404bc316d162e1b2'
 }
 
 foreach ($relativePath in $criticalSources.Keys) {
   $sourcePath = Join-Path $root $relativePath
-  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC19 source: $relativePath" }
+  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC20 source: $relativePath" }
   $actualHash = (Get-FileHash $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actualHash -ne $criticalSources[$relativePath]) {
-    throw "Critical RC19 source does not match the reviewed version: $relativePath"
+    throw "Critical RC20 source does not match the reviewed version: $relativePath"
   }
 }
 
@@ -37,10 +37,10 @@ dotnet publish $project -c Release -r win-x64 --self-contained true `
 $companionExe = Join-Path $dist 'ChzzkOfTheLamb.Companion.exe'
 if (-not (Test-Path $companionExe)) { throw "Companion EXE was not produced: $companionExe" }
 $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($companionExe)
-if ($version.FileVersion -ne '1.0.0.19') {
+if ($version.FileVersion -ne '1.0.0.20') {
   throw "Unexpected Companion file version: $($version.FileVersion)"
 }
 
-Write-Host '[OK] RC19 Companion built and verified.'
+Write-Host '[OK] RC20 Companion built and verified.'
 Write-Host "Output: $companionExe"
 Write-Host "SHA-256: $((Get-FileHash $companionExe -Algorithm SHA256).Hash.ToLowerInvariant())"

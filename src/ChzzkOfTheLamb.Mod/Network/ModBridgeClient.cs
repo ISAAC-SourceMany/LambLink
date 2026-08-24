@@ -46,7 +46,11 @@ public sealed class ModBridgeClient(ConcurrentQueue<GameCommandEnvelope> queue, 
 
                     if (r.MessageType == WebSocketMessageType.Close) break;
                     var envelope = JsonConvert.DeserializeObject<GameCommandEnvelope>(Encoding.UTF8.GetString(ms.ToArray()));
-                    if (envelope is not null) queue.Enqueue(envelope);
+                    if (envelope is not null)
+                    {
+                        queue.Enqueue(envelope);
+                        log.LogInfo($"[BRIDGE][RX-QUEUED] type={envelope.Type}");
+                    }
                 }
             }
             catch (Exception ex)

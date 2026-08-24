@@ -1,4 +1,4 @@
-# ChzzkOfTheLamb v1.0.0 RC19 source release
+# ChzzkOfTheLamb v1.0.0 RC20 source release
 
 외부 배포를 위한 release candidate 소스입니다.
 
@@ -10,18 +10,27 @@
 Release Companion은 AWS CLI/SSO를 사용하지 않으며 CHZZK Client Secret을 포함하지 않습니다.
 Streamer OAuth는 AWS Auth Gateway를 통해 처리합니다.
 
-## RC19 matched test pair
+## RC20 matched test pair
 
-The RC14-installed Companion is not updated by building only the game plugin. Build both RC19
+The installed Companion is not updated by building only the game plugin. Build both RC20
 components together:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build-test-pair.ps1
 ```
 
-Close the installed Companion and run `dist\rc19-companion\ChzzkOfTheLamb.Companion.exe`.
-Replace the two game DLLs with the files under `dist\rc19-plugin`. The Companion title must show
-`v1.0.0-rc19`, and the game log must show `[BUILD=rc19-safe-game-status-sync]` before testing.
+Close the installed Companion and run `dist\rc20-companion\ChzzkOfTheLamb.Companion.exe`.
+Replace the two game DLLs with the files under `dist\rc20-plugin`. The Companion title must show
+`v1.0.0-rc20`, and the game log must show `[BUILD=rc20-main-thread-scan-fix]` before testing.
+
+## RC20 main-thread dispatcher fix
+
+- Removes the recurring global `FindObjectsOfType<FollowerRecruit>()` scan that ran before state synchronization.
+- Runs GAME_STATUS dispatch before optional raffle maintenance.
+- Resolves the indoctrination recruit directly from the UI hook arguments before using a fallback list.
+- Logs `[BRIDGE][RX-QUEUED]` on the Mod network thread so socket receipt and Unity-main-thread dispatch are independently visible.
+- Preserves the RC18 automatic appearance policy and the RC19 minimal status snapshot.
+- See `docs/RC20_MAIN_THREAD_DISPATCH_FIX.md` for the evidence and verification sequence.
 
 ## RC19 safe GAME_STATUS synchronization
 
@@ -82,7 +91,7 @@ RC3 release packaging bundles COTL Korean Font Fix 4.2.1 (`COTL_KoreanFontFix.dl
 
 ## RC17 state synchronization and reliable raffle delivery
 
-- Adds a `[BUILD=rc19-safe-game-status-sync]` startup fingerprint so installed Mod freshness is visible in `LogOutput.log` even though the public plugin version remains `1.0.0`.
+- Adds a `[BUILD=rc20-main-thread-scan-fix]` startup fingerprint so installed Mod freshness is visible in `LogOutput.log` even though the public plugin version remains `1.0.0`.
 - Companion requests `GAME_STATUS` immediately after the WebSocket opens instead of treating transport connection as completed application synchronization.
 - Mod state sends report `TX-START`, `TX-OK`, and `TX-FAILED`, and failed initial synchronization retries.
 - A valid save immediately triggers appearance catalog and follower roster requests.
