@@ -1,15 +1,15 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $project = Join-Path $root 'src\ChzzkOfTheLamb.Mod\ChzzkOfTheLamb.Mod.csproj'
-$dist = Join-Path $root 'dist\rc24-plugin'
+$dist = Join-Path $root 'dist\rc25-plugin'
 
 function Assert-NativeSuccess([string]$Step) {
   if ($LASTEXITCODE -ne 0) { throw "$Step failed with exit code $LASTEXITCODE." }
 }
 
 $criticalSources = @{
-  'src\ChzzkOfTheLamb.Mod\ChzzkOfTheLamb.Mod.csproj' = 'c1222cce88640c9d356c961c161338b0b52a765524549b47bd7658615a567bf4'
-  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = '12acdfae498eb37cf7bf2687cb2d0633321a65fd581bf425dfe3d2a2b752f356'
+  'src\ChzzkOfTheLamb.Mod\ChzzkOfTheLamb.Mod.csproj' = '5e2aac6c30559e9bc2fd2fddb131aeb1f95e60d46faec187b71ec612dd63a938'
+  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = '96638a12ad3b9b62eb643297739790130ca5c8d8edb16de65e2a546e5626d535'
   'src\ChzzkOfTheLamb.Mod\BridgeRuntimeHost.cs' = '9261721e2708f59debb6785e2eeec611063738bd36744a55dec94f529ae3bc6b'
   'src\ChzzkOfTheLamb.Mod\Network\ModBridgeClient.cs' = 'dbe786dbd6cfa0df9144c87820e696b5ec076a8ee9c3f5b018b358179ff15595'
   'src\ChzzkOfTheLamb.Mod\Game\IndoctrinationRafflePatch.cs' = '753830ca22dc89e571da9861fac0ab2a0306497de81c89482d6f7fbccfa026eb'
@@ -21,10 +21,10 @@ $criticalSources = @{
 
 foreach ($relativePath in $criticalSources.Keys) {
   $sourcePath = Join-Path $root $relativePath
-  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC24 source: $relativePath" }
+  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC25 source: $relativePath" }
   $actualHash = (Get-FileHash $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actualHash -ne $criticalSources[$relativePath]) {
-    throw "Critical RC24 source does not match the reviewed version: $relativePath"
+    throw "Critical RC25 source does not match the reviewed version: $relativePath"
   }
 }
 
@@ -61,17 +61,17 @@ function Test-ByteSequence([byte[]]$Haystack, [byte[]]$Needle) {
 
 $modDll = Join-Path $dist 'ChzzkOfTheLamb.Mod.dll'
 $bytes = [System.IO.File]::ReadAllBytes($modDll)
-$tag = 'rc24-raffle-lifecycle-cotl-api-order'
+$tag = 'rc25-cotl-api-runtime-dependency-build-fix'
 $tagFound = (Test-ByteSequence $bytes ([System.Text.Encoding]::UTF8.GetBytes($tag))) -or
             (Test-ByteSequence $bytes ([System.Text.Encoding]::Unicode.GetBytes($tag)))
-if (-not $tagFound) { throw 'RC24 build tag missing from compiled DLL; stale build rejected.' }
+if (-not $tagFound) { throw 'RC25 build tag missing from compiled DLL; stale build rejected.' }
 
 foreach ($marker in @('io.github.xhayper.COTL_API', 'RAFFLE_ROUND_CLOSED')) {
   $found = (Test-ByteSequence $bytes ([System.Text.Encoding]::UTF8.GetBytes($marker))) -or
            (Test-ByteSequence $bytes ([System.Text.Encoding]::Unicode.GetBytes($marker)))
-  if (-not $found) { throw "RC24 compiled Mod is missing required marker: $marker" }
+  if (-not $found) { throw "RC25 compiled Mod is missing required marker: $marker" }
 }
 
-Write-Host '[OK] RC24 COTL_API-ordered raffle lifecycle plugin built and verified.'
+Write-Host '[OK] RC25 COTL_API runtime dependency build fix plugin built and verified.'
 Write-Host "Output: $dist"
 Write-Host "Mod SHA-256: $((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"

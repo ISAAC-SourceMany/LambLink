@@ -83,9 +83,9 @@ ZIP 압축 해제와 실제 파일 설치/복사를 WinForms UI 스레드에서 
 - User data under `%LOCALAPPDATA%\ChzzkOfTheLamb` is not deleted by Companion program updates.
 - Installation log records `[PROCESS]`, `[EXTRACT]`, and `[INSTALL]` timings for diagnosis.
 
-### RC24 verification
-Companion must display `v1.0.0-rc24`. `BepInEx/LogOutput.log` must contain
-`[BUILD=rc24-raffle-lifecycle-cotl-api-order]`,
+### RC25 verification
+Companion must display `v1.0.0-rc25`. `BepInEx/LogOutput.log` must contain
+`[BUILD=rc25-cotl-api-runtime-dependency-build-fix]`,
 `[DEPENDENCY] COTL_API=io.github.xhayper.COTL_API`,
 `[RAFFLE][PATCH-VERIFY] ... installed=True`, `[DIAG][RUNTIME-HOST][INSTALLED]`,
 `[DIAG][RUNTIME-HOST][FIRST-UPDATE]`, `[DIAG][UPDATE][FIRST]`, Mod

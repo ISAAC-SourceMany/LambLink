@@ -1,4 +1,4 @@
-# ChzzkOfTheLamb v1.0.0 RC24 source release
+# ChzzkOfTheLamb v1.0.0 RC25 source release
 
 외부 배포를 위한 release candidate 소스입니다.
 
@@ -17,23 +17,33 @@ Streamer OAuth는 AWS Auth Gateway를 통해 처리합니다.
 - Stops every build script immediately when a `dotnet` command returns a non-zero exit code.
 - Verifies expected DLL/EXE files exist before copying or packaging them.
 
-## RC24 matched test pair
+## RC25 matched test pair
 
-The installed Companion is not updated by building only the game plugin. Build both RC24
+The installed Companion is not updated by building only the game plugin. Build both RC25
 components together:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build-test-pair.ps1
 ```
 
-Close the installed Companion and run `dist\rc24-companion\ChzzkOfTheLamb.Companion.exe`.
-Replace the two game DLLs with the files under `dist\rc24-plugin`. The Companion title must show
-`v1.0.0-rc24`, and the game log must show
-`[BUILD=rc24-raffle-lifecycle-cotl-api-order]` before testing.
+Close the installed Companion and run `dist\rc25-companion\ChzzkOfTheLamb.Companion.exe`.
+Replace the two game DLLs with the files under `dist\rc25-plugin`. The Companion title must show
+`v1.0.0-rc25`, and the game log must show
+`[BUILD=rc25-cotl-api-runtime-dependency-build-fix]` before testing.
+
+## RC25 COTL_API build correction
+
+- Removes the compile-time `COTL_API` NuGet reference that pulled
+  `UnityEngine.Modules >= 2021.3.16` into the Mod and caused `NU1605` against the existing
+  `UnityEngine.Modules 2019.4.40` game-library reference.
+- Keeps COTL_API 0.3.4 as an installed runtime component and keeps the official GUID
+  `io.github.xhayper.COTL_API` as a hard `BepInDependency`, preserving API-first plugin load order.
+- The Mod does not reference any COTL_API assembly type, so no compile-time COTL_API reference is
+  required.
 
 ## RC24 raffle lifecycle correction
 
-- Pins COTL_API `0.3.4` and declares its official GUID
+- Installs COTL_API `0.3.4` at runtime and declares its official GUID
   `io.github.xhayper.COTL_API` as a hard BepInEx dependency, guaranteeing API-first load order.
 - Verifies at runtime that the `ShowIndoctrinationMenu` Harmony prefix is owned by this Mod.
 - Adds `RAFFLE_ROUND_CLOSED` so cancellation, no-participant completion, failed identity
@@ -41,7 +51,7 @@ Replace the two game DLLs with the files under `dist\rc24-plugin`. The Companion
 - Prevents the RC23 failure where a recruit ID stayed in `_announcedRecruitIds` forever and every
   later menu open was logged as already handled/announced/pending.
 - Reports OBS browser polling as `OVERLAY=ready` or `OVERLAY=not-polling` in `status`.
-- See `docs/RC24_RAFFLE_LIFECYCLE_COTL_API_ORDER.md`.
+- See `docs/RC25_COTL_API_RUNTIME_DEPENDENCY_BUILD_FIX.md`.
 
 ## RC23 end-to-end readiness and delivery confirmation
 
@@ -60,7 +70,7 @@ Replace the two game DLLs with the files under `dist\rc24-plugin`. The Companion
 - Sends an immediate `GAME_STATUS` from a thread-safe cache when `GET_GAME_STATUS` is decoded,
   then sends the authoritative Unity-main-thread snapshot.
 - Correlates Companion TX, Mod RX, Mod queue/dispatch, Mod TX, and Companion RX with numbered logs.
-- Mirrors the full Companion console to `%LOCALAPPDATA%\ChzzkOfTheLamb\companion-rc24.log`.
+- Mirrors the full Companion console to `%LOCALAPPDATA%\ChzzkOfTheLamb\companion-rc25.log`.
 - Runs a non-Unity watchdog that reports `NO-UPDATE` or the exact last main-thread stage after 5 seconds.
 - Splits catalog generation into save, type, singleton, unlock, palette, individual form, sort, and TX stages.
 - See `docs/RC21_DIAGNOSTIC_WATCHDOG_FALLBACK.md` for the single-run decision table.

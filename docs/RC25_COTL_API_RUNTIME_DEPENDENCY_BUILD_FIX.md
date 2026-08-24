@@ -1,4 +1,4 @@
-# RC24 raffle lifecycle and COTL_API load order
+# RC25 COTL_API runtime dependency build fix
 
 ## Runtime evidence from RC23
 
@@ -32,11 +32,16 @@ that removed it. That is the confirmed state-lifetime defect.
 ## BepInEx and COTL_API integration
 
 COTL_API 0.3.4 declares the official plugin GUID `io.github.xhayper.COTL_API` and initializes its
-own Harmony patches in `Awake`. It does not expose a public indoctrination-start event. RC24
-therefore keeps the game-specific Harmony prefix, pins COTL_API 0.3.4, and adds a hard
-`BepInDependency` so COTL_API is initialized first.
+own Harmony patches in `Awake`. It does not expose a public indoctrination-start event. RC25
+therefore keeps the game-specific Harmony prefix and adds a hard `BepInDependency` so COTL_API is
+initialized first. The installer pins COTL_API 0.3.4 as a runtime component.
 
-After `Harmony.CreateAndPatchAll`, RC24 reads Harmony patch metadata for every resolved
+The Mod does not use a COTL_API assembly type. Its former NuGet reference was therefore
+unnecessary and caused restore failure by requesting `UnityEngine.Modules >= 2021.3.16` while
+the game-library build uses `UnityEngine.Modules 2019.4.40`. RC25 removes only that compile-time
+package reference. Runtime installation and BepInEx load ordering remain mandatory.
+
+After `Harmony.CreateAndPatchAll`, RC25 reads Harmony patch metadata for every resolved
 `ShowIndoctrinationMenu` overload and logs whether the CHZZK owner ID is actually present.
 
 ## Corrected state machine
@@ -57,7 +62,7 @@ Startup:
 ```text
 [Info : COTL_API] COTL_API loaded!
 [RAFFLE][PATCH-VERIFY] ... installed=True
-[BUILD=rc24-raffle-lifecycle-cotl-api-order]
+[BUILD=rc25-cotl-api-runtime-dependency-build-fix]
 ```
 
 Round start:
