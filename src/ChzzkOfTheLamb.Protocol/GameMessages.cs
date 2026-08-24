@@ -30,6 +30,10 @@ public sealed class GameCommandEnvelope
 {
     public string Type { get; set; } = string.Empty;
     public string PayloadJson { get; set; } = "{}";
+    // Local diagnostic correlation. Senders leave these as zero; the receiving Mod assigns
+    // them before the command enters Unity's main-thread queue.
+    public long DiagnosticSequence { get; set; }
+    public long DiagnosticReceivedUnixMs { get; set; }
 }
 
 public sealed class FollowerAppearanceSelection

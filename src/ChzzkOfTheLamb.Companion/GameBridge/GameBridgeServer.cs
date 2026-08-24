@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.WebSockets;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using ChzzkOfTheLamb.Protocol;
@@ -11,6 +12,8 @@ public sealed class GameBridgeServer : IAsyncDisposable
     private readonly HttpListener _listener = new();
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private WebSocket? _game;
+    private long _sendSequence;
+    private long _receiveSequence;
 
     public event Action<GameCommandEnvelope>? MessageReceived;
     public event Action<bool>? ConnectionChanged;
@@ -44,9 +47,11 @@ public sealed class GameBridgeServer : IAsyncDisposable
 
     public async Task<bool> SendAsync<T>(string type, T payload, CancellationToken ct)
     {
+        var sequence = Interlocked.Increment(ref _sendSequence);
+        var started = Stopwatch.GetTimestamp();
         if (_game?.State != WebSocketState.Open)
         {
-            Console.WriteLine($"[Bridge] game not connected; skipped {type}");
+            Console.WriteLine($"[Bridge][TX][SKIPPED] id={sequence}, type={type}: game not connected");
             return false;
         }
 
@@ -59,20 +64,22 @@ public sealed class GameBridgeServer : IAsyncDisposable
                 PayloadJson = JsonSerializer.Serialize(payload)
             };
             var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(envelope));
+            Console.WriteLine($"[Bridge][TX][BEGIN] id={sequence}, type={type}, bytes={bytes.Length}, thread={Environment.CurrentManagedThreadId}");
             await _sendLock.WaitAsync(ct);
             locked = true;
             var game = _game;
             if (game?.State != WebSocketState.Open)
             {
-                Console.WriteLine($"[Bridge] game disconnected before send; skipped {type}");
+                Console.WriteLine($"[Bridge][TX][ABORTED] id={sequence}, type={type}: game disconnected while waiting for send lock");
                 return false;
             }
             await game.SendAsync(bytes, WebSocketMessageType.Text, true, ct);
+            Console.WriteLine($"[Bridge][TX][END] id={sequence}, type={type}, elapsedMs={ElapsedMilliseconds(started):F1}");
             return true;
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            Console.WriteLine($"[Bridge][TX-FAILED] type={type}: {ex.GetBaseException().Message}");
+            Console.WriteLine($"[Bridge][TX][FAILED] id={sequence}, type={type}, elapsedMs={ElapsedMilliseconds(started):F1}: {ex.GetBaseException().Message}");
             return false;
         }
         finally
@@ -97,9 +104,26 @@ public sealed class GameBridgeServer : IAsyncDisposable
                     ms.Write(buffer, 0, r.Count);
                 } while (!r.EndOfMessage);
 
-                var json = Encoding.UTF8.GetString(ms.ToArray());
-                var envelope = JsonSerializer.Deserialize<GameCommandEnvelope>(json);
-                if (envelope is not null) MessageReceived?.Invoke(envelope);
+                var sequence = Interlocked.Increment(ref _receiveSequence);
+                var bytes = ms.ToArray();
+                Console.WriteLine($"[Bridge][RX][FRAME] id={sequence}, bytes={bytes.Length}, messageType={r.MessageType}, thread={Environment.CurrentManagedThreadId}");
+                GameCommandEnvelope? envelope;
+                try
+                {
+                    var json = Encoding.UTF8.GetString(bytes);
+                    envelope = JsonSerializer.Deserialize<GameCommandEnvelope>(json);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Bridge][RX][DECODE-FAILED] id={sequence}, bytes={bytes.Length}: {ex}");
+                    continue;
+                }
+                if (envelope is not null)
+                {
+                    Console.WriteLine($"[Bridge][RX][DECODED] id={sequence}, type={envelope.Type}, payloadChars={envelope.PayloadJson.Length}");
+                    MessageReceived?.Invoke(envelope);
+                }
+                else Console.WriteLine($"[Bridge][RX][EMPTY] id={sequence}, bytes={bytes.Length}");
             }
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
@@ -123,4 +147,7 @@ public sealed class GameBridgeServer : IAsyncDisposable
         _sendLock.Dispose();
         return ValueTask.CompletedTask;
     }
+
+    private static double ElapsedMilliseconds(long started) =>
+        (Stopwatch.GetTimestamp() - started) * 1000.0 / Stopwatch.Frequency;
 }

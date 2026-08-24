@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using BepInEx.Logging;
 using UnityEngine;
 
@@ -19,6 +20,10 @@ public sealed class GameSaveService(ManualLogSource log)
     private string _lastResolved = "unknown";
     private string? _lastSource;
     private float _nextProbeAt;
+
+    // This value is populated only by the Unity/main-thread resolver, but can be read safely by
+    // the bridge receive thread to provide a non-Unity fallback GAME_STATUS response.
+    public string LastResolvedSaveId => Volatile.Read(ref _lastResolved);
 
     public string GetCurrentSaveId()
     {

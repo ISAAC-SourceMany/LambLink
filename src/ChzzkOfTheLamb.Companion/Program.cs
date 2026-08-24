@@ -1,9 +1,11 @@
 using System.Text;
 using System.Text.Json;
+using System.Diagnostics;
 using ChzzkOfTheLamb.Companion.Appearance;
 using ChzzkOfTheLamb.Companion.Chzzk;
 using ChzzkOfTheLamb.Companion.Cloud;
 using ChzzkOfTheLamb.Companion.Configuration;
+using ChzzkOfTheLamb.Companion.Diagnostics;
 using ChzzkOfTheLamb.Companion.GameBridge;
 using ChzzkOfTheLamb.Companion.Raffle;
 using ChzzkOfTheLamb.Companion.Overlay;
@@ -11,9 +13,18 @@ using ChzzkOfTheLamb.Companion.Rules;
 using ChzzkOfTheLamb.Companion.Storage;
 using ChzzkOfTheLamb.Protocol;
 
-const string ReleaseVersion = "1.0.0-rc20";
+const string ReleaseVersion = "1.0.0-rc21";
 const string ProductionApiBase = "https://y0eblkdmu5.execute-api.ap-northeast-2.amazonaws.com";
 const string ProductionFrontendUrl = "https://d1gvw9ccym1qvn.cloudfront.net";
+
+var dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ChzzkOfTheLamb");
+Directory.CreateDirectory(dataDir);
+var diagnosticLogPath = Path.Combine(dataDir, "companion-rc21.log");
+using var diagnosticLogWriter = new StreamWriter(
+    new FileStream(diagnosticLogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite),
+    new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)) { AutoFlush = true };
+Console.SetOut(TextWriter.Synchronized(new TeeTextWriter(Console.Out, diagnosticLogWriter)));
+Console.WriteLine($"[DIAG][SESSION-BEGIN] version={ReleaseVersion}, utc={DateTimeOffset.UtcNow:O}, pid={Environment.ProcessId}, log={diagnosticLogPath}");
 
 #if RELEASE_DISTRIBUTION
 const bool IsReleaseDistribution = true;
@@ -39,8 +50,6 @@ var redirectUri = Environment.GetEnvironmentVariable("CHZZK_REDIRECT_URI")
                   ?? "http://127.0.0.1:17881/callback/";
 var forceDevelopmentMode = !IsReleaseDistribution && IsTruthy(Environment.GetEnvironmentVariable("CHZZK_DEV_MODE"));
 
-var dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ChzzkOfTheLamb");
-Directory.CreateDirectory(dataDir);
 var settings = CompanionSettings.LoadOrCreate(Path.Combine(dataDir, "settings.json"));
 var followers = new ViewerFollowerRepository(Path.Combine(dataDir, "viewer-followers.json"));
 var appearances = new AppearanceStore(Path.Combine(dataDir, "viewer-appearances.json"));
@@ -151,6 +160,7 @@ var latestRosterFollowerIds = new HashSet<int>();
 var latestRosterFollowersById = new Dictionary<int, FollowerRosterEntry>();
 DateTimeOffset latestRosterAt = DateTimeOffset.MinValue;
 string? lastRosterFingerprint = null;
+long bridgeDispatchSequence = 0;
 
 await using var bridge = new GameBridgeServer();
 bridge.ConnectionChanged += connected =>
@@ -186,6 +196,9 @@ async Task RequestInitialGameStateAsync()
 
 bridge.MessageReceived += envelope =>
 {
+    var dispatchId = Interlocked.Increment(ref bridgeDispatchSequence);
+    var dispatchStarted = Stopwatch.GetTimestamp();
+    Console.WriteLine($"[BRIDGE][DISPATCH][BEGIN] id={dispatchId}, type={envelope.Type}, thread={Environment.CurrentManagedThreadId}");
     try
     {
         switch (envelope.Type)
@@ -377,7 +390,12 @@ bridge.MessageReceived += envelope =>
             }
         }
     }
-    catch (Exception ex) { Console.WriteLine($"[Bridge] invalid message: {ex.Message}"); }
+    catch (Exception ex) { Console.WriteLine($"[BRIDGE][DISPATCH][FAILED] id={dispatchId}, type={envelope.Type}: {ex}"); }
+    finally
+    {
+        var elapsedMs = (Stopwatch.GetTimestamp() - dispatchStarted) * 1000.0 / Stopwatch.Frequency;
+        Console.WriteLine($"[BRIDGE][DISPATCH][END] id={dispatchId}, type={envelope.Type}, elapsedMs={elapsedMs:F1}");
+    }
 };
 
 raffle.Started += (id, seconds) =>

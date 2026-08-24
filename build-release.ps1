@@ -9,27 +9,30 @@ $fontDll = Join-Path $fontAssetRoot 'COTL_KoreanFontFix.dll'
 $fontBundle = Join-Path $fontAssetRoot 'koreanfont.bundle'
 $hosting = Join-Path $root 'release-hosting'
 
-Write-Host '[0/9] Verifying RC20 source identity and removing stale compiler outputs...'
+Write-Host '[0/9] Verifying RC21 source identity and removing stale compiler outputs...'
 $criticalSources = @{
-  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = 'fdb33cd78d26b3de5c260ebd3f82ddc8e649cbc04c895032757d0addd16d2272'
-  'src\ChzzkOfTheLamb.Mod\Network\ModBridgeClient.cs' = '03f7669401ab04095627dc18da4f4e2a143e7214fa782f0bd1dda5bbe3d1748b'
+  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = '443e3d908c06841dc62731a5fd441b309b7b1161c066cb1389bb7c9d4aba56de'
+  'src\ChzzkOfTheLamb.Mod\Network\ModBridgeClient.cs' = 'f4880b66af179cdb341abee543fd1d4e0c40a23d893cdd57ad7571b61cac7bbf'
   'src\ChzzkOfTheLamb.Mod\Game\IndoctrinationRafflePatch.cs' = '81260035a8f74e613b414576d1065373c76fcdccca000a790097fa4047b2f9cb'
   'src\ChzzkOfTheLamb.Mod\Game\FollowerService.cs' = '6883d37210328c161ead327c6d4c9ff1576c96aa8793790872d4d8791f7a0ee9'
-  'src\ChzzkOfTheLamb.Protocol\GameMessages.cs' = '2cbf4ef7e8c9427f006745b9737bf2c5f63cf58dca26463b404bc316d162e1b2'
-  'src\ChzzkOfTheLamb.Companion\Program.cs' = 'cd8bcfbf0297aa11bdd9e6487e030f7f0b1f4dccf57050344ed55336cb8ce613'
-  'src\ChzzkOfTheLamb.Companion\GameBridge\GameBridgeServer.cs' = 'c3b7f7a0ed22594bc1f2ec4b8ffeafc1712180979522ea708701e64ddeb5bf17'
+  'src\ChzzkOfTheLamb.Mod\Game\FollowerAppearanceService.cs' = 'e840ef802b18b8c52155c01f63bf0e1d3bc8d69e2f433407f7c2d7eb3e08ddc4'
+  'src\ChzzkOfTheLamb.Mod\Game\GameSaveService.cs' = '5b48b8ce1f0c50ae47a9e160ce4244ab9b3712c2cc96e8cc55678163ded72c5d'
+  'src\ChzzkOfTheLamb.Protocol\GameMessages.cs' = 'd64b622d34e9956dbdf953a1e36c8a0cf4b94be1ad0635a07f46c7ff0e180c1e'
+  'src\ChzzkOfTheLamb.Companion\Program.cs' = '0400585c337f006b6bc5e8e89e24383d36677ad23d6bde2160656ca5e5b81543'
+  'src\ChzzkOfTheLamb.Companion\GameBridge\GameBridgeServer.cs' = '7f5070e83242227d5baee5c64c6565f6f0b8020d54ff280a2f96daea5eb47fdd'
+  'src\ChzzkOfTheLamb.Companion\Diagnostics\TeeTextWriter.cs' = '3edd24b12f8aaac9a1de768be84d0d6711c1b30c28a8bff39507912ffffcd305'
   'src\ChzzkOfTheLamb.Companion\Appearance\AppearanceStore.cs' = '6726689d6ffcef4c31d4064649fdc7be38c28d219fdf8eb7cb9db4afa75b893b'
-  'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj' = 'e317fe5e42a12c4396ef9080b177c302c0f6bb1b00a47ae1d14329ad942b19d7'
+  'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj' = 'ee53443a76a2fe34ff22a09f8f086a6fb057eb2e2c7942f7b2780f0eabfdd79d'
 }
 foreach ($relativePath in $criticalSources.Keys) {
   $sourcePath = Join-Path $root $relativePath
-  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC20 source: $relativePath" }
+  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC21 source: $relativePath" }
   $actualHash = (Get-FileHash $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actualHash -ne $criticalSources[$relativePath]) {
-    throw "Critical RC20 source does not match the reviewed version: $relativePath"
+    throw "Critical RC21 source does not match the reviewed version: $relativePath"
   }
 }
-Write-Host '[VERIFY] Critical RC20 source hashes OK.'
+Write-Host '[VERIFY] Critical RC21 source hashes OK.'
 
 Get-ChildItem -Path (Join-Path $root 'src') -Directory -Recurse -Force |
   Where-Object { $_.Name -in @('bin', 'obj') } |
@@ -74,21 +77,21 @@ function Test-ByteSequence([byte[]]$Haystack, [byte[]]$Needle) {
   }
   return $false
 }
-$buildTag = 'rc20-main-thread-scan-fix'
+$buildTag = 'rc21-diagnostic-watchdog-fallback'
 $hasBuildTag = (Test-ByteSequence $modBytes ([System.Text.Encoding]::UTF8.GetBytes($buildTag))) -or
                (Test-ByteSequence $modBytes ([System.Text.Encoding]::Unicode.GetBytes($buildTag)))
 if (-not $hasBuildTag) {
-  throw 'Built mod DLL does not contain the RC20 build tag. Refusing to package a stale DLL.'
+  throw 'Built mod DLL does not contain the RC21 build tag. Refusing to package a stale DLL.'
 }
-Write-Host "[VERIFY] RC20 mod build tag found; SHA-256=$((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"
+Write-Host "[VERIFY] RC21 mod build tag found; SHA-256=$((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"
 
 Write-Host '[5/9] Publishing Companion self-contained single-file...'
 dotnet publish (Join-Path $root 'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $companionOut
 $companionExe = Join-Path $companionOut 'ChzzkOfTheLamb.Companion.exe'
 if (-not (Test-Path $companionExe)) { throw "Companion EXE was not produced: $companionExe" }
 $companionVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($companionExe)
-if ($companionVersion.FileVersion -ne '1.0.0.20') { throw "Unexpected Companion file version: $($companionVersion.FileVersion)" }
-Write-Host '[VERIFY] RC20 Companion version tag found.'
+if ($companionVersion.FileVersion -ne '1.0.0.21') { throw "Unexpected Companion file version: $($companionVersion.FileVersion)" }
+Write-Host '[VERIFY] RC21 Companion version tag found.'
 
 Write-Host '[6/9] Creating normalized downloadable component ZIPs...'
 $temp = Join-Path $distRoot '_component-build'

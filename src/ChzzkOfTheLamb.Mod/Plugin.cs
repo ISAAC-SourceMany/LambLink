@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -21,7 +22,7 @@ public sealed class Plugin : BaseUnityPlugin
     public const string PluginGuid = "com.chzzkofthelamb.integration";
     public const string PluginName = "CHZZK Companion Integration";
     public const string PluginVersion = "1.0.0";
-    public const string BuildTag = "rc20-main-thread-scan-fix";
+    public const string BuildTag = "rc21-diagnostic-watchdog-fallback";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private ModBridgeClient? _bridge;
@@ -42,15 +43,29 @@ public sealed class Plugin : BaseUnityPlugin
     private Task<bool>? _raffleSendTask;
     private int? _raffleSendRecruitId;
     private float _nextRaffleSendAt;
+    private readonly CancellationTokenSource _lifetime = new();
+    private volatile string _cachedSaveId = "unknown";
+    private volatile string _cachedArea = "UNKNOWN";
+    private volatile bool _cachedInGame;
+    private int _networkFallbackStatusInFlight;
+    private int _mainThreadId;
+    private long _updateCount;
+    private long _lastUpdateTimestamp;
+    private volatile string _diagnosticStage = "AWAKE";
+    private long _diagnosticStageStarted;
+    private long _diagnosticProgress;
 
     private void Awake()
     {
         _instance = this;
+        _mainThreadId = Thread.CurrentThread.ManagedThreadId;
+        _diagnosticStageStarted = Stopwatch.GetTimestamp();
         _saves = new GameSaveService(Logger);
-        _appearances = new FollowerAppearanceService(Logger, _saves);
+        _appearances = new FollowerAppearanceService(Logger, _saves, SetDiagnosticStage);
         _followers = new FollowerService(Logger, _saves, _appearances);
         _donations = new DonationEffectService(Logger);
         _bridge = new ModBridgeClient(_queue, Logger);
+        _bridge.CommandDecoded += OnBridgeCommandDecoded;
         _bridge.ConnectionChanged += connected =>
         {
             if (connected)
@@ -66,8 +81,9 @@ public sealed class Plugin : BaseUnityPlugin
 
         Harmony.CreateAndPatchAll(typeof(Plugin).Assembly, PluginGuid);
         Logger.LogInfo($"{PluginName} {PluginVersion} loaded [BUILD={BuildTag}]");
-        Logger.LogInfo("[BRIDGE][STATE] safe core status snapshot enabled; optional game-version/area probes are excluded from the sync handshake");
-        Logger.LogInfo("[BRIDGE][MAIN-THREAD] periodic global FollowerRecruit scan disabled; network state dispatch runs before optional gameplay maintenance");
+        Logger.LogInfo($"[DIAG][BOOT] mainThread={_mainThreadId}, watchdog=enabled, network-cache-fallback=enabled");
+        Logger.LogInfo("[BRIDGE][MAIN-THREAD] command dispatch and mandatory state synchronization run before optional follower maintenance");
+        _ = RunDiagnosticWatchdogAsync(_lifetime.Token);
 
         // The bridge performs localhost networking only. Game mutations remain queued and
         // are still executed by Update on Unity's main thread. Start immediately instead of
@@ -82,7 +98,62 @@ public sealed class Plugin : BaseUnityPlugin
         if (_bridgeStarted || _bridge == null) return;
         _bridgeStarted = true;
         Logger.LogInfo($"[BRIDGE][START] reason={reason}, endpoint=ws://127.0.0.1:17771/game");
-        _ = _bridge.RunAsync(CancellationToken.None);
+        _ = _bridge.RunAsync(_lifetime.Token);
+    }
+
+    private void OnDestroy()
+    {
+        try { _lifetime.Cancel(); } catch { }
+        _lifetime.Dispose();
+    }
+
+    // Runs on the WebSocket receive thread. It never calls Unity or game APIs.
+    private void OnBridgeCommandDecoded(long sequence, GameCommandEnvelope command)
+    {
+        Logger.LogInfo($"[BRIDGE][RX][CALLBACK] id={sequence}, type={command.Type}, thread={Thread.CurrentThread.ManagedThreadId}, mainThread={_mainThreadId}");
+        if (!string.Equals(command.Type, GameMessageTypes.GetGameStatus, StringComparison.Ordinal)) return;
+        _ = SendCachedGameStatusFallbackAsync(sequence);
+    }
+
+    private async Task SendCachedGameStatusFallbackAsync(long receiveSequence)
+    {
+        if (Interlocked.CompareExchange(ref _networkFallbackStatusInFlight, 1, 0) != 0)
+        {
+            Logger.LogInfo($"[BRIDGE][STATE][FALLBACK-SKIPPED] rx={receiveSequence}, reason=already-in-flight");
+            return;
+        }
+
+        try
+        {
+            for (var attempt = 1; attempt <= 3; attempt++)
+            {
+                if (attempt > 1) await Task.Delay(attempt == 2 ? 1000 : 2000, _lifetime.Token);
+                var saveId = _saves?.LastResolvedSaveId ?? "unknown";
+                if (string.Equals(saveId, "unknown", StringComparison.Ordinal)) saveId = _cachedSaveId;
+                var inGame = _cachedInGame || !string.Equals(saveId, "unknown", StringComparison.Ordinal);
+                var status = new GameStatusEvent
+                {
+                    InGame = inGame,
+                    SaveId = saveId,
+                    ModVersion = PluginVersion,
+                    GameVersion = string.Empty,
+                    Area = inGame ? "BASE" : _cachedArea
+                };
+                Logger.LogInfo($"[BRIDGE][STATE][FALLBACK-TX-START] rx={receiveSequence}, attempt={attempt}/3, inGame={status.InGame}, save={status.SaveId}, source=thread-safe-cache");
+                var sent = _bridge != null && await _bridge.TrySendAsync(GameMessageTypes.GameStatus, status, _lifetime.Token);
+                Logger.LogInfo($"[BRIDGE][STATE][FALLBACK-TX-{(sent ? "OK" : "FAILED")}] rx={receiveSequence}, attempt={attempt}/3, inGame={status.InGame}, save={status.SaveId}");
+                if (!sent || !string.Equals(saveId, "unknown", StringComparison.Ordinal)) break;
+            }
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            Logger.LogError($"[BRIDGE][STATE][FALLBACK-TX-FAILED] rx={receiveSequence}: {ex}");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _networkFallbackStatusInFlight, 0);
+        }
     }
 
     internal static void RefreshFollowerNameplate(object uiFollowerName)
@@ -142,14 +213,24 @@ public sealed class Plugin : BaseUnityPlugin
     // Unity main thread: all Cult of the Lamb API calls are dispatched here.
     private void Update()
     {
-        try { _followers?.Tick(); }
-        catch (Exception ex) { Logger.LogError($"[UPDATE][FOLLOWER-TICK] {ex}"); }
+        var updateNumber = Interlocked.Increment(ref _updateCount);
+        Volatile.Write(ref _lastUpdateTimestamp, Stopwatch.GetTimestamp());
+        if (updateNumber == 1)
+            Logger.LogInfo($"[DIAG][UPDATE][FIRST] thread={Thread.CurrentThread.ManagedThreadId}, expectedMainThread={_mainThreadId}, queue={_queue.Count}");
 
+        SetDiagnosticStage("UPDATE/POLL-COMPLETIONS");
         PollStatusSendCompletion();
         PollRaffleSendCompletion();
 
+        // Mandatory transport dispatch comes first. Optional follower/UI maintenance is last so
+        // no gameplay scan can prevent GET_GAME_STATUS or catalog commands from being observed.
+        SetDiagnosticStage("UPDATE/QUEUE-DRAIN");
         while (_queue.TryDequeue(out var command))
         {
+            var dispatchStarted = Stopwatch.GetTimestamp();
+            var sequence = command.DiagnosticSequence;
+            Logger.LogInfo($"[BRIDGE][DISPATCH][BEGIN] id={sequence}, type={command.Type}, queueRemaining={_queue.Count}, thread={Thread.CurrentThread.ManagedThreadId}");
+            SetDiagnosticStage($"COMMAND/{sequence}/{command.Type}");
             try
             {
                 switch (command.Type)
@@ -180,11 +261,12 @@ public sealed class Plugin : BaseUnityPlugin
                         _followers!.SyncChzzkFollowerMarkersFromJson(command.PayloadJson);
                         break;
                     case GameMessageTypes.GetGameStatus:
-                        Logger.LogInfo("[BRIDGE][STATE] GET_GAME_STATUS received from Companion");
+                        Logger.LogInfo($"[BRIDGE][STATE] GET_GAME_STATUS dispatched on Unity main thread; id={sequence}");
                         _initialStateSyncPending = true;
                         break;
                     case GameMessageTypes.GetFollowerRoster:
                     {
+                        SetDiagnosticStage($"COMMAND/{sequence}/ROSTER/READY-CHECK");
                         if (PlayerFarming.Instance == null)
                         {
                             _ = _bridge!.SendAsync(GameMessageTypes.FollowerRoster, new FollowerRosterSnapshot
@@ -194,8 +276,10 @@ public sealed class Plugin : BaseUnityPlugin
                             break;
                         }
 
+                        SetDiagnosticStage($"COMMAND/{sequence}/ROSTER/BUILD");
                         var roster = _followers!.BuildRoster();
                         Logger.LogInfo($"[FOLLOWER-ROSTER][TX] save={roster.SaveId}, followers={roster.Followers.Count}");
+                        SetDiagnosticStage($"COMMAND/{sequence}/ROSTER/TX-QUEUE");
                         _ = _bridge!.TrySendAsync(GameMessageTypes.FollowerRoster, roster);
                         break;
                     }
@@ -203,6 +287,7 @@ public sealed class Plugin : BaseUnityPlugin
                     {
                         // Do not inspect WorshipperData while the game is still in Splash/Main Menu.
                         // Some COTL singletons are intentionally unavailable during boot.
+                        SetDiagnosticStage($"COMMAND/{sequence}/CATALOG/READY-CHECK");
                         if (PlayerFarming.Instance == null)
                         {
                             _ = _bridge!.SendAsync(GameMessageTypes.AppearanceCatalog, new FollowerAppearanceCatalog
@@ -212,17 +297,28 @@ public sealed class Plugin : BaseUnityPlugin
                             break;
                         }
 
+                        SetDiagnosticStage($"COMMAND/{sequence}/CATALOG/DESERIALIZE");
                         var req = JsonConvert.DeserializeObject<AppearanceCatalogRequest>(command.PayloadJson) ?? new AppearanceCatalogRequest();
+                        SetDiagnosticStage($"COMMAND/{sequence}/CATALOG/BUILD");
                         var catalog = _appearances!.BuildCatalog(req.IncludeModded, req.IncludeSpecial);
                         Logger.LogInfo($"[APPEARANCE][TX] save={catalog.SaveId}, forms={catalog.Forms.Count}");
+                        SetDiagnosticStage($"COMMAND/{sequence}/CATALOG/TX-QUEUE");
                         _ = _bridge!.TrySendAsync(GameMessageTypes.AppearanceCatalog, catalog);
                         break;
                     }
+                    default:
+                        Logger.LogWarning($"[BRIDGE][DISPATCH][UNKNOWN] id={sequence}, type={command.Type}");
+                        break;
                 }
             }
             catch (Exception ex)
             {
-                Logger.LogError(ex);
+                Logger.LogError($"[BRIDGE][DISPATCH][FAILED] id={sequence}, type={command.Type}: {ex}");
+            }
+            finally
+            {
+                Logger.LogInfo($"[BRIDGE][DISPATCH][END] id={sequence}, type={command.Type}, elapsedMs={ElapsedMilliseconds(dispatchStarted):F1}, queueRemaining={_queue.Count}");
+                SetDiagnosticStage("UPDATE/QUEUE-DRAIN");
             }
         }
 
@@ -236,27 +332,34 @@ public sealed class Plugin : BaseUnityPlugin
             TryStartGameStatusSend("connection-handshake");
         }
 
+        SetDiagnosticStage("UPDATE/STATUS-SCHEDULER");
         if (UnityEngine.Time.unscaledTime >= _nextStatusAt)
         {
             _nextStatusAt = UnityEngine.Time.unscaledTime + 5f;
             TryStartGameStatusSend("periodic-heartbeat");
         }
 
+        SetDiagnosticStage("UPDATE/RAFFLE-SCHEDULER");
         TryStartPendingRaffleSend();
+
+        SetDiagnosticStage("UPDATE/FOLLOWER-TICK");
+        try { _followers?.Tick(); }
+        catch (Exception ex) { Logger.LogError($"[UPDATE][FOLLOWER-TICK] {ex}"); }
+        finally { SetDiagnosticStage("UPDATE/IDLE"); }
     }
 
     private void TryStartGameStatusSend(string reason)
     {
         if (_bridge?.IsConnected != true || _statusSendTask != null) return;
 
-        var status = BuildGameStatusSafely();
+        var status = BuildGameStatusSafely(reason);
         _statusSendReason = reason;
         _statusSendPayload = status;
         Logger.LogInfo($"[BRIDGE][STATE][TX-START] reason={reason}, inGame={status.InGame}, save={status.SaveId}, area={status.Area}");
         _statusSendTask = _bridge.TrySendAsync(GameMessageTypes.GameStatus, status);
     }
 
-    private GameStatusEvent BuildGameStatusSafely()
+    private GameStatusEvent BuildGameStatusSafely(string reason)
     {
         // GAME_STATUS is the gate for every later catalog/roster request. Keep this mandatory
         // handshake limited to probes already proven safe on the user's runtime. RC14-RC18
@@ -266,22 +369,40 @@ public sealed class Plugin : BaseUnityPlugin
         // DonationEffectService remains authoritative when a donation is actually applied and
         // corrects a BASE-selected effect to a dungeon effect when necessary, so the conservative
         // BASE value here does not allow an effect to execute in the wrong context.
+        var started = Stopwatch.GetTimestamp();
+        Logger.LogInfo($"[BRIDGE][STATE][BUILD][BEGIN] reason={reason}, thread={Thread.CurrentThread.ManagedThreadId}");
         var status = new GameStatusEvent
         {
             ModVersion = PluginVersion,
             GameVersion = string.Empty,
             Area = "UNKNOWN"
         };
-        try { status.InGame = PlayerFarming.Instance != null; }
+        SetDiagnosticStage($"STATUS/{reason}/IN-GAME-PROBE");
+        try
+        {
+            status.InGame = PlayerFarming.Instance != null;
+            Logger.LogInfo($"[BRIDGE][STATE][BUILD][IN-GAME-OK] reason={reason}, value={status.InGame}");
+        }
         catch (Exception ex) { Logger.LogWarning($"[BRIDGE][STATE] in-game probe failed: {ex.GetBaseException().Message}"); }
 
         if (status.InGame)
         {
-            try { status.SaveId = _saves?.GetCurrentSaveId() ?? "unknown"; }
+            SetDiagnosticStage($"STATUS/{reason}/SAVE-PROBE");
+            Logger.LogInfo($"[BRIDGE][STATE][BUILD][SAVE-BEGIN] reason={reason}");
+            try
+            {
+                status.SaveId = _saves?.GetCurrentSaveId() ?? "unknown";
+                Logger.LogInfo($"[BRIDGE][STATE][BUILD][SAVE-END] reason={reason}, value={status.SaveId}");
+            }
             catch (Exception ex) { Logger.LogWarning($"[BRIDGE][STATE] save probe failed: {ex.GetBaseException().Message}"); }
             status.Area = "BASE";
         }
 
+        _cachedInGame = status.InGame;
+        _cachedSaveId = status.SaveId;
+        _cachedArea = status.Area;
+        Logger.LogInfo($"[BRIDGE][STATE][BUILD][END] reason={reason}, inGame={status.InGame}, save={status.SaveId}, area={status.Area}, elapsedMs={ElapsedMilliseconds(started):F1}");
+        SetDiagnosticStage("UPDATE/STATE-SYNC");
         return status;
     }
 
@@ -345,4 +466,58 @@ public sealed class Plugin : BaseUnityPlugin
         _raffleSendTask = null;
         _raffleSendRecruitId = null;
     }
+
+    private void SetDiagnosticStage(string stage)
+    {
+        _diagnosticStage = stage;
+        Volatile.Write(ref _diagnosticStageStarted, Stopwatch.GetTimestamp());
+        Interlocked.Increment(ref _diagnosticProgress);
+    }
+
+    private async Task RunDiagnosticWatchdogAsync(CancellationToken ct)
+    {
+        var bootTimestamp = Stopwatch.GetTimestamp();
+        string? lastReportedKey = null;
+        long lastReportedTimestamp = 0;
+
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(2000, ct);
+                var now = Stopwatch.GetTimestamp();
+                var updateCount = Interlocked.Read(ref _updateCount);
+                var lastUpdate = Volatile.Read(ref _lastUpdateTimestamp);
+                var sinceBootMs = (now - bootTimestamp) * 1000.0 / Stopwatch.Frequency;
+                var sinceUpdateMs = lastUpdate == 0 ? sinceBootMs : (now - lastUpdate) * 1000.0 / Stopwatch.Frequency;
+                if (sinceUpdateMs < 5000) continue;
+
+                var stage = _diagnosticStage;
+                var stageStarted = Volatile.Read(ref _diagnosticStageStarted);
+                var stageMs = stageStarted == 0 ? sinceBootMs : (now - stageStarted) * 1000.0 / Stopwatch.Frequency;
+                var key = updateCount == 0 ? "NO-UPDATE" : stage;
+                var repeatMs = lastReportedTimestamp == 0 ? double.MaxValue : (now - lastReportedTimestamp) * 1000.0 / Stopwatch.Frequency;
+                if (string.Equals(lastReportedKey, key, StringComparison.Ordinal) && repeatMs < 10000) continue;
+
+                lastReportedKey = key;
+                lastReportedTimestamp = now;
+                if (updateCount == 0)
+                {
+                    Logger.LogError($"[DIAG][WATCHDOG][NO-UPDATE] elapsedSinceAwakeMs={sinceBootMs:F0}, mainThread={_mainThreadId}, queue={_queue.Count}, socketConnected={_bridge?.IsConnected == true}");
+                }
+                else
+                {
+                    Logger.LogError($"[DIAG][WATCHDOG][STALLED] stage={stage}, stageElapsedMs={stageMs:F0}, sinceUpdateEntryMs={sinceUpdateMs:F0}, updates={updateCount}, progress={Interlocked.Read(ref _diagnosticProgress)}, queue={_queue.Count}, socketConnected={_bridge?.IsConnected == true}");
+                }
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            Logger.LogError($"[DIAG][WATCHDOG][FAILED] {ex}");
+        }
+    }
+
+    private static double ElapsedMilliseconds(long started) =>
+        (Stopwatch.GetTimestamp() - started) * 1000.0 / Stopwatch.Frequency;
 }

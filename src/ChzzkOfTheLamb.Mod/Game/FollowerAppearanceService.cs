@@ -1,8 +1,10 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using BepInEx.Logging;
 using ChzzkOfTheLamb.Protocol;
 using HarmonyLib;
@@ -15,37 +17,58 @@ namespace ChzzkOfTheLamb.Mod.Game;
 /// Uses the live WorshipperData + save unlock lists so DLC/game updates do not require a
 /// hard-coded CHZZK form table.
 /// </summary>
-public sealed class FollowerAppearanceService(ManualLogSource log, GameSaveService saves)
+public sealed class FollowerAppearanceService(ManualLogSource log, GameSaveService saves, Action<string>? diagnosticStage = null)
 {
     private string? _lastDiscoverySummary;
+    private int _catalogBuildSequence;
 
     public FollowerAppearanceCatalog BuildCatalog(bool includeModded, bool includeSpecial)
     {
-        var catalog = new FollowerAppearanceCatalog
+        var requestId = Interlocked.Increment(ref _catalogBuildSequence);
+        var started = Stopwatch.GetTimestamp();
+        void Stage(string name, string details = "")
         {
-            SaveId = PlayerFarming.Instance != null ? saves.GetCurrentSaveId() : "unknown"
-        };
+            diagnosticStage?.Invoke($"CATALOG/{requestId}/{name}");
+            log.LogInfo($"[APPEARANCE][BUILD][{name}] id={requestId}{(string.IsNullOrEmpty(details) ? string.Empty : ", " + details)}");
+        }
+
+        Stage("BEGIN", $"includeModded={includeModded}, includeSpecial={includeSpecial}");
+        var catalog = new FollowerAppearanceCatalog { SaveId = "unknown" };
 
         try
         {
+            Stage("SAVE-PROBE-BEGIN");
+            var inGame = PlayerFarming.Instance != null;
+            if (inGame) catalog.SaveId = saves.GetCurrentSaveId();
+            Stage("SAVE-PROBE-END", $"inGame={inGame}, save={catalog.SaveId}");
+
+            Stage("TYPE-LOOKUP-BEGIN", "type=WorshipperData");
             var worshipperType = FindTypeBySimpleName("WorshipperData");
+            Stage("TYPE-LOOKUP-END", $"found={worshipperType != null}");
             if (worshipperType is null)
             {
                 LogDiscoveryOnce("WorshipperData type not found in loaded assemblies.");
+                Stage("END", $"forms=0, elapsedMs={ElapsedMilliseconds(started):F1}, reason=type-not-found");
                 return catalog;
             }
 
+            Stage("SINGLETON-BEGIN", $"type={worshipperType.FullName}");
             var instance = ReadStaticFirst(worshipperType, "_Instance", "Instance", "instance");
+            Stage("SINGLETON-END", $"initialized={instance != null}");
             if (instance is null)
             {
                 LogDiscoveryOnce($"{worshipperType.FullName} found, but its singleton is not initialized yet.");
+                Stage("END", $"forms=0, elapsedMs={ElapsedMilliseconds(started):F1}, reason=singleton-null");
                 return catalog;
             }
 
+            Stage("CHARACTERS-BEGIN");
             var raw = ReadFirst(instance, worshipperType, "Characters", "characters", "Skins", "FollowerSkins") as IList;
+            Stage("CHARACTERS-END", $"count={(raw == null ? -1 : raw.Count)}");
             if (raw is null)
             {
                 LogDiscoveryOnce($"{worshipperType.FullName} singleton found, but Characters is not indexable.");
+                Stage("END", $"forms=0, elapsedMs={ElapsedMilliseconds(started):F1}, reason=characters-null");
                 return catalog;
             }
 
@@ -53,22 +76,32 @@ public sealed class FollowerAppearanceService(ManualLogSource log, GameSaveServi
             // FollowerSkinsBlacklist is NOT a manual-selection deny list; it is used by the game
             // to stop certain skins appearing through normal/random spawning. Using it here was
             // the reason devbridge3 produced selectable=0 even with 28 unlocked forms.
+            Stage("UNLOCKS-BEGIN");
             var unlocked = ReadStringSetFromDataManager("FollowerSkinsUnlocked", "FollowerFormsUnlocked", "SkinsUnlocked");
+            Stage("UNLOCKS-END", $"count={unlocked.Count}");
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var mapped = 0;
             var missing = 0;
+            Stage("PALETTE-BEGIN");
             var globalPalette = DiscoverGlobalPalette(instance, worshipperType);
+            Stage("PALETTE-END", $"count={globalPalette.Count}");
 
             if (unlocked.Count > 0)
             {
+                Stage("INDEX-METHOD-BEGIN");
                 var getIndex = worshipperType.GetMethod("GetSkinIndexFromName", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, new[] { typeof(string) }, null);
-                foreach (var formId in unlocked.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+                Stage("INDEX-METHOD-END", $"found={getIndex != null}");
+                var orderedUnlocked = unlocked.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+                for (var formIndex = 0; formIndex < orderedUnlocked.Count; formIndex++)
                 {
+                    var formId = orderedUnlocked[formIndex];
+                    Stage("FORM-BEGIN", $"index={formIndex + 1}/{orderedUnlocked.Count}, form={formId}");
                     object? item = null;
                     try
                     {
                         if (getIndex != null)
                         {
+                            diagnosticStage?.Invoke($"CATALOG/{requestId}/FORM/{formId}/INDEX-INVOKE");
                             var idxObj = getIndex.Invoke(instance, new object[] { formId });
                             if (idxObj is int idx && idx >= 0 && idx < raw.Count)
                                 item = raw[idx];
@@ -79,6 +112,7 @@ public sealed class FollowerAppearanceService(ManualLogSource log, GameSaveServi
                     // Fallback: scan raw data and match its skin/name field to the unlocked codename.
                     if (item is null)
                     {
+                        diagnosticStage?.Invoke($"CATALOG/{requestId}/FORM/{formId}/RAW-SCAN");
                         foreach (var candidate in raw)
                         {
                             if (candidate is null) continue;
@@ -95,15 +129,30 @@ public sealed class FollowerAppearanceService(ManualLogSource log, GameSaveServi
                     if (item is null)
                     {
                         missing++;
+                        Stage("FORM-END", $"index={formIndex + 1}/{orderedUnlocked.Count}, form={formId}, result=missing");
                         continue;
                     }
 
+                    diagnosticStage?.Invoke($"CATALOG/{requestId}/FORM/{formId}/DESCRIBE");
                     var form = DescribeKnownId(item, formId, globalPalette);
-                    if (!seen.Add(form.FormId)) continue;
-                    if (!includeSpecial && form.IsSpecial) continue;
-                    if (!includeModded && form.IsModded) continue;
+                    if (!seen.Add(form.FormId))
+                    {
+                        Stage("FORM-END", $"index={formIndex + 1}/{orderedUnlocked.Count}, form={formId}, result=duplicate");
+                        continue;
+                    }
+                    if (!includeSpecial && form.IsSpecial)
+                    {
+                        Stage("FORM-END", $"index={formIndex + 1}/{orderedUnlocked.Count}, form={formId}, result=special-filtered");
+                        continue;
+                    }
+                    if (!includeModded && form.IsModded)
+                    {
+                        Stage("FORM-END", $"index={formIndex + 1}/{orderedUnlocked.Count}, form={formId}, result=modded-filtered");
+                        continue;
+                    }
                     catalog.Forms.Add(form);
                     mapped++;
+                    Stage("FORM-END", $"index={formIndex + 1}/{orderedUnlocked.Count}, form={formId}, variants={form.VariantIds.Count}, colors={form.ColorIds.Count}");
                 }
             }
             else
@@ -111,8 +160,10 @@ public sealed class FollowerAppearanceService(ManualLogSource log, GameSaveServi
                 // Fallback for saves/builds where no unlock list is exposed. Do not use the
                 // blacklist as a selection filter; instead expose non-special raw forms and let
                 // final validation occur against the live game before applying one.
-                foreach (var candidate in raw)
+                for (var rawIndex = 0; rawIndex < raw.Count; rawIndex++)
                 {
+                    diagnosticStage?.Invoke($"CATALOG/{requestId}/RAW/{rawIndex + 1}-OF-{raw.Count}");
+                    var candidate = raw[rawIndex];
                     if (candidate is null) continue;
                     var t = candidate.GetType();
                     var id = ReadFirst(candidate, t, "SkinName", "skinName", "Name", "FormName", "ID", "Id", "id")?.ToString() ?? string.Empty;
@@ -125,20 +176,27 @@ public sealed class FollowerAppearanceService(ManualLogSource log, GameSaveServi
                 mapped = catalog.Forms.Count;
             }
 
+            Stage("SORT-BEGIN", $"forms={catalog.Forms.Count}");
             catalog.Forms.Sort((a, b) => string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase));
+            Stage("SORT-END", $"forms={catalog.Forms.Count}");
             var variantForms = catalog.Forms.Count(x => x.VariantIds.Count > 0);
             var colorForms = catalog.Forms.Count(x => x.ColorIds.Count > 0);
             var variantOptions = catalog.Forms.Sum(x => x.VariantIds.Count);
             var colorOptions = catalog.Forms.Sum(x => x.ColorIds.Count);
             var paletteColors = catalog.Forms.Sum(x => x.ColorHexById.Count);
             LogDiscoveryOnce($"Follower forms: source={worshipperType.FullName}, raw={raw.Count}, unlockedList={unlocked.Count}, mapped={mapped}, missing={missing}, selectable={catalog.Forms.Count}, variantForms={variantForms}, variantOptions={variantOptions}, colorForms={colorForms}, colorOptions={colorOptions}, paletteColors={paletteColors}.");
+            Stage("END", $"save={catalog.SaveId}, forms={catalog.Forms.Count}, elapsedMs={ElapsedMilliseconds(started):F1}");
         }
         catch (Exception ex)
         {
+            Stage("FAILED", $"elapsedMs={ElapsedMilliseconds(started):F1}, error={ex.GetBaseException().Message}");
             log.LogWarning($"Appearance catalog discovery failed: {ex}");
         }
         return catalog;
     }
+
+    private static double ElapsedMilliseconds(long started) =>
+        (Stopwatch.GetTimestamp() - started) * 1000.0 / Stopwatch.Frequency;
 
     public bool Validate(FollowerAppearanceSelection? selection, FollowerAppearanceCatalog catalog)
     {

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Collections.Concurrent;
@@ -14,8 +15,11 @@ public sealed class ModBridgeClient(ConcurrentQueue<GameCommandEnvelope> queue, 
 {
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private ClientWebSocket? _socket;
+    private long _receiveSequence;
+    private long _sendSequence;
 
     public event Action<bool>? ConnectionChanged;
+    public event Action<long, GameCommandEnvelope>? CommandDecoded;
 
     public bool IsConnected => _socket?.State == WebSocketState.Open;
 
@@ -35,6 +39,7 @@ public sealed class ModBridgeClient(ConcurrentQueue<GameCommandEnvelope> queue, 
                 var buffer = new byte[32 * 1024];
                 while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
                 {
+                    log.LogInfo($"[BRIDGE][RX][WAIT] socket={ws.State}, thread={Thread.CurrentThread.ManagedThreadId}");
                     using var ms = new MemoryStream();
                     WebSocketReceiveResult r;
                     do
@@ -45,12 +50,29 @@ public sealed class ModBridgeClient(ConcurrentQueue<GameCommandEnvelope> queue, 
                     } while (!r.EndOfMessage);
 
                     if (r.MessageType == WebSocketMessageType.Close) break;
-                    var envelope = JsonConvert.DeserializeObject<GameCommandEnvelope>(Encoding.UTF8.GetString(ms.ToArray()));
+                    var sequence = Interlocked.Increment(ref _receiveSequence);
+                    var bytes = ms.ToArray();
+                    log.LogInfo($"[BRIDGE][RX][FRAME] id={sequence}, bytes={bytes.Length}, messageType={r.MessageType}, thread={Thread.CurrentThread.ManagedThreadId}");
+                    GameCommandEnvelope? envelope;
+                    try
+                    {
+                        envelope = JsonConvert.DeserializeObject<GameCommandEnvelope>(Encoding.UTF8.GetString(bytes));
+                    }
+                    catch (Exception ex)
+                    {
+                        log.LogError($"[BRIDGE][RX][DECODE-FAILED] id={sequence}, bytes={bytes.Length}: {ex}");
+                        continue;
+                    }
                     if (envelope is not null)
                     {
+                        envelope.DiagnosticSequence = sequence;
+                        envelope.DiagnosticReceivedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                         queue.Enqueue(envelope);
-                        log.LogInfo($"[BRIDGE][RX-QUEUED] type={envelope.Type}");
+                        log.LogInfo($"[BRIDGE][RX][QUEUED] id={sequence}, type={envelope.Type}, queue={queue.Count}");
+                        try { CommandDecoded?.Invoke(sequence, envelope); }
+                        catch (Exception ex) { log.LogError($"[BRIDGE][RX][CALLBACK-FAILED] id={sequence}, type={envelope.Type}: {ex}"); }
                     }
+                    else log.LogWarning($"[BRIDGE][RX][EMPTY] id={sequence}, bytes={bytes.Length}");
                 }
             }
             catch (Exception ex)
@@ -72,10 +94,12 @@ public sealed class ModBridgeClient(ConcurrentQueue<GameCommandEnvelope> queue, 
     }
     public async System.Threading.Tasks.Task<bool> TrySendAsync<T>(string type, T payload, CancellationToken ct = default)
     {
+        var sequence = Interlocked.Increment(ref _sendSequence);
+        var started = Stopwatch.GetTimestamp();
         var ws = _socket;
         if (ws?.State != WebSocketState.Open)
         {
-            log.LogWarning($"[BRIDGE][SEND-SKIPPED] type={type}: socket is not open");
+            log.LogWarning($"[BRIDGE][TX][SKIPPED] id={sequence}, type={type}: socket is not open");
             return false;
         }
 
@@ -84,16 +108,22 @@ public sealed class ModBridgeClient(ConcurrentQueue<GameCommandEnvelope> queue, 
         {
             var envelope = new GameCommandEnvelope { Type = type, PayloadJson = JsonConvert.SerializeObject(payload) };
             var bytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(envelope));
+            log.LogInfo($"[BRIDGE][TX][BEGIN] id={sequence}, type={type}, bytes={bytes.Length}, thread={Thread.CurrentThread.ManagedThreadId}");
             await _sendLock.WaitAsync(ct);
             locked = true;
             ws = _socket;
-            if (ws?.State != WebSocketState.Open) return false;
+            if (ws?.State != WebSocketState.Open)
+            {
+                log.LogWarning($"[BRIDGE][TX][ABORTED] id={sequence}, type={type}: socket closed while waiting for send lock");
+                return false;
+            }
             await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct);
+            log.LogInfo($"[BRIDGE][TX][END] id={sequence}, type={type}, elapsedMs={ElapsedMilliseconds(started):F1}");
             return true;
         }
         catch (Exception ex)
         {
-            log.LogWarning($"[BRIDGE][SEND-FAILED] type={type}: {ex.GetBaseException().Message}");
+            log.LogWarning($"[BRIDGE][TX][FAILED] id={sequence}, type={type}, elapsedMs={ElapsedMilliseconds(started):F1}: {ex.GetBaseException().Message}");
             return false;
         }
         finally
@@ -101,5 +131,8 @@ public sealed class ModBridgeClient(ConcurrentQueue<GameCommandEnvelope> queue, 
             if (locked) _sendLock.Release();
         }
     }
+
+    private static double ElapsedMilliseconds(long started) =>
+        (Stopwatch.GetTimestamp() - started) * 1000.0 / Stopwatch.Frequency;
 
 }
