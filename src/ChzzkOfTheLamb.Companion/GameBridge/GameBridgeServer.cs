@@ -42,23 +42,43 @@ public sealed class GameBridgeServer : IAsyncDisposable
         }
     }
 
-    public async Task SendAsync<T>(string type, T payload, CancellationToken ct)
+    public async Task<bool> SendAsync<T>(string type, T payload, CancellationToken ct)
     {
         if (_game?.State != WebSocketState.Open)
         {
             Console.WriteLine($"[Bridge] game not connected; skipped {type}");
-            return;
+            return false;
         }
 
-        var envelope = new GameCommandEnvelope
+        var locked = false;
+        try
         {
-            Type = type,
-            PayloadJson = JsonSerializer.Serialize(payload)
-        };
-        var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(envelope));
-        await _sendLock.WaitAsync(ct);
-        try { await _game.SendAsync(bytes, WebSocketMessageType.Text, true, ct); }
-        finally { _sendLock.Release(); }
+            var envelope = new GameCommandEnvelope
+            {
+                Type = type,
+                PayloadJson = JsonSerializer.Serialize(payload)
+            };
+            var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(envelope));
+            await _sendLock.WaitAsync(ct);
+            locked = true;
+            var game = _game;
+            if (game?.State != WebSocketState.Open)
+            {
+                Console.WriteLine($"[Bridge] game disconnected before send; skipped {type}");
+                return false;
+            }
+            await game.SendAsync(bytes, WebSocketMessageType.Text, true, ct);
+            return true;
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            Console.WriteLine($"[Bridge][TX-FAILED] type={type}: {ex.GetBaseException().Message}");
+            return false;
+        }
+        finally
+        {
+            if (locked) _sendLock.Release();
+        }
     }
 
     private async Task ReceiveLoopAsync(WebSocket ws, CancellationToken ct)
@@ -88,7 +108,11 @@ public sealed class GameBridgeServer : IAsyncDisposable
         }
         finally
         {
-            if (ReferenceEquals(_game, ws)) ConnectionChanged?.Invoke(false);
+            if (ReferenceEquals(_game, ws))
+            {
+                _game = null;
+                ConnectionChanged?.Invoke(false);
+            }
         }
     }
 

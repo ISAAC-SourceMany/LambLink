@@ -11,7 +11,7 @@ using ChzzkOfTheLamb.Companion.Rules;
 using ChzzkOfTheLamb.Companion.Storage;
 using ChzzkOfTheLamb.Protocol;
 
-const string ReleaseVersion = "1.0.0-rc16";
+const string ReleaseVersion = "1.0.0-rc17";
 const string ProductionApiBase = "https://y0eblkdmu5.execute-api.ap-northeast-2.amazonaws.com";
 const string ProductionFrontendUrl = "https://d1gvw9ccym1qvn.cloudfront.net";
 
@@ -156,11 +156,31 @@ await using var bridge = new GameBridgeServer();
 bridge.ConnectionChanged += connected =>
 {
     Console.WriteLine(connected ? "[GAME] connected" : "[GAME] disconnected");
-    // Catalog discovery is intentionally deferred until GAME_STATUS reports InGame=true.
-    // This keeps the mod from touching WorshipperData during the game's splash/bootstrap scene.
+    if (connected)
+    {
+        currentSaveId = "unknown";
+        lastGameStatus = null;
+        _ = RequestInitialGameStateAsync();
+    }
 };
 
 string lastNameplateSyncSignature = string.Empty;
+
+async Task RequestInitialGameStateAsync()
+{
+    try
+    {
+        Console.WriteLine("[BRIDGE][STATE][TX] GET_GAME_STATUS");
+        var sent = await bridge.SendAsync(GameMessageTypes.GetGameStatus, new { }, stop.Token);
+        if (!sent)
+            Console.WriteLine("[BRIDGE][STATE][TX-FAILED] GET_GAME_STATUS; waiting for Mod heartbeat/reconnect");
+    }
+    catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[BRIDGE][STATE][TX-FAILED] GET_GAME_STATUS: {ex.GetBaseException().Message}");
+    }
+}
 
 bridge.MessageReceived += envelope =>
 {
@@ -173,6 +193,7 @@ bridge.MessageReceived += envelope =>
                 var status = JsonSerializer.Deserialize<GameStatusEvent>(envelope.PayloadJson)!;
                 var previousSave = currentSaveId;
                 currentSaveId = status.SaveId;
+                Console.WriteLine($"[BRIDGE][STATE][RX] GAME_STATUS inGame={status.InGame}, save={status.SaveId}, area={status.Area}, mod={status.ModVersion}");
 
                 var changed = lastGameStatus is null
                               || lastGameStatus.InGame != status.InGame
@@ -189,6 +210,7 @@ bridge.MessageReceived += envelope =>
                     && (!string.Equals(previousSave, status.SaveId, StringComparison.Ordinal)
                         || lastGameStatus?.InGame != true))
                 {
+                    Console.WriteLine($"[BRIDGE][SYNC] requesting appearance catalog and follower roster for save={status.SaveId}");
                     _ = bridge.SendAsync(GameMessageTypes.GetAppearanceCatalog, new AppearanceCatalogRequest
                     {
                         IncludeModded = settings.Appearance.IncludeModdedForms,

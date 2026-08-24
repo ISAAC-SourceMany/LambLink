@@ -83,5 +83,5 @@ ZIP 압축 해제와 실제 파일 설치/복사를 WinForms UI 스레드에서 
 - User data under `%LOCALAPPDATA%\ChzzkOfTheLamb` is not deleted by Companion program updates.
 - Installation log records `[PROCESS]`, `[EXTRACT]`, and `[INSTALL]` timings for diagnosis.
 
-### RC14 verification
-`BepInEx/LogOutput.log` must contain `CHZZK Companion Integration 1.0.0 loaded [BUILD=rc16-dev10z-raffle-immediate-bridge]`, `[BRIDGE][START] reason=plugin-awake`, and `[BRIDGE][CONNECTED]` before testing automatic `!신도` raffle entry.
+### RC17 verification
+Companion must display `v1.0.0-rc17`. `BepInEx/LogOutput.log` must contain `CHZZK Companion Integration 1.0.0 loaded [BUILD=rc17-state-sync-reliable-raffle]`, `[BRIDGE][STATE][TX-OK]`, and `[APPEARANCE][TX] save=slot_...` before testing automatic `!신도` raffle entry.

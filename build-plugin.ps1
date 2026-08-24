@@ -1,21 +1,22 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $project = Join-Path $root 'src\ChzzkOfTheLamb.Mod\ChzzkOfTheLamb.Mod.csproj'
-$dist = Join-Path $root 'dist\rc16-plugin'
+$dist = Join-Path $root 'dist\rc17-plugin'
 
 $criticalSources = @{
-  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = 'afcf18a87f2ccd4195e1ccaa3033c1ee76996acce6a9de26831ec1efd6577a0c'
-  'src\ChzzkOfTheLamb.Mod\Game\IndoctrinationRafflePatch.cs' = '1634cf8a2d480437145067f433cf271018e1a3b50c7e032c27ab2f360a3dd49b'
+  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = '3ed6a9ebc2b6f88bad288232796e4894ef3bf479732f7b0f9c475d27e5d62b55'
+  'src\ChzzkOfTheLamb.Mod\Network\ModBridgeClient.cs' = '2c1162ac922e54cd38da6b6d0406c4c31febcb013a1728208461819b65a59f48'
+  'src\ChzzkOfTheLamb.Mod\Game\IndoctrinationRafflePatch.cs' = '81260035a8f74e613b414576d1065373c76fcdccca000a790097fa4047b2f9cb'
   'src\ChzzkOfTheLamb.Mod\Game\FollowerService.cs' = '1c0ee08c2ce668ebb15cd41cf757bd6b4d28cc3e1ee37bf3e4a5ac1a0f8ba02f'
-  'src\ChzzkOfTheLamb.Protocol\GameMessages.cs' = '80d837a5e3190f3747ff2b83deaf0c38512cb86c1aad492b1262fd7b4d3c467d'
+  'src\ChzzkOfTheLamb.Protocol\GameMessages.cs' = '2cbf4ef7e8c9427f006745b9737bf2c5f63cf58dca26463b404bc316d162e1b2'
 }
 
 foreach ($relativePath in $criticalSources.Keys) {
   $sourcePath = Join-Path $root $relativePath
-  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC16 source: $relativePath" }
+  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC17 source: $relativePath" }
   $actualHash = (Get-FileHash $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actualHash -ne $criticalSources[$relativePath]) {
-    throw "Critical RC16 source does not match the reviewed version: $relativePath"
+    throw "Critical RC17 source does not match the reviewed version: $relativePath"
   }
 }
 
@@ -46,11 +47,11 @@ function Test-ByteSequence([byte[]]$Haystack, [byte[]]$Needle) {
 
 $modDll = Join-Path $dist 'ChzzkOfTheLamb.Mod.dll'
 $bytes = [System.IO.File]::ReadAllBytes($modDll)
-$tag = 'rc16-dev10z-raffle-immediate-bridge'
+$tag = 'rc17-state-sync-reliable-raffle'
 $tagFound = (Test-ByteSequence $bytes ([System.Text.Encoding]::UTF8.GetBytes($tag))) -or
             (Test-ByteSequence $bytes ([System.Text.Encoding]::Unicode.GetBytes($tag)))
-if (-not $tagFound) { throw 'RC16 build tag missing from compiled DLL; stale build rejected.' }
+if (-not $tagFound) { throw 'RC17 build tag missing from compiled DLL; stale build rejected.' }
 
-Write-Host '[OK] RC16 dev10z raffle + immediate bridge plugin built and verified.'
+Write-Host '[OK] RC17 state sync + reliable raffle plugin built and verified.'
 Write-Host "Output: $dist"
 Write-Host "Mod SHA-256: $((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"

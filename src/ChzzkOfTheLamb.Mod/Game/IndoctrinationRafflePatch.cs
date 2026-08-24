@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -10,12 +11,21 @@ namespace ChzzkOfTheLamb.Mod.Game;
 [HarmonyPatch]
 internal static class IndoctrinationRafflePatch
 {
-    private static MethodBase? TargetMethod()
+    private static IEnumerable<MethodBase> TargetMethods()
     {
         var uiManager = AccessTools.TypeByName("Lamb.UI.UIManager");
-        if (uiManager == null) return null;
-        return AccessTools.GetDeclaredMethods(uiManager)
-            .FirstOrDefault(m => string.Equals(m.Name, "ShowIndoctrinationMenu", StringComparison.Ordinal));
+        if (uiManager == null)
+        {
+            Plugin.LogRafflePatchTarget(null);
+            return Array.Empty<MethodBase>();
+        }
+        var targets = AccessTools.GetDeclaredMethods(uiManager)
+            .Where(m => string.Equals(m.Name, "ShowIndoctrinationMenu", StringComparison.Ordinal))
+            .Cast<MethodBase>()
+            .ToArray();
+        if (targets.Length == 0) Plugin.LogRafflePatchTarget(null);
+        else foreach (var target in targets) Plugin.LogRafflePatchTarget(target);
+        return targets;
     }
 
     private static void Prefix(object[] __args)

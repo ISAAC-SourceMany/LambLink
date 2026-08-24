@@ -15,6 +15,8 @@ public sealed class ModBridgeClient(ConcurrentQueue<GameCommandEnvelope> queue, 
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private ClientWebSocket? _socket;
 
+    public event Action<bool>? ConnectionChanged;
+
     public bool IsConnected => _socket?.State == WebSocketState.Open;
 
     public async System.Threading.Tasks.Task RunAsync(CancellationToken ct)
@@ -28,6 +30,7 @@ public sealed class ModBridgeClient(ConcurrentQueue<GameCommandEnvelope> queue, 
                 log.LogInfo("[BRIDGE][CONNECT] attempting ws://127.0.0.1:17771/game");
                 await ws.ConnectAsync(new Uri("ws://127.0.0.1:17771/game"), ct);
                 log.LogInfo("[BRIDGE][CONNECTED] Connected to CHZZK Companion at ws://127.0.0.1:17771/game");
+                ConnectionChanged?.Invoke(true);
 
                 var buffer = new byte[32 * 1024];
                 while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
@@ -51,30 +54,32 @@ public sealed class ModBridgeClient(ConcurrentQueue<GameCommandEnvelope> queue, 
                 log.LogWarning($"[BRIDGE][DISCONNECTED] {ex.GetBaseException().Message}; retrying in 3s");
                 try { await System.Threading.Tasks.Task.Delay(3000, ct); } catch { }
             }
-            finally { _socket = null; }
+            finally
+            {
+                _socket = null;
+                ConnectionChanged?.Invoke(false);
+            }
         }
     }
 
     public async System.Threading.Tasks.Task SendAsync<T>(string type, T payload, CancellationToken ct = default)
     {
-        var ws = _socket;
-        if (ws?.State != WebSocketState.Open) return;
-        var envelope = new GameCommandEnvelope { Type = type, PayloadJson = JsonConvert.SerializeObject(payload) };
-        var bytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(envelope));
-        await _sendLock.WaitAsync(ct);
-        try { await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct); }
-        finally { _sendLock.Release(); }
+        await TrySendAsync(type, payload, ct);
     }
     public async System.Threading.Tasks.Task<bool> TrySendAsync<T>(string type, T payload, CancellationToken ct = default)
     {
         var ws = _socket;
-        if (ws?.State != WebSocketState.Open) return false;
+        if (ws?.State != WebSocketState.Open)
+        {
+            log.LogWarning($"[BRIDGE][SEND-SKIPPED] type={type}: socket is not open");
+            return false;
+        }
 
-        var envelope = new GameCommandEnvelope { Type = type, PayloadJson = JsonConvert.SerializeObject(payload) };
-        var bytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(envelope));
         var locked = false;
         try
         {
+            var envelope = new GameCommandEnvelope { Type = type, PayloadJson = JsonConvert.SerializeObject(payload) };
+            var bytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(envelope));
             await _sendLock.WaitAsync(ct);
             locked = true;
             ws = _socket;

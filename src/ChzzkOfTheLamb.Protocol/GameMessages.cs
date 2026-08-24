@@ -12,6 +12,7 @@ public static class GameMessageTypes
     public const string DonationEffect = "DONATION_EFFECT";
     public const string GetAppearanceCatalog = "GET_FOLLOWER_APPEARANCE_CATALOG";
     public const string GetFollowerRoster = "GET_FOLLOWER_ROSTER";
+    public const string GetGameStatus = "GET_GAME_STATUS";
     public const string SyncChzzkFollowerMarkers = "SYNC_CHZZK_FOLLOWER_MARKERS";
     public const string Ping = "PING";
 

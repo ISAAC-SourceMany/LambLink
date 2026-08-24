@@ -1,4 +1,4 @@
-# ChzzkOfTheLamb v1.0.0 RC1 source release
+# ChzzkOfTheLamb v1.0.0 RC17 source release
 
 외부 배포를 위한 release candidate 소스입니다.
 
@@ -49,9 +49,17 @@ RC3 release packaging bundles COTL Korean Font Fix 4.2.1 (`COTL_KoreanFontFix.dl
 - Adds `[RAFFLE][FALLBACK]` open/close diagnostics.
 - Fixes the nullable `args` warning path by normalizing to an empty array.
 
-## RC14 raffle trigger hardening
+## RC17 state synchronization and reliable raffle delivery
 
-- Adds a `[BUILD=rc16-dev10z-raffle-immediate-bridge]` startup fingerprint so installed Mod freshness is visible in `LogOutput.log` even though the public plugin version remains `1.0.0`.
+- Adds a `[BUILD=rc17-state-sync-reliable-raffle]` startup fingerprint so installed Mod freshness is visible in `LogOutput.log` even though the public plugin version remains `1.0.0`.
+- Companion requests `GAME_STATUS` immediately after the WebSocket opens instead of treating transport connection as completed application synchronization.
+- Mod state sends report `TX-START`, `TX-OK`, and `TX-FAILED`, and failed initial synchronization retries.
+- A valid save immediately triggers appearance catalog and follower roster requests.
+- Automatic raffle requests remain queued until their WebSocket delivery succeeds.
+- See `docs/RC17_STATE_SYNC_FIX.md` for the RC14/RC16 Companion comparison and expected logs.
+
+## Earlier raffle trigger hardening history
+
 - Stops relying on Harmony assembly scanning for the production raffle trigger. `IndoctrinationRafflePatch.Install()` now explicitly resolves and patches every `Lamb.UI.UIManager.ShowIndoctrinationMenu` overload.
 - Also patches `Lamb.UI.UIAppearanceMenuController_Form.OnShowStarted()` as a second independent trigger tied to the actual indoctrination appearance screen.
 - Runtime fallback now detects an active `UIAppearanceMenuController_Form` instance first and passes that instance into recruit resolution; exact GameObject-name lookup is only secondary.
