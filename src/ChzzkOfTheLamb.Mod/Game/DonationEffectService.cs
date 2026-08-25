@@ -253,9 +253,9 @@ public sealed class DonationEffectService
     private string BuffMoveAndAttack(float moveMultiplier, float attackMultiplier, float seconds)
     {
         EnsureDungeon();
-        var moveQueue = DungeonDonationBuffState.QueueMove(moveMultiplier, seconds);
-        var attackQueue = DungeonDonationBuffState.QueueAttack(attackMultiplier, seconds);
-        return $"{moveQueue}; {attackQueue}";
+        var group = DungeonDonationBuffState.QueueMoveAndAttack(moveMultiplier, attackMultiplier, seconds);
+        _log.LogInfo($"[DONATION][BUFF-GROUP] movement={moveMultiplier:0.##}, attack={attackMultiplier:0.##}, duration={seconds:0}s, schedule={group}");
+        return $"{group} (movement + attack start together)";
     }
 
     private string DamageAllEnemies(float damage)

@@ -14,13 +14,13 @@ using ChzzkOfTheLamb.Companion.Storage;
 using ChzzkOfTheLamb.Companion.ViewerPage;
 using ChzzkOfTheLamb.Protocol;
 
-const string ReleaseVersion = "1.0.0-rc32";
+const string ReleaseVersion = "1.0.0-rc33";
 const string ProductionApiBase = "https://y0eblkdmu5.execute-api.ap-northeast-2.amazonaws.com";
 const string ProductionFrontendUrl = "https://d1gvw9ccym1qvn.cloudfront.net";
 
 var dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ChzzkOfTheLamb");
 Directory.CreateDirectory(dataDir);
-var diagnosticLogPath = Path.Combine(dataDir, "companion-rc32.log");
+var diagnosticLogPath = Path.Combine(dataDir, "companion-rc33.log");
 var originalConsoleOut = Console.Out;
 var originalConsoleError = Console.Error;
 using var diagnosticLogWriter = new RollingFileTextWriter(
@@ -90,7 +90,7 @@ if (IsReleaseDistribution)
     Console.WriteLine("[MODE] RELEASE / CHZZK LIVE");
     Console.WriteLine("[CONFIG] AWS CLI/SSO: not used by distribution build");
     if (DeveloperCommandsEnabled)
-        Console.WriteLine("[TEST TOOLS] RC32_TEST_TOOLS enabled: dev donation command is available; do not distribute this Companion.");
+        Console.WriteLine("[TEST TOOLS] RC33_TEST_TOOLS enabled: dev donation command is available; do not distribute this Companion.");
 }
 else
 {

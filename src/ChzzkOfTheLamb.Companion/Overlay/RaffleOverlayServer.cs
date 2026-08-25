@@ -30,6 +30,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
     private DateTimeOffset? _lastStateRequestAt;
     private readonly Dictionary<string, List<ScheduledOverlayBuff>> _buffQueues = new(StringComparer.Ordinal);
     private readonly List<string> _buffOrder = new();
+    private long _buffGroupSequence;
     private bool _buffTimersPaused = true;
     private DateTimeOffset? _buffPauseStartedAt = DateTimeOffset.UtcNow;
     private string _buffPauseReason = "STARTING";
@@ -224,6 +225,11 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
         lock (_gate)
         {
             var now = GetBuffNowLocked();
+            var groupStartsAt = now;
+
+            // First reserve every lane involved in this donation and find the latest
+            // time at which all of them are free. This prevents a composite donation
+            // from starting its speed card now while its attack card waits in queue.
             foreach (var definition in definitions)
             {
                 if (!_buffQueues.TryGetValue(definition.Key, out var queue))
@@ -239,16 +245,26 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
                     _buffOrder.Remove(definition.Key);
                     _buffOrder.Add(definition.Key);
                 }
-                var startsAt = queue.Count == 0 ? now : (queue[^1].ExpiresAt > now ? queue[^1].ExpiresAt : now);
-                var expiresAt = startsAt.AddSeconds(definition.DurationSeconds);
-                queue.Add(new ScheduledOverlayBuff(
-                    definition.Key, definition.Icon, definition.Name, definition.Detail, startsAt, expiresAt));
 
-                var delay = Math.Max(0, (int)Math.Ceiling((startsAt - now).TotalSeconds));
+                if (queue.Count > 0 && queue[^1].ExpiresAt > groupStartsAt)
+                    groupStartsAt = queue[^1].ExpiresAt;
+            }
+
+            var group = ++_buffGroupSequence;
+            var groupDelay = Math.Max(0, (int)Math.Ceiling((groupStartsAt - now).TotalSeconds));
+            Console.WriteLine($"[OVERLAY][BUFF-GROUP] group={group}, effect={effect}, members={definitions.Count}, startsIn={groupDelay}s");
+
+            foreach (var definition in definitions)
+            {
+                var queue = _buffQueues[definition.Key];
+                var expiresAt = groupStartsAt.AddSeconds(definition.DurationSeconds);
+                queue.Add(new ScheduledOverlayBuff(
+                    definition.Key, definition.Icon, definition.Name, definition.Detail, groupStartsAt, expiresAt));
+
                 var queuedBehind = Math.Max(0, queue.Count - 1);
-                Console.WriteLine(delay == 0
-                    ? $"[OVERLAY][BUFF] active key={definition.Key}, effect={effect}, detail='{definition.Detail}', duration={definition.DurationSeconds}s, queuedBehind={queuedBehind}"
-                    : $"[OVERLAY][BUFF] queued key={definition.Key}, effect={effect}, detail='{definition.Detail}', startsIn={delay}s, queuePosition={queuedBehind}");
+                Console.WriteLine(groupDelay == 0
+                    ? $"[OVERLAY][BUFF] active group={group}, key={definition.Key}, effect={effect}, detail='{definition.Detail}', duration={definition.DurationSeconds}s, queuedBehind={queuedBehind}"
+                    : $"[OVERLAY][BUFF] queued group={group}, key={definition.Key}, effect={effect}, detail='{definition.Detail}', sharedStartsIn={groupDelay}s, queuePosition={queuedBehind}");
             }
         }
     }
@@ -567,6 +583,12 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
   #stage{width:min(760px,calc(100vw - 36px));display:flex;flex-direction:column;align-items:center;gap:10px}
   #wrap{width:min(720px,100%);opacity:0;transform:translateY(-14px) scale(.98);transition:opacity .22s ease,transform .22s ease;pointer-events:none}
   #wrap.show{opacity:1;transform:translateY(0) scale(1)}
+  #wrap.donationView{width:min(480px,calc(100vw - 36px))}
+  #wrap.donationView .panel{border-radius:15px;padding:12px 16px 11px}
+  #wrap.donationView .resultTitle{font-size:12px}
+  #wrap.donationView .donor{font-size:19px}
+  #wrap.donationView .donationEvent{font-size:24px;margin-top:4px}
+  #wrap.donationView .donationQueue{font-size:10px;margin-top:5px}
   .panel{position:relative;background:rgba(12,9,15,.90);border:2px solid rgba(248,235,207,.78);border-radius:22px;padding:18px 24px 16px;box-shadow:0 10px 34px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.05)}
   .eyebrow{font-size:17px;font-weight:800;letter-spacing:.08em;color:#e7d5b0;text-align:center}
   .main{display:flex;align-items:center;justify-content:center;gap:22px;margin-top:6px}
@@ -583,7 +605,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
   .donor{font-size:28px;font-weight:900;color:#fff;margin-top:4px}
   .donationEvent{font-size:36px;font-weight:1000;color:#00c471;margin-top:6px;text-shadow:0 3px 12px #000}
   .donationQueue{font-size:15px;font-weight:800;color:#d8cdbb;margin-top:8px}
-  #buffs{width:min(720px,100%);display:flex;flex-direction:row;justify-content:flex-start;gap:8px;flex-wrap:wrap;pointer-events:none}
+  #buffs{position:fixed;left:18px;top:18px;width:calc(100vw - 36px);display:flex;flex-direction:row;justify-content:flex-start;align-items:flex-start;gap:8px;flex-wrap:wrap;pointer-events:none}
   .buff{min-width:168px;display:grid;grid-template-columns:42px 1fr;column-gap:9px;align-items:center;background:rgba(12,9,15,.88);border:1px solid rgba(248,235,207,.62);border-radius:14px;padding:8px 11px;box-shadow:0 6px 20px rgba(0,0,0,.38)}
   .buffIcon{grid-row:1/3;font-size:30px;line-height:1;text-align:center;filter:drop-shadow(0 2px 4px #000)}
   .buffName{font-size:14px;line-height:1.15;font-weight:900;color:#fff3d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -603,6 +625,7 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 function render(s){
   const phase=s.phase||'hidden';
   wrap.classList.toggle('show',phase!=='hidden');
+  wrap.classList.toggle('donationView',phase==='donation');
   wrap.classList.remove('urgent');
   if(phase==='raffle'){
     if(lastPhase!=='raffle' && s.remainingMs>0) durationMs=s.remainingMs;

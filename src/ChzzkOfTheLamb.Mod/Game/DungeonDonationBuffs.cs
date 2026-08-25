@@ -44,30 +44,61 @@ internal static class DungeonDonationBuffState
     }
 
     public static string QueueMove(float multiplier, float seconds)
-        => Queue(MoveQueue, "movement", multiplier, seconds);
+        => QueueGroup(multiplier, seconds, null, 0f);
 
     public static string QueueAttack(float multiplier, float seconds)
-        => Queue(AttackQueue, "attack", multiplier, seconds);
+        => QueueGroup(null, 0f, multiplier, seconds);
 
-    private static string Queue(List<ScheduledBuff> queue, string key, float multiplier, float seconds)
+    public static string QueueMoveAndAttack(float moveMultiplier, float attackMultiplier, float seconds)
+        => QueueGroup(moveMultiplier, seconds, attackMultiplier, seconds);
+
+    private static string QueueGroup(
+        float? moveMultiplier,
+        float moveSeconds,
+        float? attackMultiplier,
+        float attackSeconds)
     {
         var now = _gameplayClock;
-        PruneExpired(queue, now);
+        if (moveMultiplier.HasValue) PruneExpired(MoveQueue, now);
+        if (attackMultiplier.HasValue) PruneExpired(AttackQueue, now);
 
-        var startsAt = queue.Count == 0 ? now : Math.Max(now, queue[queue.Count - 1].EndsAt);
-        var endsAt = startsAt + Math.Max(0.1f, seconds);
-        queue.Add(new ScheduledBuff
+        // Every timed effect produced by one donation is one scheduling group. The
+        // group waits until every participating effect lane is free, then all lanes
+        // begin on the exact same gameplay-clock tick.
+        var startsAt = now;
+        if (moveMultiplier.HasValue && MoveQueue.Count > 0)
+            startsAt = Math.Max(startsAt, MoveQueue[MoveQueue.Count - 1].EndsAt);
+        if (attackMultiplier.HasValue && AttackQueue.Count > 0)
+            startsAt = Math.Max(startsAt, AttackQueue[AttackQueue.Count - 1].EndsAt);
+
+        var details = new List<string>();
+        if (moveMultiplier.HasValue)
         {
-            Multiplier = multiplier,
-            StartsAt = startsAt,
-            EndsAt = endsAt
-        });
+            var duration = Math.Max(0.1f, moveSeconds);
+            MoveQueue.Add(new ScheduledBuff
+            {
+                Multiplier = moveMultiplier.Value,
+                StartsAt = startsAt,
+                EndsAt = startsAt + duration
+            });
+            details.Add($"movement x{moveMultiplier.Value:0.##} duration={duration:0}s queuePosition={Math.Max(0, MoveQueue.Count - 1)}");
+        }
+
+        if (attackMultiplier.HasValue)
+        {
+            var duration = Math.Max(0.1f, attackSeconds);
+            AttackQueue.Add(new ScheduledBuff
+            {
+                Multiplier = attackMultiplier.Value,
+                StartsAt = startsAt,
+                EndsAt = startsAt + duration
+            });
+            details.Add($"attack x{attackMultiplier.Value:0.##} duration={duration:0}s queuePosition={Math.Max(0, AttackQueue.Count - 1)}");
+        }
 
         var delay = Math.Max(0f, startsAt - now);
-        var position = Math.Max(0, queue.Count - 1);
-        return delay <= 0.01f
-            ? $"{key} x{multiplier:0.##} active for {seconds:0}s; queuedBehind=0"
-            : $"{key} x{multiplier:0.##} queued; startsIn={delay:0.0}s; duration={seconds:0}s; queuePosition={position}";
+        var state = delay <= 0.01f ? "active" : "queued";
+        return $"buffGroup={state}; sharedStartIn={delay:0.0}s; {string.Join("; ", details)}";
     }
 
     public static float ApplyMove(float value)
