@@ -1,28 +1,28 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $project = Join-Path $root 'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj'
-$dist = Join-Path $root 'dist\rc27-companion'
+$dist = Join-Path $root 'dist\rc28-companion'
 
 function Assert-NativeSuccess([string]$Step) {
   if ($LASTEXITCODE -ne 0) { throw "$Step failed with exit code $LASTEXITCODE." }
 }
 
 $criticalSources = @{
-  'src\ChzzkOfTheLamb.Companion\Program.cs' = '4a7ad678edea70155227eb9ca109acb27ba30030f6db8fd0a02fa5b135c9693c'
+  'src\ChzzkOfTheLamb.Companion\Program.cs' = '41097515f45fc5d733f6b4924a5c9cc7173c9ca1424c10744f9d6fd73893f9ce'
   'src\ChzzkOfTheLamb.Companion\GameBridge\GameBridgeServer.cs' = '6199cf43fea8adbcb9b166f31370975f2ac954af3834bbdf3866142e55fe8da9'
   'src\ChzzkOfTheLamb.Companion\Diagnostics\TeeTextWriter.cs' = '3edd24b12f8aaac9a1de768be84d0d6711c1b30c28a8bff39507912ffffcd305'
   'src\ChzzkOfTheLamb.Companion\Appearance\AppearanceStore.cs' = '6726689d6ffcef4c31d4064649fdc7be38c28d219fdf8eb7cb9db4afa75b893b'
   'src\ChzzkOfTheLamb.Companion\Overlay\RaffleOverlayServer.cs' = '9a96dbc2b08020fc4d76c51174fa8bc3add4fdae978bf227c1c968b49d726325'
-  'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj' = '69cd04823ba8fa7685c0606855cdb737ff25ba9e814232cb041102abf5e7f608'
+  'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj' = 'cd0f64d786139126906a06e3225ffcc27bd4d2ab99bb9eb92a3c6a15ef0ef930'
   'src\ChzzkOfTheLamb.Protocol\GameMessages.cs' = '112e647244272e6e950104dad456fb74b8f75d423b9814244ded14e5ef6e116f'
 }
 
 foreach ($relativePath in $criticalSources.Keys) {
   $sourcePath = Join-Path $root $relativePath
-  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC27 source: $relativePath" }
+  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC28 source: $relativePath" }
   $actualHash = (Get-FileHash $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actualHash -ne $criticalSources[$relativePath]) {
-    throw "Critical RC27 source does not match the reviewed version: $relativePath"
+    throw "Critical RC28 source does not match the reviewed version: $relativePath"
   }
 }
 
@@ -44,10 +44,28 @@ Assert-NativeSuccess 'Companion publish'
 $companionExe = Join-Path $dist 'ChzzkOfTheLamb.Companion.exe'
 if (-not (Test-Path $companionExe)) { throw "Companion EXE was not produced: $companionExe" }
 $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($companionExe)
-if ($version.FileVersion -ne '1.0.0.27') {
+if ($version.FileVersion -ne '1.0.0.28') {
   throw "Unexpected Companion file version: $($version.FileVersion)"
 }
 
-Write-Host '[OK] RC27 Companion built and verified.'
+$companionBytes = [System.IO.File]::ReadAllBytes($companionExe)
+function Test-ByteSequence([byte[]]$Haystack, [byte[]]$Needle) {
+  if ($Needle.Length -eq 0 -or $Haystack.Length -lt $Needle.Length) { return $false }
+  for ($i = 0; $i -le $Haystack.Length - $Needle.Length; $i++) {
+    $matched = $true
+    for ($j = 0; $j -lt $Needle.Length; $j++) {
+      if ($Haystack[$i + $j] -ne $Needle[$j]) { $matched = $false; break }
+    }
+    if ($matched) { return $true }
+  }
+  return $false
+}
+foreach ($forbidden in @('[FOLLOWER-MIGRATION][RC26-RESTORED]', 'name drift retained for repair')) {
+  $found = (Test-ByteSequence $companionBytes ([System.Text.Encoding]::UTF8.GetBytes($forbidden))) -or
+           (Test-ByteSequence $companionBytes ([System.Text.Encoding]::Unicode.GetBytes($forbidden)))
+  if ($found) { throw "RC28 Companion contains forbidden unsaved-result recovery marker: $forbidden" }
+}
+
+Write-Host '[OK] RC28 Companion built and verified.'
 Write-Host "Output: $companionExe"
 Write-Host "SHA-256: $((Get-FileHash $companionExe -Algorithm SHA256).Hash.ToLowerInvariant())"

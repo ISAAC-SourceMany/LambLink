@@ -83,9 +83,9 @@ ZIP 압축 해제와 실제 파일 설치/복사를 WinForms UI 스레드에서 
 - User data under `%LOCALAPPDATA%\ChzzkOfTheLamb` is not deleted by Companion program updates.
 - Installation log records `[PROCESS]`, `[EXTRACT]`, and `[INSTALL]` timings for diagnosis.
 
-### RC27 verification
-Companion must display `v1.0.0-rc27`. `BepInEx/LogOutput.log` must contain
-`[BUILD=rc27-inline-nameplate-prefix-fix]`,
+### RC28 verification
+Companion must display `v1.0.0-rc28`. `BepInEx/LogOutput.log` must contain
+`[BUILD=rc28-inline-nameplate-safe-reconcile]`,
 `[DEPENDENCY] COTL_API=io.github.xhayper.COTL_API`,
 `[RAFFLE][PATCH-VERIFY] ... installed=True`, `[DIAG][RUNTIME-HOST][INSTALLED]`,
 `[DIAG][RUNTIME-HOST][FIRST-UPDATE]`, `[DIAG][UPDATE][FIRST]`, Mod
@@ -111,12 +111,11 @@ the Mod writes the rendered TMP string and reads the same value back. Any
 `[NAMEPLATE][INLINE-FAILED]` is a blocking failure. The green `Chzzk` prefix and vanilla nickname
 are rendered by the same TMP object, so no external badge position or clipping calculation remains.
 After a raffle winner is applied, the Mod must log `[IDENTITY-COMMIT] armed`, then
-`[IDENTITY-COMMIT] live follower acquired`, and finally `[IDENTITY-COMMIT] complete`. If COTL
-overwrites a previously mapped name, Companion retains the record with `name drift retained for
-repair`, and the Mod logs `[NAMEPLATE][IDENTITY-REPAIRED]` before applying the inline prefix.
-Existing mappings already deleted by RC26 are recovered from its diagnostic deletion record only
-after the current streamer and live follower ID match; this logs
-`[FOLLOWER-MIGRATION][RC26-RESTORED]`.
-The following marker synchronization must then log
-`[FOLLOWER-MARKER][IDENTITY-REPAIRED] ... source=live-roster` for a drifted existing follower,
-even when its floating nameplate is currently off-screen.
+`[IDENTITY-COMMIT] live follower acquired`, and finally `[IDENTITY-COMMIT] complete`. On a later
+startup, Companion sends a marker only when the roster contains the same follower ID and the same
+nickname. If the game was closed without saving, the rolled-back name mismatch is logged as
+`[FOLLOWER-RECONCILE] stale/reused ID detected`, the stale mapping is removed, and no marker is
+sent for that ID. The Mod never renames a loaded follower from marker data. For the existing saved
+reference follower, synchronization should contain `ids=[12]`; approaching `유르밍` must produce
+`[NAMEPLATE][INLINE-APPLIED] followerId=12, vanillaName='유르밍'` and visibly render a green
+`Chzzk` prefix in the same name TMP object.

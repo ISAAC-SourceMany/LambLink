@@ -898,66 +898,8 @@ public sealed class FollowerService(
             _chzzkFollowerMarkers[marker.FollowerId] = marker;
         }
 
-        var repaired = RepairLoadedFollowerIdentitiesFromMarkers();
-        log.LogInfo($"CHZZK follower markers synced: save={saveId}, count={_chzzkFollowerMarkers.Count}, repaired={repaired}, ids=[{string.Join(",", _chzzkFollowerMarkers.Keys.OrderBy(x => x))}]");
+        log.LogInfo($"CHZZK follower markers synced: save={saveId}, count={_chzzkFollowerMarkers.Count}, ids=[{string.Join(",", _chzzkFollowerMarkers.Keys.OrderBy(x => x))}]");
         ArmVisibleNameplateRefresh("marker-sync");
-    }
-
-    private int RepairLoadedFollowerIdentitiesFromMarkers()
-    {
-        var repaired = 0;
-        var seen = new HashSet<int>();
-
-        void Repair(object info, string source)
-        {
-            var id = ReadFollowerId(info);
-            if (!id.HasValue || !seen.Add(id.Value)) return;
-            if (!_chzzkFollowerMarkers.TryGetValue(id.Value, out var marker)) return;
-            var expected = NormalizeLegacyChzzkStoredName(marker.Nickname);
-            var actual = NormalizeLegacyChzzkStoredName(ReadStringMember(info, "Name") ?? string.Empty);
-            if (string.IsNullOrWhiteSpace(expected) || string.Equals(actual, expected, StringComparison.Ordinal)) return;
-
-            if (FollowerAppearanceService.TryWrite(info, new[] { "Name" }, expected))
-            {
-                repaired++;
-                log.LogWarning($"[FOLLOWER-MARKER][IDENTITY-REPAIRED] followerId={id.Value}, source={source}, oldName='{actual}', restoredName='{expected}'");
-            }
-            else
-            {
-                log.LogWarning($"[FOLLOWER-MARKER][IDENTITY-REPAIR-FAILED] followerId={id.Value}, source={source}, actualName='{actual}', expectedName='{expected}'");
-            }
-        }
-
-        try
-        {
-            var live = DataManager.Instance?.Followers;
-            if (live != null)
-                foreach (var info in live)
-                    if (info != null) Repair(info, "live-roster");
-        }
-        catch (Exception ex)
-        {
-            log.LogWarning($"[FOLLOWER-MARKER][IDENTITY-REPAIR] live roster scan failed: {ex.GetBaseException().Message}");
-        }
-
-        try
-        {
-            var recruits = DataManager.Instance?.Followers_Recruit;
-            if (recruits != null)
-            {
-                foreach (var item in recruits)
-                {
-                    if (item == null) continue;
-                    Repair(FollowerAppearanceService.FindFollowerInfo(item, 4) ?? item, "recruit-roster");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            log.LogWarning($"[FOLLOWER-MARKER][IDENTITY-REPAIR] recruit roster scan failed: {ex.GetBaseException().Message}");
-        }
-
-        return repaired;
     }
 
     private void RememberChzzkFollower(int followerId, string viewerId, string nickname, string saveId)
@@ -1017,19 +959,14 @@ public sealed class FollowerService(
         if (!string.IsNullOrWhiteSpace(expectedName) &&
             !string.Equals(plainName, expectedName, StringComparison.Ordinal))
         {
-            // The Companion mapping is the ownership record. COTL may overwrite the recruit name
-            // during the final recruit-to-live copy, so repair that drift instead of deleting the
-            // marker and permanently losing the CHZZK identity.
-            if (FollowerAppearanceService.TryWrite(info, new[] { "Name" }, expectedName))
-            {
-                log.LogWarning($"[NAMEPLATE][IDENTITY-REPAIRED] followerId={followerId.Value}, oldName='{plainName}', restoredName='{expectedName}'");
-                plainName = expectedName;
-            }
-            else
-            {
-                log.LogWarning($"[NAMEPLATE][IDENTITY-REPAIR-FAILED] followerId={followerId.Value}, actualName='{plainName}', expectedName='{expectedName}'");
-                plainName = expectedName; // Keep the visible CHZZK identity even if persistence failed.
-            }
+            // A follower ID can be reused, and an unsaved raffle legitimately rolls back when the
+            // game exits. Never trust an ID-only marker enough to rename game data or decorate a
+            // different follower. Companion reconciliation will delete the stale mapping.
+            _chzzkFollowerMarkers.Remove(followerId.Value);
+            _loggedDecoratedNameplates.Remove(followerId.Value);
+            SetChzzkBadgeActive(nameText, false);
+            log.LogWarning($"CHZZK nameplate marker dropped: followerId={followerId.Value}, expectedName='{expectedName}', actualName='{plainName}' (ID appears reused or raffle result was not saved)");
+            return;
         }
 
         try
