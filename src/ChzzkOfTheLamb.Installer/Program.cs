@@ -18,7 +18,8 @@ internal static class Program
 
 internal sealed class InstallerForm : Form
 {
-    private const string DefaultManifestUrl = "https://d1gvw9ccym1qvn.cloudfront.net/releases/installer-manifest.json";
+    private const string ReleaseVersion = "1.0.0-rc28";
+    private const string DefaultManifestUrl = "https://d1gvw9ccym1qvn.cloudfront.net/releases/installer-manifest-1.0.0-rc28.json";
     private readonly TextBox _gamePath = new() { Dock = DockStyle.Fill, ReadOnly = true };
     private readonly Button _browse = new() { Text = "찾아보기", AutoSize = true };
     private readonly Button _install = new() { Text = "설치", AutoSize = true };
@@ -31,7 +32,7 @@ internal sealed class InstallerForm : Form
 
     public InstallerForm()
     {
-        Text = "ChzzkOfTheLamb Setup 1.0.0";
+        Text = "ChzzkOfTheLamb Setup 1.0.0-rc28";
         Width = 720;
         Height = 500;
         StartPosition = FormStartPosition.CenterScreen;
@@ -123,7 +124,7 @@ internal sealed class InstallerForm : Form
         Directory.CreateDirectory(workDir);
         try
         {
-            Log($"[START] version=1.0.0, game={_gamePath.Text}");
+            Log($"[START] version={ReleaseVersion}, game={_gamePath.Text}");
             _status.Text = "설치 정보를 확인하는 중...";
             var manifestUrl = Environment.GetEnvironmentVariable("COTL_INSTALLER_MANIFEST_URL") ?? DefaultManifestUrl;
             var manifest = await DownloadManifestAsync(manifestUrl, _cts.Token);
@@ -217,10 +218,12 @@ internal sealed class InstallerForm : Form
     private static async Task<InstallerManifest> DownloadManifestAsync(string url, CancellationToken token)
     {
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("ChzzkOfTheLamb-Installer/1.0.0");
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("ChzzkOfTheLamb-Installer/1.0.0-rc28");
         var json = await http.GetStringAsync(url, token);
         var manifest = JsonSerializer.Deserialize<InstallerManifest>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                        ?? throw new InvalidDataException("installer manifest를 읽을 수 없습니다.");
+        if (!string.Equals(manifest.Release, ReleaseVersion, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException($"이 설치기는 {ReleaseVersion} 전용입니다. manifest release={manifest.Release}");
         if (manifest.Components.Count == 0) throw new InvalidDataException("installer manifest에 구성요소가 없습니다.");
         foreach (var c in manifest.Components)
         {
@@ -233,7 +236,7 @@ internal sealed class InstallerForm : Form
     private static async Task DownloadFileAsync(string url, string path, CancellationToken token)
     {
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("ChzzkOfTheLamb-Installer/1.0.0");
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("ChzzkOfTheLamb-Installer/1.0.0-rc28");
         using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token);
         response.EnsureSuccessStatusCode();
         await using var input = await response.Content.ReadAsStreamAsync(token);

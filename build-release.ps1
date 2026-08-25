@@ -1,7 +1,8 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$release = '1.0.0-rc28'
 $distRoot = Join-Path $root 'dist'
-$dist = Join-Path $distRoot 'ChzzkOfTheLamb-v1.0.0'
+$dist = Join-Path $distRoot "ChzzkOfTheLamb-v$release"
 $companionOut = Join-Path $dist 'Companion'
 $pluginOut = Join-Path $dist 'Plugin'
 $fontAssetRoot = Join-Path $root 'release-assets\COTL_KoreanFontFix'
@@ -31,6 +32,12 @@ $criticalSources = @{
   'src\ChzzkOfTheLamb.Companion\Appearance\AppearanceStore.cs' = '6726689d6ffcef4c31d4064649fdc7be38c28d219fdf8eb7cb9db4afa75b893b'
   'src\ChzzkOfTheLamb.Companion\Overlay\RaffleOverlayServer.cs' = '9a96dbc2b08020fc4d76c51174fa8bc3add4fdae978bf227c1c968b49d726325'
   'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj' = 'cd0f64d786139126906a06e3225ffcc27bd4d2ab99bb9eb92a3c6a15ef0ef930'
+  'src\ChzzkOfTheLamb.Installer\Program.cs' = '60291afd5c6bb938ea993da54162a84dd7be050ab278845600a33eeab7bb1da2'
+  'src\ChzzkOfTheLamb.Installer\ChzzkOfTheLamb.Installer.csproj' = '5fcc068dc02d29d732d010451ff19d65355a2c23cf3819618546f89a38df6f01'
+  'installer\installer-manifest.template.json' = '9729eba5c8f81c936422c0d15c3d71d350b83976ee6579536d2973258e7c1955'
+  'prepare-installer-manifest.ps1' = 'caf759158866b312b63f2830e49f01dd062a95d00ea4bc0c4d832ba935f54b0d'
+  'build-distribution.ps1' = '0c8587601e1e2998e2f4bd9055ca37284a04c6de5ef3c8328a45accb52a646f9'
+  'DISTRIBUTION-RC28.md' = '0a08112317209faef3f2768e8e39c885c5298190bb53489586f48efe98495dbd'
 }
 foreach ($relativePath in $criticalSources.Keys) {
   $sourcePath = Join-Path $root $relativePath
@@ -59,7 +66,7 @@ Write-Host '[ASSET] Korean Font Fix 4.2.1 verified.'
 Write-Host '[2/9] Cleaning dist/release-hosting component artifacts...'
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $companionOut, $pluginOut, $hosting | Out-Null
-foreach ($f in @('COTL-KoreanFontFix-4.2.1.zip','ChzzkOfTheLamb-Mod-1.0.0.zip','ChzzkOfTheLamb-Companion-1.0.0-win-x64.zip','ChzzkOfTheLamb-Setup-1.0.0.exe','installer-manifest.json')) {
+foreach ($f in @('COTL-KoreanFontFix-4.2.1.zip',"ChzzkOfTheLamb-Mod-$release.zip","ChzzkOfTheLamb-Companion-$release-win-x64.zip","ChzzkOfTheLamb-Setup-$release.exe","installer-manifest-$release.json")) {
   $p = Join-Path $hosting $f; if (Test-Path $p) { Remove-Item $p -Force }
 }
 
@@ -128,7 +135,7 @@ New-Item -ItemType Directory -Force -Path $temp | Out-Null
 $modPkg = Join-Path $temp 'mod\BepInEx\plugins\ChzzkOfTheLamb'
 New-Item -ItemType Directory -Force -Path $modPkg | Out-Null
 Copy-Item (Join-Path $pluginOut '*') $modPkg -Force
-Compress-Archive -Path (Join-Path $temp 'mod\*') -DestinationPath (Join-Path $hosting 'ChzzkOfTheLamb-Mod-1.0.0.zip') -CompressionLevel Optimal
+Compress-Archive -Path (Join-Path $temp 'mod\*') -DestinationPath (Join-Path $hosting "ChzzkOfTheLamb-Mod-$release.zip") -CompressionLevel Optimal
 
 $fontPkg = Join-Path $temp 'font\BepInEx\plugins\COTL_KoreanFontFix'
 New-Item -ItemType Directory -Force -Path $fontPkg | Out-Null
@@ -136,7 +143,7 @@ Copy-Item $fontDll (Join-Path $fontPkg 'COTL_KoreanFontFix.dll') -Force
 Copy-Item $fontBundle (Join-Path $fontPkg 'koreanfont.bundle') -Force
 Compress-Archive -Path (Join-Path $temp 'font\*') -DestinationPath (Join-Path $hosting 'COTL-KoreanFontFix-4.2.1.zip') -CompressionLevel Optimal
 
-Compress-Archive -Path (Join-Path $companionOut '*') -DestinationPath (Join-Path $hosting 'ChzzkOfTheLamb-Companion-1.0.0-win-x64.zip') -CompressionLevel Optimal
+Compress-Archive -Path (Join-Path $companionOut '*') -DestinationPath (Join-Path $hosting "ChzzkOfTheLamb-Companion-$release-win-x64.zip") -CompressionLevel Optimal
 
 Write-Host '[7/9] Publishing single-file GUI installer...'
 $installerPublish = Join-Path $distRoot '_installer-publish'
@@ -145,15 +152,20 @@ dotnet publish (Join-Path $root 'src\ChzzkOfTheLamb.Installer\ChzzkOfTheLamb.Ins
 Assert-NativeSuccess 'Release Installer publish'
 $installerExe = Join-Path $installerPublish 'ChzzkOfTheLamb.Installer.exe'
 if (-not (Test-Path $installerExe)) { throw "Installer EXE was not produced: $installerExe" }
-Copy-Item $installerExe (Join-Path $hosting 'ChzzkOfTheLamb-Setup-1.0.0.exe') -Force
+$installerVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($installerExe)
+if ($installerVersion.FileVersion -ne '1.0.0.28') { throw "Unexpected Installer file version: $($installerVersion.FileVersion)" }
+if (-not $installerVersion.ProductVersion.StartsWith($release, [System.StringComparison]::OrdinalIgnoreCase)) {
+  throw "Unexpected Installer product version: $($installerVersion.ProductVersion)"
+}
+Copy-Item $installerExe (Join-Path $hosting "ChzzkOfTheLamb-Setup-$release.exe") -Force
 
 Write-Host '[8/9] Creating legacy test ZIP + release docs...'
 Copy-Item (Join-Path $root 'RELEASE-README.md') $dist -Force
-$zip = Join-Path $distRoot 'ChzzkOfTheLamb-v1.0.0-win-x64-legacy.zip'
+$zip = Join-Path $distRoot "ChzzkOfTheLamb-v$release-win-x64-legacy.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path (Join-Path $dist '*') -DestinationPath $zip -CompressionLevel Optimal
 
 Write-Host '[9/9] Finished local build.'
-Write-Host "Installer EXE: $(Join-Path $hosting 'ChzzkOfTheLamb-Setup-1.0.0.exe')"
-Write-Host 'Now run .\prepare-installer-manifest.ps1 to fetch/hash official BepInEx + COTL_API and generate installer-manifest.json.'
-Write-Host 'Then upload release-hosting\ChzzkOfTheLamb-Setup-1.0.0.exe for users, plus your own component ZIPs and installer-manifest.json to CloudFront /releases/.'
+Write-Host "Installer EXE: $(Join-Path $hosting "ChzzkOfTheLamb-Setup-$release.exe")"
+Write-Host ".\prepare-installer-manifest.ps1 generates installer-manifest-$release.json."
+Write-Host "Recommended: run .\build-distribution.ps1 to validate and assemble the complete $release handoff bundle."

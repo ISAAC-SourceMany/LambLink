@@ -127,17 +127,18 @@ Replace the two game DLLs with the files under `dist\rc28-plugin`. The Companion
 
 ## External release packaging
 
-RC3 release packaging bundles COTL Korean Font Fix 4.2.1 (`COTL_KoreanFontFix.dll` + `koreanfont.bundle`) under `BepInEx\plugins\COTL_KoreanFontFix` through the installer. See `RELEASE-README.md` and `DEPLOY-RELEASE.md`.
+RC28 release packaging bundles COTL Korean Font Fix 4.2.1 (`COTL_KoreanFontFix.dll` + `koreanfont.bundle`) under `BepInEx\plugins\COTL_KoreanFontFix` through the installer. Run `build-distribution.ps1`; see `DISTRIBUTION-RC28.md` and `DEPLOY-RELEASE.md`.
 
-## v1.0.0 RC5 Installer
+## v1.0.0 RC28 Installer
 
 외부 배포용 GUI Bootstrapper 프로젝트 `ChzzkOfTheLamb.Installer`가 추가되었습니다. 사용자는 Setup EXE 하나만 실행하며, 설치기가 Steam 게임 위치를 자동 탐색하고 BepInEx/COTL_API/한글 폰트 패치/Mod/Companion을 다운로드·SHA-256 검증·설치합니다. 설치 진단은 `%LOCALAPPDATA%\ChzzkOfTheLamb\installer.log`에 기록됩니다.
 
 
-## RC5 fixes
+## RC28 nameplate and packaging
 
-- Village CHZZK platform marker is rendered as a separate green TMP badge. The vanilla follower name text and saved `FollowerInfo.Name` stay untouched, so later COTL `SetText` refreshes cannot erase the badge.
+- The green CHZZK platform marker is composed into the existing visible TMP name string while the saved `FollowerInfo.Name` remains untouched. No separate badge GameObject, position calculation, or badge lifetime is involved.
 - Installer ZIP extraction and recursive component installation run on worker tasks instead of the WinForms UI thread. Detailed `[EXTRACT]` / `[INSTALL] ... elapsed=` diagnostics were added so long Companion installs remain responsive and bottlenecks are visible.
+- Installer and CDN component names are pinned to `1.0.0-rc28`; the installer rejects a manifest whose `release` is not exactly `1.0.0-rc28`.
 
 
 ## RC14 installer fixes

@@ -1,17 +1,17 @@
-# ChzzkOfTheLamb v1.0.0 RC5 — GUI Installer
+# ChzzkOfTheLamb v1.0.0 RC28 — GUI Installer
 
 외부 사용자 배포 방식이 `ZIP + PowerShell`에서 **설치 EXE 하나**로 변경되었습니다.
 
 ## 사용자 설치 흐름
 
-1. `ChzzkOfTheLamb-Setup-1.0.0.exe` 실행
+1. `ChzzkOfTheLamb-Setup-1.0.0-rc28.exe` 실행
 2. 설치기가 Steam 라이브러리에서 Cult of the Lamb 자동 탐색
 3. 아래 구성요소 다운로드 + SHA-256 검증 + 자동 설치
    - BepInEx 5.4.21 x64
    - COTL_API 0.3.4
    - COTL Korean Font Fix 4.2.1
-   - ChzzkOfTheLamb Mod 1.0.0
-   - ChzzkOfTheLamb Companion 1.0.0 (self-contained)
+   - ChzzkOfTheLamb Mod 1.0.0-rc28
+   - ChzzkOfTheLamb Companion 1.0.0-rc28 (self-contained)
 4. 바탕화면/시작 메뉴 Companion 바로가기 생성
 5. Companion 실행 → CHZZK 로그인
 
@@ -27,18 +27,18 @@
 ## 배포자가 해야 할 것
 
 1. 테스트된 `release-assets\COTL_KoreanFontFix\COTL_KoreanFontFix.dll`과 `koreanfont.bundle`을 준비합니다.
-2. `build-release.ps1` 실행
-3. `prepare-installer-manifest.ps1` 실행
+2. `build-distribution.ps1` 실행
+3. 생성된 `CDN-UPLOAD` 폴더의 파일과 `SHA256SUMS.txt` 확인
    - BepInEx 5.4.21 공식 GitHub ZIP 다운로드/해시 계산
    - COTL_API 0.3.4 Thunderstore ZIP 다운로드/해시 계산
    - 자체 component ZIP 해시 계산
-   - `release-hosting\installer-manifest.json` 생성
+   - `release-hosting\installer-manifest-1.0.0-rc28.json` 생성
 4. 아래 자체 파일을 CloudFront `/releases/` 경로에 업로드합니다.
    - `COTL-KoreanFontFix-4.2.1.zip`
-   - `ChzzkOfTheLamb-Mod-1.0.0.zip`
-   - `ChzzkOfTheLamb-Companion-1.0.0-win-x64.zip`
-   - `installer-manifest.json`
-5. 사용자에게는 `ChzzkOfTheLamb-Setup-1.0.0.exe` 하나만 배포합니다.
+   - `ChzzkOfTheLamb-Mod-1.0.0-rc28.zip`
+   - `ChzzkOfTheLamb-Companion-1.0.0-rc28-win-x64.zip`
+   - `installer-manifest-1.0.0-rc28.json`
+5. 사용자에게는 `ChzzkOfTheLamb-Setup-1.0.0-rc28.exe` 하나만 배포합니다.
 
 BepInEx와 COTL_API는 manifest에서 각각 공식 GitHub/Thunderstore URL을 사용합니다. 설치기는 모든 파일을 SHA-256으로 검증한 뒤 설치합니다.
 
@@ -50,16 +50,15 @@ BepInEx와 COTL_API는 manifest에서 각각 공식 GitHub/Thunderstore URL을 �
 
 ### CHZZK 마을 이름표
 
-RC5에서는 COTL의 `UIFollowerName.nameText` 값을 더 이상 `Chzzk 닉네임`으로 덮어쓰지 않습니다.
-원래 닉네임 TMP 오브젝트의 자식으로 `CHZZK_PlatformBadge`를 별도 생성하여 초록색 `Chzzk`를 표시합니다.
-따라서 저장 이름과 게임 원본 이름표는 항상 순수 닉네임만 유지합니다.
+RC28에서는 저장 이름은 순수 닉네임으로 유지하면서, 화면에 렌더링되는 기존
+`UIFollowerName.nameText` TMP 문자열에 초록색 `Chzzk` 접두사를 인라인으로 합성합니다.
+별도 GameObject를 만들지 않으므로 위치 계산·클리핑·생명주기 삭제 문제를 피합니다.
 
 정상 로그 예:
 
 ```text
 CHZZK follower markers synced: save=slot_0, count=1, ids=[12]
-[NAMEPLATE] badge created followerId=12, name='유르밍', ...
-CHZZK village nameplate badge active: followerId=12, vanillaName='유르밍', badge='Chzzk' ...
+[NAMEPLATE][INLINE-APPLIED] followerId=12, vanillaName='유르밍', saveNameUntouched=true
 ```
 
 ### 설치기 응답 없음

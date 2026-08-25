@@ -1,4 +1,4 @@
-# v1.0.0 RC3 배포 체크리스트
+# v1.0.0 RC28 배포 체크리스트
 
 ## 1. Korean Font Fix 4.2.1 실제 바이너리 준비
 
@@ -18,14 +18,14 @@
 ## 3. 릴리즈 빌드
 
 ```powershell
-.\build-release.ps1
+.\build-distribution.ps1
 ```
 
 폰트 DLL/번들이 없으면 스크립트가 즉시 실패하도록 되어 있습니다.
 
 성공하면:
 
-`dist\ChzzkOfTheLamb-v1.0.0-win-x64.zip`
+`dist\ChzzkOfTheLamb-v1.0.0-rc28-distribution.zip`
 
 이 생성됩니다.
 
