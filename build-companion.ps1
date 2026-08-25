@@ -1,28 +1,28 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $project = Join-Path $root 'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj'
-$dist = Join-Path $root 'dist\rc26-companion'
+$dist = Join-Path $root 'dist\rc27-companion'
 
 function Assert-NativeSuccess([string]$Step) {
   if ($LASTEXITCODE -ne 0) { throw "$Step failed with exit code $LASTEXITCODE." }
 }
 
 $criticalSources = @{
-  'src\ChzzkOfTheLamb.Companion\Program.cs' = 'ef40a7cdc427786b8d1da29aa9e0bb4dcb95aadbf86dc31dae8d63f638b9f9f5'
+  'src\ChzzkOfTheLamb.Companion\Program.cs' = '4a7ad678edea70155227eb9ca109acb27ba30030f6db8fd0a02fa5b135c9693c'
   'src\ChzzkOfTheLamb.Companion\GameBridge\GameBridgeServer.cs' = '6199cf43fea8adbcb9b166f31370975f2ac954af3834bbdf3866142e55fe8da9'
   'src\ChzzkOfTheLamb.Companion\Diagnostics\TeeTextWriter.cs' = '3edd24b12f8aaac9a1de768be84d0d6711c1b30c28a8bff39507912ffffcd305'
   'src\ChzzkOfTheLamb.Companion\Appearance\AppearanceStore.cs' = '6726689d6ffcef4c31d4064649fdc7be38c28d219fdf8eb7cb9db4afa75b893b'
   'src\ChzzkOfTheLamb.Companion\Overlay\RaffleOverlayServer.cs' = '9a96dbc2b08020fc4d76c51174fa8bc3add4fdae978bf227c1c968b49d726325'
-  'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj' = '4cbe8b429fd6da409f91c61d38685b43a38d9c674cb9b5a520552558a13f6e67'
+  'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj' = '69cd04823ba8fa7685c0606855cdb737ff25ba9e814232cb041102abf5e7f608'
   'src\ChzzkOfTheLamb.Protocol\GameMessages.cs' = '112e647244272e6e950104dad456fb74b8f75d423b9814244ded14e5ef6e116f'
 }
 
 foreach ($relativePath in $criticalSources.Keys) {
   $sourcePath = Join-Path $root $relativePath
-  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC26 source: $relativePath" }
+  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC27 source: $relativePath" }
   $actualHash = (Get-FileHash $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actualHash -ne $criticalSources[$relativePath]) {
-    throw "Critical RC26 source does not match the reviewed version: $relativePath"
+    throw "Critical RC27 source does not match the reviewed version: $relativePath"
   }
 }
 
@@ -44,10 +44,10 @@ Assert-NativeSuccess 'Companion publish'
 $companionExe = Join-Path $dist 'ChzzkOfTheLamb.Companion.exe'
 if (-not (Test-Path $companionExe)) { throw "Companion EXE was not produced: $companionExe" }
 $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($companionExe)
-if ($version.FileVersion -ne '1.0.0.26') {
+if ($version.FileVersion -ne '1.0.0.27') {
   throw "Unexpected Companion file version: $($version.FileVersion)"
 }
 
-Write-Host '[OK] RC26 Companion built and verified.'
+Write-Host '[OK] RC27 Companion built and verified.'
 Write-Host "Output: $companionExe"
 Write-Host "SHA-256: $((Get-FileHash $companionExe -Algorithm SHA256).Hash.ToLowerInvariant())"

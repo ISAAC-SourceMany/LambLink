@@ -27,8 +27,10 @@ public sealed class FollowerService(
     private FollowerAppearanceSelection? _pendingIdentityUiRefreshAppearance;
     private string _pendingIdentityUiRefreshPreviousName = string.Empty;
     private string _pendingIdentityUiRefreshDisplayName = string.Empty;
+    private float _pendingIdentityUiRefreshStartedAt;
     private float _pendingIdentityUiRefreshUntil;
     private float _nextIdentityUiRefreshAt;
+    private float _pendingIdentityLiveConfirmedAt;
     private int _identityUiRefreshAttempts;
     private readonly HashSet<string> _legacyNameMigrationCompletedSaves = new(StringComparer.Ordinal);
     private string _chzzkMarkerSaveId = "unknown";
@@ -564,10 +566,12 @@ public sealed class FollowerService(
         _pendingIdentityUiRefreshAppearance = appearance;
         _pendingIdentityUiRefreshPreviousName = previousName;
         _pendingIdentityUiRefreshDisplayName = displayName;
-        _pendingIdentityUiRefreshUntil = Time.unscaledTime + 3.0f;
+        _pendingIdentityUiRefreshStartedAt = Time.unscaledTime;
+        _pendingIdentityUiRefreshUntil = Time.unscaledTime + 180.0f;
         _nextIdentityUiRefreshAt = Time.unscaledTime + 0.10f;
+        _pendingIdentityLiveConfirmedAt = 0f;
         _identityUiRefreshAttempts = 0;
-        log.LogInfo($"Indoctrination live preview refresh armed: recruit={followerId}, duration=3s");
+        log.LogInfo($"[IDENTITY-COMMIT] armed recruit={followerId}, displayName='{displayName}', maxDuration=180s; enforcing through recruit-to-live transition");
     }
 
     private void ProcessPendingIdentityUiRefresh()
@@ -576,35 +580,73 @@ public sealed class FollowerService(
         var now = Time.unscaledTime;
         if (now > _pendingIdentityUiRefreshUntil)
         {
-            log.LogInfo($"Indoctrination live preview refresh finished: recruit={_pendingIdentityUiRefreshFollowerId.Value}, attempts={_identityUiRefreshAttempts}");
+            log.LogWarning($"[IDENTITY-COMMIT] timed out recruit={_pendingIdentityUiRefreshFollowerId.Value}, attempts={_identityUiRefreshAttempts}; live follower was not stable for 3s");
             _pendingIdentityUiRefreshFollowerId = null;
             return;
         }
         if (now < _nextIdentityUiRefreshAt) return;
-        _nextIdentityUiRefreshAt = now + 0.20f;
+        var initialUiWindow = now - _pendingIdentityUiRefreshStartedAt < 5.0f;
+        _nextIdentityUiRefreshAt = now + (initialUiWindow ? 0.20f : 0.75f);
 
         var followerId = _pendingIdentityUiRefreshFollowerId.Value;
-        var target = FindPendingRecruitInfo(followerId);
-        if (target == null)
+        var recruitTarget = FindPendingRecruitInfo(followerId);
+        object? liveTarget = null;
+        try
         {
-            // Vanilla may move the info between recruit/live collections while the menu is open.
-            try
-            {
-                var live = DataManager.Instance?.Followers?.FirstOrDefault(x => x != null && x.ID == followerId);
-                if (live != null) target = live;
-            }
-            catch { }
+            liveTarget = DataManager.Instance?.Followers?.FirstOrDefault(x => x != null && x.ID == followerId);
         }
-        if (target == null) return;
+        catch { }
+        if (recruitTarget == null && liveTarget == null) return;
 
         try
         {
-            // Form callbacks can rebuild colour/variant state. Re-apply all three values after
-            // every UI lifecycle refresh so the open preview converges on the My Lamb selection.
-            appearances.TryApply(target, _pendingIdentityUiRefreshAppearance);
-            RefreshOpenIndoctrinationUi(target, _pendingIdentityUiRefreshPreviousName, _pendingIdentityUiRefreshDisplayName, followerId);
-            RefreshRecruitPreviewObject(followerId, target);
+            // COTL's final indoctrination confirmation can copy the original look/name into a new
+            // live FollowerInfo after the raffle result was applied to the recruit object. Enforce
+            // the winner identity on both sides of that hand-off until the live object is stable.
+            var targets = new List<object>();
+            if (recruitTarget != null) targets.Add(recruitTarget);
+            if (liveTarget != null && !ReferenceEquals(liveTarget, recruitTarget)) targets.Add(liveTarget);
+
+            foreach (var target in targets)
+            {
+                appearances.TryApply(target, _pendingIdentityUiRefreshAppearance);
+                if (!FollowerAppearanceService.TryWrite(target, new[] { "Name" }, _pendingIdentityUiRefreshDisplayName))
+                    log.LogWarning($"[IDENTITY-COMMIT] name write failed recruit={followerId}, targetType={target.GetType().FullName}");
+            }
+
+            // Rebuild the open preview only during the short visual convergence window. After
+            // that, low-frequency data writes continue without repeated global UI/controller work.
+            if (initialUiWindow && recruitTarget != null)
+            {
+                RefreshOpenIndoctrinationUi(recruitTarget, _pendingIdentityUiRefreshPreviousName, _pendingIdentityUiRefreshDisplayName, followerId);
+                RefreshRecruitPreviewObject(followerId, recruitTarget);
+                FollowerAppearanceService.TryWrite(recruitTarget, new[] { "Name" }, _pendingIdentityUiRefreshDisplayName);
+            }
+
             _identityUiRefreshAttempts++;
+
+            if (liveTarget != null)
+            {
+                var liveName = NormalizeLegacyChzzkStoredName(ReadStringMember(liveTarget, "Name") ?? string.Empty);
+                if (string.Equals(liveName, _pendingIdentityUiRefreshDisplayName, StringComparison.Ordinal))
+                {
+                    if (_pendingIdentityLiveConfirmedAt <= 0f)
+                    {
+                        _pendingIdentityLiveConfirmedAt = now;
+                        log.LogInfo($"[IDENTITY-COMMIT] live follower acquired recruit={followerId}, name='{liveName}'; confirming stability for 3s");
+                    }
+                    else if (now - _pendingIdentityLiveConfirmedAt >= 3.0f)
+                    {
+                        log.LogInfo($"[IDENTITY-COMMIT] complete recruit={followerId}, name='{liveName}', attempts={_identityUiRefreshAttempts}, liveStableSeconds={(now - _pendingIdentityLiveConfirmedAt):0.0}");
+                        _pendingIdentityUiRefreshFollowerId = null;
+                    }
+                }
+                else
+                {
+                    _pendingIdentityLiveConfirmedAt = 0f;
+                    log.LogWarning($"[IDENTITY-COMMIT] live name diverged recruit={followerId}, actual='{liveName}', expected='{_pendingIdentityUiRefreshDisplayName}'; repair will retry");
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -856,8 +898,66 @@ public sealed class FollowerService(
             _chzzkFollowerMarkers[marker.FollowerId] = marker;
         }
 
-        log.LogInfo($"CHZZK follower markers synced: save={saveId}, count={_chzzkFollowerMarkers.Count}, ids=[{string.Join(",", _chzzkFollowerMarkers.Keys.OrderBy(x => x))}]");
+        var repaired = RepairLoadedFollowerIdentitiesFromMarkers();
+        log.LogInfo($"CHZZK follower markers synced: save={saveId}, count={_chzzkFollowerMarkers.Count}, repaired={repaired}, ids=[{string.Join(",", _chzzkFollowerMarkers.Keys.OrderBy(x => x))}]");
         ArmVisibleNameplateRefresh("marker-sync");
+    }
+
+    private int RepairLoadedFollowerIdentitiesFromMarkers()
+    {
+        var repaired = 0;
+        var seen = new HashSet<int>();
+
+        void Repair(object info, string source)
+        {
+            var id = ReadFollowerId(info);
+            if (!id.HasValue || !seen.Add(id.Value)) return;
+            if (!_chzzkFollowerMarkers.TryGetValue(id.Value, out var marker)) return;
+            var expected = NormalizeLegacyChzzkStoredName(marker.Nickname);
+            var actual = NormalizeLegacyChzzkStoredName(ReadStringMember(info, "Name") ?? string.Empty);
+            if (string.IsNullOrWhiteSpace(expected) || string.Equals(actual, expected, StringComparison.Ordinal)) return;
+
+            if (FollowerAppearanceService.TryWrite(info, new[] { "Name" }, expected))
+            {
+                repaired++;
+                log.LogWarning($"[FOLLOWER-MARKER][IDENTITY-REPAIRED] followerId={id.Value}, source={source}, oldName='{actual}', restoredName='{expected}'");
+            }
+            else
+            {
+                log.LogWarning($"[FOLLOWER-MARKER][IDENTITY-REPAIR-FAILED] followerId={id.Value}, source={source}, actualName='{actual}', expectedName='{expected}'");
+            }
+        }
+
+        try
+        {
+            var live = DataManager.Instance?.Followers;
+            if (live != null)
+                foreach (var info in live)
+                    if (info != null) Repair(info, "live-roster");
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning($"[FOLLOWER-MARKER][IDENTITY-REPAIR] live roster scan failed: {ex.GetBaseException().Message}");
+        }
+
+        try
+        {
+            var recruits = DataManager.Instance?.Followers_Recruit;
+            if (recruits != null)
+            {
+                foreach (var item in recruits)
+                {
+                    if (item == null) continue;
+                    Repair(FollowerAppearanceService.FindFollowerInfo(item, 4) ?? item, "recruit-roster");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning($"[FOLLOWER-MARKER][IDENTITY-REPAIR] recruit roster scan failed: {ex.GetBaseException().Message}");
+        }
+
+        return repaired;
     }
 
     private void RememberChzzkFollower(int followerId, string viewerId, string nickname, string saveId)
@@ -917,100 +1017,60 @@ public sealed class FollowerService(
         if (!string.IsNullOrWhiteSpace(expectedName) &&
             !string.Equals(plainName, expectedName, StringComparison.Ordinal))
         {
-            // A COTL follower ID may be reused. Do not put a CHZZK badge on a different follower.
-            _chzzkFollowerMarkers.Remove(followerId.Value);
-            _loggedDecoratedNameplates.Remove(followerId.Value);
-            SetChzzkBadgeActive(nameText, false);
-            log.LogWarning($"CHZZK nameplate marker dropped: followerId={followerId.Value}, expectedName='{expectedName}', actualName='{plainName}' (ID appears reused)");
-            return;
+            // The Companion mapping is the ownership record. COTL may overwrite the recruit name
+            // during the final recruit-to-live copy, so repair that drift instead of deleting the
+            // marker and permanently losing the CHZZK identity.
+            if (FollowerAppearanceService.TryWrite(info, new[] { "Name" }, expectedName))
+            {
+                log.LogWarning($"[NAMEPLATE][IDENTITY-REPAIRED] followerId={followerId.Value}, oldName='{plainName}', restoredName='{expectedName}'");
+                plainName = expectedName;
+            }
+            else
+            {
+                log.LogWarning($"[NAMEPLATE][IDENTITY-REPAIR-FAILED] followerId={followerId.Value}, actualName='{plainName}', expectedName='{expectedName}'");
+                plainName = expectedName; // Keep the visible CHZZK identity even if persistence failed.
+            }
         }
 
         try
         {
-            var badge = EnsureChzzkBadge(nameText, plainName, followerId.Value);
-            SetChzzkBadgeActive(badge, true);
+            // Render the platform marker in the same TMP text object as the visible name.
+            // The previous child-object approach depended on layout width, anchors, masks, and
+            // sibling ordering; COTL could report a valid badge while still clipping it. The
+            // persistent FollowerInfo.Name remains plain, and every vanilla SetText call is
+            // postfixed so this presentation-only prefix is restored deterministically.
+            ApplyChzzkInlineName(nameText, plainName);
 
             if (_loggedDecoratedNameplates.Add(followerId.Value))
-                log.LogInfo($"CHZZK village nameplate badge active: followerId={followerId.Value}, vanillaName='{plainName}', badge='Chzzk' (separate TMP object; save/name text untouched)");
+                log.LogInfo($"[NAMEPLATE][INLINE-APPLIED] followerId={followerId.Value}, vanillaName='{plainName}', renderedPrefix='Chzzk', color=#00C471, saveNameUntouched=true");
         }
         catch (Exception ex)
         {
-            log.LogWarning($"CHZZK village nameplate badge failed: followerId={followerId.Value}, name='{plainName}', error={ex.GetBaseException().Message}");
+            log.LogWarning($"[NAMEPLATE][INLINE-FAILED] followerId={followerId.Value}, name='{plainName}', error={ex.GetBaseException().Message}");
         }
     }
 
     private const string ChzzkBadgeObjectName = "CHZZK_PlatformBadge";
+    private const string ChzzkInlinePrefix = "<color=#00C471>Chzzk</color> ";
 
-    private object EnsureChzzkBadge(object nameText, string plainName, int followerId)
+    private static void ApplyChzzkInlineName(object nameText, string plainName)
     {
-        if (nameText is not UnityEngine.Component sourceComponent)
-            throw new InvalidOperationException($"nameText is not a Unity Component: {nameText.GetType().FullName}");
+        SetChzzkBadgeActive(nameText, false); // Disable an RC5-RC26 child badge if it exists.
+        SetTextProperty(nameText, "richText", true);
+        var rendered = ChzzkInlinePrefix + EscapeTmpRichText(plainName);
+        SetTextProperty(nameText, "text", rendered);
 
-        var sourceRect = sourceComponent.transform as UnityEngine.RectTransform;
-        if (sourceRect == null)
-            throw new InvalidOperationException("nameText does not use RectTransform");
+        var actual = ReadStringProperty(nameText, "text");
+        if (!string.Equals(actual, rendered, StringComparison.Ordinal))
+            throw new InvalidOperationException($"TMP text write did not persist (actual='{actual ?? "<null>"}')");
+    }
 
-        var existingTransform = sourceRect.Find(ChzzkBadgeObjectName);
-        object badgeText;
-        UnityEngine.RectTransform badgeRect;
-        var created = false;
-
-        if (existingTransform != null)
-        {
-            badgeRect = existingTransform as UnityEngine.RectTransform
-                        ?? throw new InvalidOperationException("existing CHZZK badge is not RectTransform");
-            badgeText = badgeRect.gameObject.GetComponent(nameText.GetType())
-                        ?? throw new InvalidOperationException("existing CHZZK badge TMP component missing");
-        }
-        else
-        {
-            var badgeObject = new UnityEngine.GameObject(ChzzkBadgeObjectName, typeof(UnityEngine.RectTransform));
-            badgeRect = (UnityEngine.RectTransform)badgeObject.transform;
-            badgeRect.SetParent(sourceRect, false);
-            badgeText = badgeObject.AddComponent(nameText.GetType());
-            created = true;
-        }
-
-        CopyTextVisualProperty(nameText, badgeText, "font");
-        CopyTextVisualProperty(nameText, badgeText, "fontSharedMaterial");
-        CopyTextVisualProperty(nameText, badgeText, "fontSize");
-        CopyTextVisualProperty(nameText, badgeText, "fontStyle");
-        CopyTextVisualProperty(nameText, badgeText, "fontWeight");
-        CopyTextVisualProperty(nameText, badgeText, "enableAutoSizing");
-        CopyTextVisualProperty(nameText, badgeText, "fontSizeMin");
-        CopyTextVisualProperty(nameText, badgeText, "fontSizeMax");
-        CopyTextVisualProperty(nameText, badgeText, "outlineWidth");
-        CopyTextVisualProperty(nameText, badgeText, "outlineColor");
-
-        SetTextProperty(badgeText, "text", "Chzzk");
-        SetTextProperty(badgeText, "richText", true);
-        SetTextProperty(badgeText, "raycastTarget", false);
-        SetTextProperty(badgeText, "color", new UnityEngine.Color(0f, 196f / 255f, 113f / 255f, 1f));
-        TrySetEnumProperty(badgeText, "alignment", "Right");
-
-        var sourceFontSize = Math.Max(12f, ReadFloatProperty(nameText, "fontSize"));
-        var preferredWidth = ResolveNamePreferredWidth(nameText, plainName, sourceFontSize, out var widthSource, out var rawPreferredWidth);
-        var sourceHeight = Math.Max(18f, sourceRect.rect.height);
-        var badgeWidth = Math.Max(54f, sourceFontSize * 3.9f);
-
-        // The vanilla follower name is centered in its RectTransform. Anchor this separate label
-        // to that same center, then put its RIGHT edge immediately to the left of the rendered
-        // vanilla name. COTL can freely overwrite/rebuild the original text without touching us.
-        badgeRect.anchorMin = new UnityEngine.Vector2(0.5f, 0.5f);
-        badgeRect.anchorMax = new UnityEngine.Vector2(0.5f, 0.5f);
-        badgeRect.pivot = new UnityEngine.Vector2(1f, 0.5f);
-        badgeRect.sizeDelta = new UnityEngine.Vector2(badgeWidth, sourceHeight);
-        badgeRect.anchoredPosition = new UnityEngine.Vector2(-(preferredWidth * 0.5f) - 5f, 0f);
-        badgeRect.localScale = UnityEngine.Vector3.one;
-        badgeRect.localRotation = UnityEngine.Quaternion.identity;
-        badgeRect.SetAsLastSibling();
-
-        if (created)
-        {
-            log.LogInfo($"[NAMEPLATE] badge created followerId={followerId}, name='{plainName}', textType={nameText.GetType().FullName}, rawPreferredWidth={rawPreferredWidth:0.##}, resolvedWidth={preferredWidth:0.##}, widthSource={widthSource}, badgeX={badgeRect.anchoredPosition.x:0.##}, badgeWidth={badgeWidth:0.##}");
-        }
-
-        return badgeText;
+    private static string EscapeTmpRichText(string value)
+    {
+        return (value ?? string.Empty)
+            .Replace("&", "&amp;")
+            .Replace("<", "&lt;")
+            .Replace(">", "&gt;");
     }
 
     private static void SetChzzkBadgeActive(object nameTextOrBadge, bool active)
@@ -1027,18 +1087,6 @@ public sealed class FollowerService(
         if (child != null) child.gameObject.SetActive(active);
     }
 
-    private static void CopyTextVisualProperty(object source, object target, string propertyName)
-    {
-        try
-        {
-            var sourceProperty = AccessTools.Property(source.GetType(), propertyName);
-            var targetProperty = AccessTools.Property(target.GetType(), propertyName);
-            if (sourceProperty?.CanRead != true || targetProperty?.CanWrite != true) return;
-            targetProperty.SetValue(target, sourceProperty.GetValue(source, null), null);
-        }
-        catch { }
-    }
-
     private static void SetTextProperty(object target, string propertyName, object value)
     {
         try
@@ -1049,70 +1097,15 @@ public sealed class FollowerService(
         catch { }
     }
 
-    private static void TrySetEnumProperty(object target, string propertyName, string enumValue)
+    private static string? ReadStringProperty(object target, string propertyName)
     {
         try
         {
             var property = AccessTools.Property(target.GetType(), propertyName);
-            if (property?.CanWrite != true || !property.PropertyType.IsEnum) return;
-            var parsed = Enum.Parse(property.PropertyType, enumValue, true);
-            property.SetValue(target, parsed, null);
+            if (property?.CanRead != true) return null;
+            return property.GetValue(target, null)?.ToString();
         }
-        catch { }
-    }
-
-    private static float ReadFloatProperty(object target, string propertyName)
-    {
-        try
-        {
-            var property = AccessTools.Property(target.GetType(), propertyName);
-            if (property?.CanRead != true) return 0f;
-            var value = property.GetValue(target, null);
-            return value == null ? 0f : Convert.ToSingle(value);
-        }
-        catch { return 0f; }
-    }
-
-    private static float ResolveNamePreferredWidth(
-        object nameText,
-        string plainName,
-        float sourceFontSize,
-        out string source,
-        out float rawPreferredWidth)
-    {
-        rawPreferredWidth = ReadFloatProperty(nameText, "preferredWidth");
-        var measuredWidth = 0f;
-
-        try
-        {
-            // TMP preferredWidth may still describe the previous/empty frame immediately after
-            // UIFollowerName.SetText. Force its mesh once, then ask TMP to measure this exact name.
-            AccessTools.Method(nameText.GetType(), "ForceMeshUpdate", Type.EmptyTypes)?.Invoke(nameText, null);
-            var getPreferredValues = AccessTools.Method(nameText.GetType(), "GetPreferredValues", new[] { typeof(string) });
-            var measured = getPreferredValues?.Invoke(nameText, new object[] { plainName });
-            if (measured is UnityEngine.Vector2 vector && IsFinitePositive(vector.x))
-                measuredWidth = vector.x;
-        }
-        catch { }
-
-        // This conservative floor is also the fallback for game/TMP versions where the public
-        // measurement method is unavailable. It specifically rejects transient values such as
-        // the 2px width observed for a long Korean nickname in RC25.
-        var estimatedWidth = Math.Max(sourceFontSize, plainName.Length * sourceFontSize * 0.55f);
-        var bestMeasured = Math.Max(rawPreferredWidth, measuredWidth);
-        if (!IsFinitePositive(bestMeasured) || bestMeasured < estimatedWidth * 0.35f)
-        {
-            source = "estimated-stale-layout-fallback";
-            return estimatedWidth;
-        }
-
-        source = measuredWidth >= rawPreferredWidth ? "tmp-GetPreferredValues" : "tmp-preferredWidth";
-        return bestMeasured;
-    }
-
-    private static bool IsFinitePositive(float value)
-    {
-        return value > 0f && !float.IsNaN(value) && !float.IsInfinity(value);
+        catch { return null; }
     }
 
     private void ArmVisibleNameplateRefresh(string reason)

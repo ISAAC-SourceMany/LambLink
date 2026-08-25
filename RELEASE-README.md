@@ -83,9 +83,9 @@ ZIP 압축 해제와 실제 파일 설치/복사를 WinForms UI 스레드에서 
 - User data under `%LOCALAPPDATA%\ChzzkOfTheLamb` is not deleted by Companion program updates.
 - Installation log records `[PROCESS]`, `[EXTRACT]`, and `[INSTALL]` timings for diagnosis.
 
-### RC26 verification
-Companion must display `v1.0.0-rc26`. `BepInEx/LogOutput.log` must contain
-`[BUILD=rc26-nameplate-layout-lifecycle-fix]`,
+### RC27 verification
+Companion must display `v1.0.0-rc27`. `BepInEx/LogOutput.log` must contain
+`[BUILD=rc27-inline-nameplate-prefix-fix]`,
 `[DEPENDENCY] COTL_API=io.github.xhayper.COTL_API`,
 `[RAFFLE][PATCH-VERIFY] ... installed=True`, `[DIAG][RUNTIME-HOST][INSTALLED]`,
 `[DIAG][RUNTIME-HOST][FIRST-UPDATE]`, `[DIAG][UPDATE][FIRST]`, Mod
@@ -105,7 +105,18 @@ report `OVERLAY=ready` while the OBS browser source is loaded and polling.
 
 For CHZZK follower nameplates, startup must log
 `[NAMEPLATE][PATCH-VERIFY] ... installed=True`. After marker synchronization, the Mod must log
-`[NAMEPLATE][REFRESH] armed` and a newly created badge must report a sensible `resolvedWidth`.
-For a long nickname, `rawPreferredWidth=2` is acceptable only when `widthSource` is
-`estimated-stale-layout-fallback` and `resolvedWidth` is substantially larger. The green `Chzzk`
-label remains a separate TMP object positioned immediately left of the vanilla follower name.
+`[NAMEPLATE][REFRESH] armed`. Every decorated follower must log
+`[NAMEPLATE][INLINE-APPLIED] ... saveNameUntouched=true`. `INLINE-APPLIED` is emitted only after
+the Mod writes the rendered TMP string and reads the same value back. Any
+`[NAMEPLATE][INLINE-FAILED]` is a blocking failure. The green `Chzzk` prefix and vanilla nickname
+are rendered by the same TMP object, so no external badge position or clipping calculation remains.
+After a raffle winner is applied, the Mod must log `[IDENTITY-COMMIT] armed`, then
+`[IDENTITY-COMMIT] live follower acquired`, and finally `[IDENTITY-COMMIT] complete`. If COTL
+overwrites a previously mapped name, Companion retains the record with `name drift retained for
+repair`, and the Mod logs `[NAMEPLATE][IDENTITY-REPAIRED]` before applying the inline prefix.
+Existing mappings already deleted by RC26 are recovered from its diagnostic deletion record only
+after the current streamer and live follower ID match; this logs
+`[FOLLOWER-MIGRATION][RC26-RESTORED]`.
+The following marker synchronization must then log
+`[FOLLOWER-MARKER][IDENTITY-REPAIRED] ... source=live-roster` for a drifted existing follower,
+even when its floating nameplate is currently off-screen.

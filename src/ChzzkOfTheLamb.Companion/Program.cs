@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Diagnostics;
 using ChzzkOfTheLamb.Companion.Appearance;
 using ChzzkOfTheLamb.Companion.Chzzk;
@@ -13,13 +14,13 @@ using ChzzkOfTheLamb.Companion.Rules;
 using ChzzkOfTheLamb.Companion.Storage;
 using ChzzkOfTheLamb.Protocol;
 
-const string ReleaseVersion = "1.0.0-rc26";
+const string ReleaseVersion = "1.0.0-rc27";
 const string ProductionApiBase = "https://y0eblkdmu5.execute-api.ap-northeast-2.amazonaws.com";
 const string ProductionFrontendUrl = "https://d1gvw9ccym1qvn.cloudfront.net";
 
 var dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ChzzkOfTheLamb");
 Directory.CreateDirectory(dataDir);
-var diagnosticLogPath = Path.Combine(dataDir, "companion-rc26.log");
+var diagnosticLogPath = Path.Combine(dataDir, "companion-rc27.log");
 using var diagnosticLogWriter = new StreamWriter(
     new FileStream(diagnosticLogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite),
     new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)) { AutoFlush = true };
@@ -143,6 +144,13 @@ if (!developmentMode)
     if (!string.IsNullOrWhiteSpace(cloudBaseUrl))
         await TryConnectCloudAsync(logFailure: true);
 }
+
+// RC26 deleted viewer mappings when COTL had reverted a raffle name during the
+// recruit-to-live transition. Preserve exact deletion evidence from that version so the first
+// current roster can restore the mapping if the same follower ID still exists.
+var rc26RecoveryCandidates = LoadRc26NameDriftRecoveryCandidates(dataDir, streamerChannelId);
+if (rc26RecoveryCandidates.Count > 0)
+    Console.WriteLine($"[FOLLOWER-MIGRATION][RC26] found {rc26RecoveryCandidates.Count} deleted name-drift mapping candidate(s); awaiting live roster verification");
 
 var currentSaveId = "unknown";
 var latestCatalogCount = 0;
@@ -352,6 +360,26 @@ bridge.MessageReceived += envelope =>
                     .GroupBy(x => x.FollowerId)
                     .ToDictionary(g => g.Key, g => g.First());
 
+                foreach (var candidate in rc26RecoveryCandidates
+                             .Where(x => string.Equals(x.SaveId, roster.SaveId, StringComparison.Ordinal))
+                             .ToList())
+                {
+                    if (!latestRosterFollowersById.ContainsKey(candidate.FollowerId)) continue;
+                    if (followers.Find(streamerChannelId, candidate.ViewerId, roster.SaveId) is null)
+                    {
+                        followers.Upsert(new ViewerFollowerRecord
+                        {
+                            StreamerChannelId = streamerChannelId,
+                            ViewerChannelId = candidate.ViewerId,
+                            LastKnownNickname = candidate.Nickname,
+                            SaveId = candidate.SaveId,
+                            FollowerId = candidate.FollowerId
+                        });
+                        Console.WriteLine($"[FOLLOWER-MIGRATION][RC26-RESTORED] viewer={candidate.Nickname} ({candidate.ViewerId}), followerId={candidate.FollowerId}, save={candidate.SaveId}; live ID verified, Mod will repair name drift");
+                    }
+                    rc26RecoveryCandidates.Remove(candidate);
+                }
+
                 var stale = new List<ViewerFollowerRecord>();
                 if (!string.IsNullOrWhiteSpace(roster.SaveId) && roster.SaveId != "unknown")
                 {
@@ -365,14 +393,16 @@ bridge.MessageReceived += envelope =>
 
                         if (!FollowerRosterNameMatchesViewer(actual.Name, record.LastKnownNickname))
                         {
-                            stale.Add(record);
-                            Console.WriteLine($"[FOLLOWER-RECONCILE] stale/reused ID detected from roster: viewer={record.LastKnownNickname} ({record.ViewerChannelId}), followerId={record.FollowerId}, actualName='{actual.Name}', save={roster.SaveId}");
+                            // The game can overwrite the raffle name during recruit finalization.
+                            // A live ID is therefore stronger ownership evidence than the current
+                            // display name. Keep the record and let the Mod repair the identity.
+                            Console.WriteLine($"[FOLLOWER-RECONCILE] name drift retained for repair: viewer={record.LastKnownNickname} ({record.ViewerChannelId}), followerId={record.FollowerId}, actualName='{actual.Name}', save={roster.SaveId}");
                         }
                     }
                     foreach (var record in stale)
                     {
                         if (followers.Remove(streamerChannelId, record.ViewerChannelId, roster.SaveId))
-                            Console.WriteLine($"[FOLLOWER-RECONCILE] removed stale mapping: viewer={record.LastKnownNickname} ({record.ViewerChannelId}), followerId={record.FollowerId}, save={roster.SaveId}; follower missing or identity no longer matches loaded save");
+                            Console.WriteLine($"[FOLLOWER-RECONCILE] removed stale mapping: viewer={record.LastKnownNickname} ({record.ViewerChannelId}), followerId={record.FollowerId}, save={roster.SaveId}; follower ID no longer exists in loaded save");
                     }
                 }
 
@@ -835,10 +865,8 @@ if (!developmentMode && api is not null && accessToken is not null)
                         }
                         else if (!FollowerRosterNameMatchesViewer(rosterEntry.Name, record.LastKnownNickname))
                         {
-                            // Follower IDs can be reused by the game. An ID-only match is therefore not
-                            // sufficient evidence that this is still the same viewer-owned follower.
-                            followers.Remove(streamerChannelId, chat.SenderChannelId, currentSaveId);
-                            Console.WriteLine($"[FOLLOWER-RECONCILE] stale/reused follower ID cleared on join: viewer={nickname}, mappedFollowerId={record.FollowerId}, expectedName='{record.LastKnownNickname}', actualName='{rosterEntry.Name}', save={currentSaveId}; re-entry allowed");
+                            Console.WriteLine($"[RAFFLE] rejected {nickname}: followerId={record.FollowerId} exists but name drifted to '{rosterEntry.Name}'; CHZZK identity repair remains authoritative");
+                            return;
                         }
                         else
                         {
@@ -923,7 +951,11 @@ async Task SyncChzzkMarkersToGameAsync(string saveId, bool validateAgainstRoster
         if (validateAgainstRoster && string.Equals(latestRosterSaveId, saveId, StringComparison.Ordinal))
         {
             if (!latestRosterFollowersById.TryGetValue(record.FollowerId, out var actual)) continue;
-            if (!FollowerRosterNameMatchesViewer(actual.Name, record.LastKnownNickname)) continue;
+            // Cross-streamer development fallback still requires a name match because its records
+            // do not belong to the currently authenticated streamer. Normal release records are
+            // authoritative by streamer+viewer+save+follower ID and are sent so the Mod can repair
+            // a vanilla finalization overwrite.
+            if (offlineFallback && !FollowerRosterNameMatchesViewer(actual.Name, record.LastKnownNickname)) continue;
         }
 
         markers.Add(new ChzzkFollowerMarker
@@ -961,6 +993,39 @@ static bool FollowerRosterNameMatchesViewer(string? actualName, string? expected
     var expected = NormalizeFollowerIdentityName(expectedNickname);
     if (string.IsNullOrWhiteSpace(actual) || string.IsNullOrWhiteSpace(expected)) return false;
     return string.Equals(actual, expected, StringComparison.Ordinal);
+}
+
+static List<(string ViewerId, string Nickname, int FollowerId, string SaveId)>
+    LoadRc26NameDriftRecoveryCandidates(string dataDirectory, string currentStreamerId)
+{
+    var recovered = new Dictionary<string, (string ViewerId, string Nickname, int FollowerId, string SaveId)>(StringComparer.Ordinal);
+    try
+    {
+        foreach (var path in Directory.GetFiles(dataDirectory, "companion-rc26*.log"))
+        {
+            string text;
+            try { text = File.ReadAllText(path); }
+            catch { continue; }
+
+            if (!text.Contains($"({currentStreamerId})", StringComparison.Ordinal)) continue;
+            foreach (Match match in Regex.Matches(
+                         text,
+                         @"\[FOLLOWER-RECONCILE\] stale/reused ID detected from roster: viewer=(.*?) \(([0-9a-fA-F]{32})\), followerId=(\d+), actualName='.*?', save=([^\s]+)"))
+            {
+                if (!int.TryParse(match.Groups[3].Value, out var followerId) || followerId <= 0) continue;
+                var nickname = match.Groups[1].Value.Trim();
+                var viewerId = match.Groups[2].Value;
+                var saveId = match.Groups[4].Value.Trim();
+                if (nickname.Length == 0 || saveId.Length == 0) continue;
+                recovered[$"{viewerId}|{saveId}|{followerId}"] = (viewerId, nickname, followerId, saveId);
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[FOLLOWER-MIGRATION][RC26] recovery scan skipped: {ex.GetBaseException().Message}");
+    }
+    return recovered.Values.ToList();
 }
 
 static string NormalizeFollowerIdentityName(string? value)

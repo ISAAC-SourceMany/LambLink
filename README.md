@@ -1,4 +1,4 @@
-# ChzzkOfTheLamb v1.0.0 RC26 source release
+# ChzzkOfTheLamb v1.0.0 RC27 source release
 
 외부 배포를 위한 release candidate 소스입니다.
 
@@ -17,19 +17,36 @@ Streamer OAuth는 AWS Auth Gateway를 통해 처리합니다.
 - Stops every build script immediately when a `dotnet` command returns a non-zero exit code.
 - Verifies expected DLL/EXE files exist before copying or packaging them.
 
-## RC26 matched test pair
+## RC27 matched test pair
 
-The installed Companion is not updated by building only the game plugin. Build both RC26
+The installed Companion is not updated by building only the game plugin. Build both RC27
 components together:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build-test-pair.ps1
 ```
 
-Close the installed Companion and run `dist\rc26-companion\ChzzkOfTheLamb.Companion.exe`.
-Replace the two game DLLs with the files under `dist\rc26-plugin`. The Companion title must show
-`v1.0.0-rc26`, and the game log must show
-`[BUILD=rc26-nameplate-layout-lifecycle-fix]` before testing.
+Close the installed Companion and run `dist\rc27-companion\ChzzkOfTheLamb.Companion.exe`.
+Replace the two game DLLs with the files under `dist\rc27-plugin`. The Companion title must show
+`v1.0.0-rc27`, and the game log must show
+`[BUILD=rc27-inline-nameplate-prefix-fix]` before testing.
+
+## RC27 deterministic inline CHZZK prefix
+
+- Replaces the clipped child-TMP badge with a presentation-only rich-text prefix in the exact TMP
+  object that renders the vanilla follower name.
+- Renders `<green Chzzk> nickname` without changing the persisted `FollowerInfo.Name`.
+- Reads TMP's `text` property back immediately and logs `INLINE-FAILED` if the render write did not
+  persist, so a claimed success now proves the visible text object contains the prefix.
+- Disables any child badge left by RC5-RC26 to prevent duplicate labels.
+- Keeps all `UIFollowerName.SetText` overload hooks and bounded lifecycle retries.
+- Keeps an existing viewer mapping when its follower ID is still present but the vanilla name has
+  drifted, then repairs that name from the authoritative mapping instead of deleting the marker.
+- Enforces the winner name and appearance across the recruit-to-live `FollowerInfo` hand-off for up
+  to 180 seconds and stops after the live identity remains stable for three seconds.
+- Performs a one-time RC26 recovery: a mapping that RC26 logged as deleted for name drift is restored
+  only when the same streamer and follower ID are verified in the current live roster.
+- See `docs/RC27_INLINE_NAMEPLATE_PREFIX_FIX.md`.
 
 ## RC26 CHZZK nameplate correction
 
@@ -81,7 +98,7 @@ Replace the two game DLLs with the files under `dist\rc26-plugin`. The Companion
 - Sends an immediate `GAME_STATUS` from a thread-safe cache when `GET_GAME_STATUS` is decoded,
   then sends the authoritative Unity-main-thread snapshot.
 - Correlates Companion TX, Mod RX, Mod queue/dispatch, Mod TX, and Companion RX with numbered logs.
-- Mirrors the full Companion console to `%LOCALAPPDATA%\ChzzkOfTheLamb\companion-rc26.log`.
+- Mirrors the full Companion console to `%LOCALAPPDATA%\ChzzkOfTheLamb\companion-rc27.log`.
 - Runs a non-Unity watchdog that reports `NO-UPDATE` or the exact last main-thread stage after 5 seconds.
 - Splits catalog generation into save, type, singleton, unlock, palette, individual form, sort, and TX stages.
 - See `docs/RC21_DIAGNOSTIC_WATCHDOG_FALLBACK.md` for the single-run decision table.
