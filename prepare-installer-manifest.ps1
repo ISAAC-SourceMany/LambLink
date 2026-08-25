@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$release = '1.0.0-rc30'
+$release = '1.0.0-rc31'
 $templatePath = Join-Path $root 'installer\installer-manifest.template.json'
 $outDir = Join-Path $root 'release-hosting'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
@@ -20,7 +20,7 @@ $apiPath = Join-Path $outDir 'xhayper-COTL_API-0.3.4.zip'
 $bepHash = Download-And-Hash $bepUrl $bepPath
 $apiHash = Download-And-Hash $apiUrl $apiPath
 
-$fontPath = Join-Path $outDir 'COTL-KoreanFontFix-4.2.1-rc30.zip'
+$fontPath = Join-Path $outDir 'COTL-KoreanFontFix-4.2.1-rc31.zip'
 $modPath = Join-Path $outDir "ChzzkOfTheLamb-Mod-$release.zip"
 $companionPath = Join-Path $outDir "ChzzkOfTheLamb-Companion-$release-win-x64.zip"
 foreach ($p in @($fontPath,$modPath,$companionPath)) {

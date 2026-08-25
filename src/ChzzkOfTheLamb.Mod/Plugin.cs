@@ -23,7 +23,7 @@ public sealed class Plugin : BaseUnityPlugin
     public const string PluginName = "CHZZK Companion Integration";
     public const string PluginVersion = "1.0.0";
     public const string CotlApiGuid = "io.github.xhayper.COTL_API";
-    public const string BuildTag = "rc30-support-diagnostics-live-donation";
+    public const string BuildTag = "rc31-donation-safe-runtime-paused-buffs";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private readonly CancellationTokenSource _runtimeLifetime = new();
@@ -32,6 +32,9 @@ public sealed class Plugin : BaseUnityPlugin
     private FollowerService? _followers;
     private FollowerAppearanceService? _appearances;
     private DonationEffectService? _donations;
+    private DonationGameplayGate? _donationGate;
+    private DonationGameplayState? _donationRuntimeState;
+    private readonly Queue<PendingDonation> _pendingDonations = new();
     private GameSaveService? _saves;
     private float _nextStatusAt;
     private readonly HashSet<int> _announcedRecruitIds = new();
@@ -47,9 +50,18 @@ public sealed class Plugin : BaseUnityPlugin
     private System.Threading.Tasks.Task<bool>? _raffleSendTask;
     private int? _raffleSendRecruitId;
     private float _nextRaffleSendAt;
+    private System.Threading.Tasks.Task<bool>? _donationStateSendTask;
+    private DonationRuntimeStateEvent? _donationStateSending;
+    private DonationRuntimeStateEvent? _donationStatePending;
+    private string _lastDonationStateSignature = string.Empty;
+    private long _donationStateRevision;
     private volatile string _cachedSaveId = "unknown";
     private volatile string _cachedArea = "UNKNOWN";
     private volatile bool _cachedInGame;
+    private volatile bool _cachedDonationReady;
+    private volatile bool _cachedDonationPaused = true;
+    private volatile string _cachedDonationReason = "STARTING";
+    private volatile int _cachedPendingDonations;
     private int _networkFallbackStatusInFlight;
     private int _mainThreadId;
     private long _updateCount;
@@ -67,6 +79,8 @@ public sealed class Plugin : BaseUnityPlugin
         _appearances = new FollowerAppearanceService(Logger, _saves, SetDiagnosticStage);
         _followers = new FollowerService(Logger, _saves, _appearances);
         _donations = new DonationEffectService(Logger);
+        _donationGate = new DonationGameplayGate(Logger);
+        DungeonDonationBuffState.Reset();
         _bridge = new ModBridgeClient(_queue, Logger);
         _bridge.CommandDecoded += OnBridgeCommandDecoded;
         _bridge.ConnectionChanged += connected =>
@@ -74,6 +88,7 @@ public sealed class Plugin : BaseUnityPlugin
             if (connected)
             {
                 _initialStateSyncPending = true;
+                _lastDonationStateSignature = string.Empty;
                 Logger.LogInfo("[BRIDGE][STATE] initial synchronization requested after connect");
             }
             else
@@ -84,7 +99,8 @@ public sealed class Plugin : BaseUnityPlugin
 
         BridgeRuntimeHost.Install(RunMainThreadUpdate, RequestRuntimeShutdown, Logger);
 
-        Harmony.CreateAndPatchAll(typeof(Plugin).Assembly, PluginGuid);
+        var harmony = Harmony.CreateAndPatchAll(typeof(Plugin).Assembly, PluginGuid);
+        DonationStoryLifecycle.Install(harmony, Logger);
         IndoctrinationRafflePatch.VerifyInstallation(PluginGuid);
         FollowerNameplatePatch.VerifyInstallation(PluginGuid, Logger);
         Logger.LogInfo($"{PluginName} {PluginVersion} loaded [BUILD={BuildTag}]");
@@ -159,9 +175,14 @@ public sealed class Plugin : BaseUnityPlugin
                     SaveId = saveId,
                     ModVersion = PluginVersion,
                     GameVersion = string.Empty,
-                    Area = inGame ? "BASE" : _cachedArea,
+                    Area = _cachedArea,
                     RuntimePumpActive = pumpActive,
-                    RuntimeUpdateCount = updateCount
+                    RuntimeUpdateCount = updateCount,
+                    DonationReady = _cachedDonationReady,
+                    DonationTimersPaused = _cachedDonationPaused,
+                    DonationPauseReason = _cachedDonationReason,
+                    PendingDonationCount = _cachedPendingDonations,
+                    DonationStateRevision = Interlocked.Read(ref _donationStateRevision)
                 };
                 Logger.LogInfo($"[BRIDGE][STATE][FALLBACK-TX-START] rx={receiveSequence}, attempt={attempt}/3, pump={status.RuntimePumpActive}, updates={status.RuntimeUpdateCount}, inGame={status.InGame}, save={status.SaveId}, source=thread-safe-cache");
                 var sent = _bridge != null && await _bridge.TrySendAsync(GameMessageTypes.GameStatus, status, _runtimeLifetime.Token);
@@ -252,6 +273,12 @@ public sealed class Plugin : BaseUnityPlugin
         SetDiagnosticStage("UPDATE/POLL-COMPLETIONS");
         PollStatusSendCompletion();
         PollRaffleSendCompletion();
+        PollDonationStateSendCompletion();
+
+        SetDiagnosticStage("UPDATE/DONATION-GATE");
+        var donationState = _donationGate!.Evaluate(_pendingDonations.Count);
+        _donationRuntimeState = donationState;
+        DungeonDonationBuffState.Tick(donationState.TimersPaused);
 
         // Mandatory transport dispatch comes first. Optional follower/UI maintenance is last so
         // no gameplay scan can prevent GET_GAME_STATUS or catalog commands from being observed.
@@ -284,8 +311,7 @@ public sealed class Plugin : BaseUnityPlugin
                     }
                     case GameMessageTypes.DonationEffect:
                     {
-                        var result = _donations!.ApplyFromJson(command.PayloadJson);
-                        _ = SendDonationEffectResultAsync(result);
+                        EnqueueDonation(command);
                         break;
                     }
                     case GameMessageTypes.SyncChzzkFollowerMarkers:
@@ -367,6 +393,12 @@ public sealed class Plugin : BaseUnityPlugin
             }
         }
 
+        SetDiagnosticStage("UPDATE/DONATION-DISPATCH");
+        donationState.PendingDonations = _pendingDonations.Count;
+        TryApplyNextDonation(donationState);
+        donationState.PendingDonations = _pendingDonations.Count;
+        PublishDonationRuntimeState(donationState);
+
         // Transport/application synchronization must run before any optional gameplay maintenance.
         // RC14-RC19 performed a global FollowerRecruit object scan before this block. On the
         // affected Unity runtime that scan never returned, so queued GET_GAME_STATUS commands and
@@ -394,6 +426,109 @@ public sealed class Plugin : BaseUnityPlugin
         finally { SetDiagnosticStage("UPDATE/IDLE"); }
     }
 
+    private void EnqueueDonation(GameCommandEnvelope envelope)
+    {
+        DonationEffectCommand? command = null;
+        try
+        {
+            command = JsonConvert.DeserializeObject<DonationEffectCommand>(envelope.PayloadJson)
+                      ?? throw new InvalidOperationException("Invalid DonationEffect command.");
+            if (string.IsNullOrWhiteSpace(command.RequestId))
+                throw new InvalidOperationException("DonationEffect request ID is empty.");
+
+            const int maxPendingDonations = 256;
+            if (_pendingDonations.Count >= maxPendingDonations)
+                throw new InvalidOperationException($"donation queue limit reached ({maxPendingDonations})");
+
+            _pendingDonations.Enqueue(new PendingDonation(
+                command.RequestId,
+                envelope.PayloadJson,
+                envelope.DiagnosticSequence,
+                UnityEngine.Time.realtimeSinceStartup));
+            Logger.LogInfo($"[DONATION][QUEUE][ENQUEUED] request={ShortDiagnosticId(command.RequestId)}, sequence={envelope.DiagnosticSequence}, pending={_pendingDonations.Count}, gate={_donationRuntimeState?.Reason ?? "STARTING"}, areaHint={command.Effect}");
+        }
+        catch (Exception ex)
+        {
+            var root = ex.GetBaseException();
+            Logger.LogWarning($"[DONATION][QUEUE][REJECTED] request={ShortDiagnosticId(command?.RequestId)}, sequence={envelope.DiagnosticSequence}, error={root.Message}");
+            _ = SendDonationEffectResultAsync(new DonationEffectResult
+            {
+                RequestId = command?.RequestId ?? string.Empty,
+                Success = false,
+                Effect = command?.Effect ?? string.Empty,
+                EventName = command?.EventName ?? string.Empty,
+                Amount = command?.Amount ?? 0,
+                Nickname = command?.Nickname ?? string.Empty,
+                Error = root.Message
+            });
+        }
+    }
+
+    private void TryApplyNextDonation(DonationGameplayState state)
+    {
+        if (!state.IsReady || _pendingDonations.Count == 0) return;
+
+        var pending = _pendingDonations.Dequeue();
+        var waited = Math.Max(0f, UnityEngine.Time.realtimeSinceStartup - pending.QueuedAtRealtime);
+        Logger.LogInfo($"[DONATION][QUEUE][DEQUEUED] request={ShortDiagnosticId(pending.RequestId)}, sequence={pending.DiagnosticSequence}, waitedSeconds={waited:0.00}, applyArea={state.Area}, remaining={_pendingDonations.Count}");
+        var result = _donations!.ApplyFromJson(pending.PayloadJson);
+        _ = SendDonationEffectResultAsync(result);
+    }
+
+    private void PublishDonationRuntimeState(DonationGameplayState state)
+    {
+        _cachedArea = state.Area;
+        _cachedDonationReady = state.IsReady;
+        _cachedDonationPaused = state.TimersPaused;
+        _cachedDonationReason = state.Reason;
+        _cachedPendingDonations = state.PendingDonations;
+        var signature = $"{state.IsReady}|{state.TimersPaused}|{state.Reason}|{state.Area}|{state.PendingDonations}";
+        if (!string.Equals(signature, _lastDonationStateSignature, StringComparison.Ordinal))
+        {
+            _lastDonationStateSignature = signature;
+            _donationStatePending = new DonationRuntimeStateEvent
+            {
+                IsReady = state.IsReady,
+                TimersPaused = state.TimersPaused,
+                Reason = state.Reason,
+                Area = state.Area,
+                Evidence = state.Evidence,
+                PendingDonations = state.PendingDonations,
+                Revision = Interlocked.Increment(ref _donationStateRevision)
+            };
+        }
+
+        TryStartDonationStateSend();
+    }
+
+    private void TryStartDonationStateSend()
+    {
+        if (_bridge?.IsConnected != true || _donationStateSendTask != null || _donationStatePending == null) return;
+        _donationStateSending = _donationStatePending;
+        _donationStatePending = null;
+        Logger.LogInfo($"[DONATION][GATE][TX-START] revision={_donationStateSending.Revision}, ready={_donationStateSending.IsReady}, paused={_donationStateSending.TimersPaused}, reason={_donationStateSending.Reason}, area={_donationStateSending.Area}, pending={_donationStateSending.PendingDonations}");
+        _donationStateSendTask = _bridge.TrySendAsync(GameMessageTypes.DonationRuntimeState, _donationStateSending, _runtimeLifetime.Token);
+    }
+
+    private void PollDonationStateSendCompletion()
+    {
+        var task = _donationStateSendTask;
+        if (task == null || !task.IsCompleted) return;
+
+        var payload = _donationStateSending;
+        var success = false;
+        try { success = task.GetAwaiter().GetResult(); }
+        catch (Exception ex) { Logger.LogWarning($"[DONATION][GATE][TX-FAILED] revision={payload?.Revision}: {ex.GetBaseException().Message}"); }
+
+        Logger.LogInfo($"[DONATION][GATE][TX-{(success ? "OK" : "FAILED")}] revision={payload?.Revision}, reason={payload?.Reason}, pending={payload?.PendingDonations}");
+        if (!success && payload != null && _donationStatePending == null)
+            _donationStatePending = payload;
+
+        _donationStateSendTask = null;
+        _donationStateSending = null;
+        TryStartDonationStateSend();
+    }
+
     private void TryStartGameStatusSend(string reason)
     {
         if (_bridge?.IsConnected != true || _statusSendTask != null) return;
@@ -412,18 +547,23 @@ public sealed class Plugin : BaseUnityPlugin
         // reached GetCurrentSaveId() and then stopped before TX-START while evaluating optional
         // game-version/area metadata. A blocked optional probe must never suppress SAVE/CATALOG.
         //
-        // DonationEffectService remains authoritative when a donation is actually applied and
-        // corrects a BASE-selected effect to a dungeon effect when necessary, so the conservative
-        // BASE value here does not allow an effect to execute in the wrong context.
+        // DonationGameplayGate is evaluated on the Unity main thread before this builder. Reuse
+        // that cached result here instead of invoking additional scene/game probes in the mandatory
+        // status path. DonationEffectService still re-checks the area at the exact apply frame.
         var started = Stopwatch.GetTimestamp();
         Logger.LogInfo($"[BRIDGE][STATE][BUILD][BEGIN] reason={reason}, thread={Thread.CurrentThread.ManagedThreadId}");
         var status = new GameStatusEvent
         {
             ModVersion = PluginVersion,
             GameVersion = string.Empty,
-            Area = "UNKNOWN",
+            Area = _donationRuntimeState?.Area ?? _cachedArea,
             RuntimePumpActive = true,
-            RuntimeUpdateCount = Interlocked.Read(ref _updateCount)
+            RuntimeUpdateCount = Interlocked.Read(ref _updateCount),
+            DonationReady = _donationRuntimeState?.IsReady ?? _cachedDonationReady,
+            DonationTimersPaused = _donationRuntimeState?.TimersPaused ?? _cachedDonationPaused,
+            DonationPauseReason = _donationRuntimeState?.Reason ?? _cachedDonationReason,
+            PendingDonationCount = _pendingDonations.Count,
+            DonationStateRevision = Interlocked.Read(ref _donationStateRevision)
         };
         SetDiagnosticStage($"STATUS/{reason}/IN-GAME-PROBE");
         try
@@ -443,7 +583,7 @@ public sealed class Plugin : BaseUnityPlugin
                 Logger.LogInfo($"[BRIDGE][STATE][BUILD][SAVE-END] reason={reason}, value={status.SaveId}");
             }
             catch (Exception ex) { Logger.LogWarning($"[BRIDGE][STATE] save probe failed: {ex.GetBaseException().Message}"); }
-            status.Area = "BASE";
+            status.Area = _donationRuntimeState?.Area ?? "BASE";
         }
 
         _cachedInGame = status.InGame;
@@ -631,6 +771,22 @@ public sealed class Plugin : BaseUnityPlugin
         {
             Logger.LogError($"[DIAG][WATCHDOG][FAILED] {ex}");
         }
+    }
+
+    private sealed class PendingDonation
+    {
+        public PendingDonation(string requestId, string payloadJson, long diagnosticSequence, float queuedAtRealtime)
+        {
+            RequestId = requestId;
+            PayloadJson = payloadJson;
+            DiagnosticSequence = diagnosticSequence;
+            QueuedAtRealtime = queuedAtRealtime;
+        }
+
+        public string RequestId { get; }
+        public string PayloadJson { get; }
+        public long DiagnosticSequence { get; }
+        public float QueuedAtRealtime { get; }
     }
 
     private static double ElapsedMilliseconds(long started) =>

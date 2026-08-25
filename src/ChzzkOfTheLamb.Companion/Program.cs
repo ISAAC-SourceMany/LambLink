@@ -14,13 +14,13 @@ using ChzzkOfTheLamb.Companion.Storage;
 using ChzzkOfTheLamb.Companion.ViewerPage;
 using ChzzkOfTheLamb.Protocol;
 
-const string ReleaseVersion = "1.0.0-rc30";
+const string ReleaseVersion = "1.0.0-rc31";
 const string ProductionApiBase = "https://y0eblkdmu5.execute-api.ap-northeast-2.amazonaws.com";
 const string ProductionFrontendUrl = "https://d1gvw9ccym1qvn.cloudfront.net";
 
 var dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ChzzkOfTheLamb");
 Directory.CreateDirectory(dataDir);
-var diagnosticLogPath = Path.Combine(dataDir, "companion-rc30.log");
+var diagnosticLogPath = Path.Combine(dataDir, "companion-rc31.log");
 var originalConsoleOut = Console.Out;
 var originalConsoleError = Console.Error;
 using var diagnosticLogWriter = new RollingFileTextWriter(
@@ -43,6 +43,11 @@ Console.WriteLine($"[DIAG][SESSION-BEGIN] version={ReleaseVersion}, utc={DateTim
 bool IsReleaseDistribution = true;
 #else
 bool IsReleaseDistribution = false;
+#endif
+#if RC_TEST_TOOLS
+bool DeveloperCommandsEnabled = true;
+#else
+bool DeveloperCommandsEnabled = false;
 #endif
 
 ChzzkCredentials? chzzkCredentials = null;
@@ -84,6 +89,8 @@ if (IsReleaseDistribution)
 {
     Console.WriteLine("[MODE] RELEASE / CHZZK LIVE");
     Console.WriteLine("[CONFIG] AWS CLI/SSO: not used by distribution build");
+    if (DeveloperCommandsEnabled)
+        Console.WriteLine("[TEST TOOLS] RC31_TEST_TOOLS enabled: dev donation command is available; do not distribute this Companion.");
 }
 else
 {
@@ -180,6 +187,13 @@ long catalogSyncGeneration = 0;
 long lastRuntimePumpStatusUnixMs = 0;
 var gameSyncPhase = "DISCONNECTED";
 var donationTraces = new DonationTraceRegistry();
+DonationRuntimeStateEvent lastDonationRuntimeState = new()
+{
+    IsReady = false,
+    TimersPaused = true,
+    Reason = "STARTING",
+    Area = "UNKNOWN"
+};
 long donationEventSequence = 0;
 string? lastSupportBundlePath = null;
 
@@ -196,9 +210,28 @@ bridge.ConnectionChanged += connected =>
         latestCatalogSaveId = "unknown";
         Interlocked.Exchange(ref lastRuntimePumpStatusUnixMs, 0);
         gameSyncPhase = "SOCKET_CONNECTED";
+        lastDonationRuntimeState = new DonationRuntimeStateEvent
+        {
+            IsReady = false,
+            TimersPaused = true,
+            Reason = "WAITING_FOR_MOD_STATE",
+            Area = "UNKNOWN"
+        };
+        overlay.SetDonationRuntimeState(true, "WAITING_FOR_MOD_STATE");
         _ = MaintainInitialGameStateSyncAsync(generation);
     }
-    else gameSyncPhase = "DISCONNECTED";
+    else
+    {
+        gameSyncPhase = "DISCONNECTED";
+        lastDonationRuntimeState = new DonationRuntimeStateEvent
+        {
+            IsReady = false,
+            TimersPaused = true,
+            Reason = "GAME_DISCONNECTED",
+            Area = "UNKNOWN"
+        };
+        overlay.SetDonationRuntimeState(true, "GAME_DISCONNECTED");
+    }
 };
 
 string lastNameplateSyncSignature = string.Empty;
@@ -295,6 +328,23 @@ bridge.MessageReceived += envelope =>
                 if (status.RuntimePumpActive)
                     Interlocked.Exchange(ref lastRuntimePumpStatusUnixMs, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
                 Console.WriteLine($"[BRIDGE][STATE][RX] GAME_STATUS pump={status.RuntimePumpActive}, updates={status.RuntimeUpdateCount}, inGame={status.InGame}, save={status.SaveId}, area={status.Area}, mod={status.ModVersion}");
+                if (status.DonationStateRevision >= lastDonationRuntimeState.Revision)
+                {
+                    lastDonationRuntimeState = new DonationRuntimeStateEvent
+                    {
+                        IsReady = status.DonationReady,
+                        TimersPaused = status.DonationTimersPaused,
+                        Reason = status.DonationPauseReason,
+                        Area = status.Area,
+                        PendingDonations = status.PendingDonationCount,
+                        Revision = status.DonationStateRevision
+                    };
+                    overlay.SetDonationRuntimeState(status.DonationTimersPaused, status.DonationPauseReason);
+                }
+                else
+                {
+                    Console.WriteLine($"[DONATION][GATE][STATUS-IGNORED] staleRevision={status.DonationStateRevision}, currentRevision={lastDonationRuntimeState.Revision}");
+                }
 
                 var changed = lastGameStatus is null
                               || lastGameStatus.RuntimePumpActive != status.RuntimePumpActive
@@ -450,6 +500,20 @@ bridge.MessageReceived += envelope =>
                     result.Success ? "identity-applied" : "identity-apply-failed",
                     allowRetry: !result.Success);
                 StartNextQueuedRaffle();
+                break;
+            }
+            case GameMessageTypes.DonationRuntimeState:
+            {
+                var state = JsonSerializer.Deserialize<DonationRuntimeStateEvent>(envelope.PayloadJson)!;
+                if (state.Revision > 0 && state.Revision < lastDonationRuntimeState.Revision)
+                {
+                    Console.WriteLine($"[DONATION][GATE][RX-IGNORED] staleRevision={state.Revision}, currentRevision={lastDonationRuntimeState.Revision}");
+                    break;
+                }
+
+                lastDonationRuntimeState = state;
+                overlay.SetDonationRuntimeState(state.TimersPaused, state.Reason);
+                Console.WriteLine($"[DONATION][GATE][RX] revision={state.Revision}, ready={state.IsReady}, timersPaused={state.TimersPaused}, reason={state.Reason}, area={state.Area}, pending={state.PendingDonations}, evidence={state.Evidence}");
                 break;
             }
             case GameMessageTypes.DonationEffectResult:
@@ -1071,7 +1135,7 @@ async Task ConsoleLoopAsync()
             _ = UploadLatestCatalogAsync();
             continue;
         }
-        if (!IsReleaseDistribution && normalized.StartsWith("dev spawn "))
+        if (DeveloperCommandsEnabled && normalized.StartsWith("dev spawn "))
         {
             var nickname = rawCommand.Substring("dev spawn ".Length).Trim();
             if (string.IsNullOrWhiteSpace(nickname))
@@ -1086,7 +1150,7 @@ async Task ConsoleLoopAsync()
                 new SpawnFollowerCommand(viewerId, nickname, currentSaveId, "developer-console", appearances.Get(streamerChannelId, viewerId)), stop.Token);
             continue;
         }
-        if (!IsReleaseDistribution && normalized.StartsWith("dev join "))
+        if (DeveloperCommandsEnabled && normalized.StartsWith("dev join "))
         {
             var nickname = rawCommand.Substring("dev join ".Length).Trim();
             if (string.IsNullOrWhiteSpace(nickname))
@@ -1099,7 +1163,7 @@ async Task ConsoleLoopAsync()
             Console.WriteLine(joined ? $"[DEV] raffle joined: {nickname}" : $"[DEV] raffle join rejected: {nickname}");
             continue;
         }
-        if (!IsReleaseDistribution && normalized.StartsWith("dev donation "))
+        if (DeveloperCommandsEnabled && normalized.StartsWith("dev donation "))
         {
             var amountText = rawCommand.Substring("dev donation ".Length).Trim().Replace(",", string.Empty);
             if (!long.TryParse(amountText, out var amount) || amount < 0)
@@ -1221,7 +1285,7 @@ async Task ConsoleLoopAsync()
                     ? "PUMP_STALE"
                     : gameSyncPhase;
                 var overlayPollAge = overlay.StatePollAgeSeconds;
-                Console.WriteLine($"MODE={(developmentMode ? "DEV" : "CHZZK")}, CHZZK={(developmentMode ? "disabled" : streamerChannelName)}, GAME={gameReady}, GAME_SOCKET={bridge.IsGameConnected}, GAME_READY={gameReady}, SYNC={displayedSyncPhase}, PUMP_AGE={(pumpAgeSeconds < 0 ? "none" : pumpAgeSeconds.ToString("F1") + "s")}, SAVE={currentSaveId}, RECRUIT={currentRecruitFollowerId?.ToString() ?? "none"}, RAFFLE={raffle.IsOpen}, participants={raffle.ParticipantCount}, queue={pendingRaffleRequests.Count}, OVERLAY={(overlay.IsClientPolling ? "ready" : "not-polling")}, OVERLAY_POLL_AGE={(overlayPollAge < 0 ? "none" : overlayPollAge.ToString("F1") + "s")}, CLOUD={(cloud?.IsAuthenticated == true ? "connected" : "off")}, CATALOG={latestCatalogCount}, CATALOG_SAVE={latestCatalogSaveId}, DONATION_PENDING={donationTraces.PendingCount}");
+                Console.WriteLine($"MODE={(developmentMode ? "DEV" : "CHZZK")}, CHZZK={(developmentMode ? "disabled" : streamerChannelName)}, GAME={gameReady}, GAME_SOCKET={bridge.IsGameConnected}, GAME_READY={gameReady}, SYNC={displayedSyncPhase}, PUMP_AGE={(pumpAgeSeconds < 0 ? "none" : pumpAgeSeconds.ToString("F1") + "s")}, SAVE={currentSaveId}, AREA={lastDonationRuntimeState.Area}, DONATION_GATE={lastDonationRuntimeState.Reason}, DONATION_READY={lastDonationRuntimeState.IsReady}, DONATION_QUEUE={lastDonationRuntimeState.PendingDonations}, RECRUIT={currentRecruitFollowerId?.ToString() ?? "none"}, RAFFLE={raffle.IsOpen}, participants={raffle.ParticipantCount}, queue={pendingRaffleRequests.Count}, OVERLAY={(overlay.IsClientPolling ? "ready" : "not-polling")}, OVERLAY_POLL_AGE={(overlayPollAge < 0 ? "none" : overlayPollAge.ToString("F1") + "s")}, CLOUD={(cloud?.IsAuthenticated == true ? "connected" : "off")}, CATALOG={latestCatalogCount}, CATALOG_SAVE={latestCatalogSaveId}, DONATION_PENDING={donationTraces.PendingCount}");
                 Console.WriteLine($"VIEWER_PAGE={viewerPage.Url ?? "not-ready"}");
                 break;
             }
@@ -1301,7 +1365,7 @@ async Task SendDonationEffectSafeAsync(
             return;
         }
 
-        Console.WriteLine($"[DONATION][TX][SENT] request={ShortId(requestId)}, awaiting=DONATION_EFFECT_RESULT, timeoutSeconds=15");
+        Console.WriteLine($"[DONATION][TX][SENT] request={ShortId(requestId)}, awaiting=DONATION_EFFECT_RESULT, activeTimeoutSeconds=15, pausedWhileModGateBlocked=true");
         _ = MonitorDonationAcknowledgementAsync(requestId, cancellationToken);
     }
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1319,10 +1383,41 @@ async Task MonitorDonationAcknowledgementAsync(string requestId, CancellationTok
 {
     try
     {
-        await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken);
-        if (donationTraces.TryAbandon(requestId, out var trace, out var elapsedMs))
+        const double activeTimeoutSeconds = 15;
+        const double absoluteSafetyTimeoutSeconds = 1800;
+        var started = Stopwatch.GetTimestamp();
+        var previous = started;
+        var activeWaitSeconds = 0d;
+        string? lastPauseReason = null;
+
+        while (donationTraces.Contains(requestId))
         {
-            Console.Error.WriteLine($"[DONATION][TERMINAL][ACK-TIMEOUT] request={ShortId(requestId)}, elapsedMs={elapsedMs:F1}, source={trace!.Source}, area={trace.Area}, effect={trace.Effect}, gameSocket={bridge.IsGameConnected}, sync={gameSyncPhase}");
+            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+            var now = Stopwatch.GetTimestamp();
+            var deltaSeconds = Math.Max(0d, (now - previous) / (double)Stopwatch.Frequency);
+            previous = now;
+
+            var runtimeState = lastDonationRuntimeState;
+            if (!runtimeState.TimersPaused && runtimeState.IsReady)
+            {
+                activeWaitSeconds += deltaSeconds;
+                lastPauseReason = null;
+            }
+            else if (!string.Equals(lastPauseReason, runtimeState.Reason, StringComparison.Ordinal))
+            {
+                lastPauseReason = runtimeState.Reason;
+                Console.WriteLine($"[DONATION][ACK-WAIT][PAUSED] request={ShortId(requestId)}, reason={runtimeState.Reason}, area={runtimeState.Area}, pending={runtimeState.PendingDonations}, activeWaitSeconds={activeWaitSeconds:F1}");
+            }
+
+            var wallSeconds = (now - started) / (double)Stopwatch.Frequency;
+            if (activeWaitSeconds < activeTimeoutSeconds && wallSeconds < absoluteSafetyTimeoutSeconds) continue;
+
+            if (donationTraces.TryAbandon(requestId, out var trace, out var elapsedMs))
+            {
+                var timeoutKind = wallSeconds >= absoluteSafetyTimeoutSeconds ? "absolute-safety" : "active-gameplay";
+                Console.Error.WriteLine($"[DONATION][TERMINAL][ACK-TIMEOUT] request={ShortId(requestId)}, kind={timeoutKind}, elapsedMs={elapsedMs:F1}, activeWaitSeconds={activeWaitSeconds:F1}, source={trace!.Source}, area={trace.Area}, effect={trace.Effect}, gameSocket={bridge.IsGameConnected}, sync={gameSyncPhase}, gate={runtimeState.Reason}");
+            }
+            break;
         }
     }
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1342,7 +1437,7 @@ void PrintCommands()
     Console.WriteLine("  support | support open       (개인정보 제거 로그 ZIP 생성/열기)");
     Console.WriteLine("  raffle start | raffle cancel | raffle draw");
     Console.WriteLine("  forms | form allow <id> | form deny <id> | refresh-forms");
-    if (!IsReleaseDistribution)
+    if (DeveloperCommandsEnabled)
     {
         Console.WriteLine("  dev spawn <nickname>       (개발 전용)");
         Console.WriteLine("  dev join <nickname>        (개발 전용)");

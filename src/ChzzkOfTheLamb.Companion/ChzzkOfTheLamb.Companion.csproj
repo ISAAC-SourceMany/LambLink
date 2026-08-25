@@ -4,12 +4,15 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>1.0.0-rc30</Version>
+    <Version>1.0.0-rc31</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.30</FileVersion>
+    <FileVersion>1.0.0.31</FileVersion>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <DefineConstants>$(DefineConstants);RELEASE_DISTRIBUTION</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(EnableRcTestTools)' == 'true'">
+    <DefineConstants>$(DefineConstants);RC_TEST_TOOLS</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\ChzzkOfTheLamb.Protocol\ChzzkOfTheLamb.Protocol.csproj" />

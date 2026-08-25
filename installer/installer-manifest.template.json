@@ -1,5 +1,5 @@
 {
-  "release": "1.0.0-rc30",
+  "release": "1.0.0-rc31",
   "components": [
     {
       "id": "bepinex",
@@ -23,25 +23,25 @@
       "id": "korean-font-fix",
       "displayName": "COTL Korean Font Fix 4.2.1",
       "version": "4.2.1",
-      "url": "https://d1gvw9ccym1qvn.cloudfront.net/releases/COTL-KoreanFontFix-4.2.1-rc30.zip",
+      "url": "https://d1gvw9ccym1qvn.cloudfront.net/releases/COTL-KoreanFontFix-4.2.1-rc31.zip",
       "sha256": "__FONT_FIX_SHA256__",
       "installMode": "game-root",
       "source": "ChzzkOfTheLamb release CDN"
     },
     {
       "id": "chzzk-mod",
-      "displayName": "ChzzkOfTheLamb Mod 1.0.0-rc30",
-      "version": "1.0.0-rc30",
-      "url": "https://d1gvw9ccym1qvn.cloudfront.net/releases/ChzzkOfTheLamb-Mod-1.0.0-rc30.zip",
+      "displayName": "ChzzkOfTheLamb Mod 1.0.0-rc31",
+      "version": "1.0.0-rc31",
+      "url": "https://d1gvw9ccym1qvn.cloudfront.net/releases/ChzzkOfTheLamb-Mod-1.0.0-rc31.zip",
       "sha256": "__MOD_SHA256__",
       "installMode": "game-root",
       "source": "ChzzkOfTheLamb release CDN"
     },
     {
       "id": "companion",
-      "displayName": "ChzzkOfTheLamb Companion 1.0.0-rc30",
-      "version": "1.0.0-rc30",
-      "url": "https://d1gvw9ccym1qvn.cloudfront.net/releases/ChzzkOfTheLamb-Companion-1.0.0-rc30-win-x64.zip",
+      "displayName": "ChzzkOfTheLamb Companion 1.0.0-rc31",
+      "version": "1.0.0-rc31",
+      "url": "https://d1gvw9ccym1qvn.cloudfront.net/releases/ChzzkOfTheLamb-Companion-1.0.0-rc31-win-x64.zip",
       "sha256": "__COMPANION_SHA256__",
       "installMode": "companion",
       "source": "ChzzkOfTheLamb release CDN"

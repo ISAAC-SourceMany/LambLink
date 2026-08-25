@@ -16,6 +16,32 @@ internal static class DungeonDonationBuffState
 
     private static readonly List<ScheduledBuff> MoveQueue = new();
     private static readonly List<ScheduledBuff> AttackQueue = new();
+    private static float _gameplayClock;
+    private static bool _clockInitialized;
+
+    public static void Reset()
+    {
+        MoveQueue.Clear();
+        AttackQueue.Clear();
+        _gameplayClock = 0f;
+        _clockInitialized = true;
+    }
+
+    /// <summary>
+    /// Advances only while donation gameplay is safe. Loading, scene transitions,
+    /// dialogue/cutscenes and the pause menu therefore consume no buff duration.
+    /// </summary>
+    public static void Tick(bool paused)
+    {
+        if (!_clockInitialized)
+        {
+            Reset();
+            return;
+        }
+
+        if (!paused)
+            _gameplayClock += Math.Max(0f, Time.unscaledDeltaTime);
+    }
 
     public static string QueueMove(float multiplier, float seconds)
         => Queue(MoveQueue, "movement", multiplier, seconds);
@@ -25,7 +51,7 @@ internal static class DungeonDonationBuffState
 
     private static string Queue(List<ScheduledBuff> queue, string key, float multiplier, float seconds)
     {
-        var now = Time.unscaledTime;
+        var now = _gameplayClock;
         PruneExpired(queue, now);
 
         var startsAt = queue.Count == 0 ? now : Math.Max(now, queue[queue.Count - 1].EndsAt);
@@ -52,7 +78,7 @@ internal static class DungeonDonationBuffState
 
     private static float ApplyScheduled(float value, List<ScheduledBuff> queue)
     {
-        var now = Time.unscaledTime;
+        var now = _gameplayClock;
         PruneExpired(queue, now);
         if (queue.Count == 0) return value;
 

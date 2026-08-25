@@ -26,6 +26,7 @@ public static class GameMessageTypes
     public const string RaffleRequested = "RAFFLE_REQUESTED";
     public const string FollowerRoster = "FOLLOWER_ROSTER";
     public const string DonationEffectResult = "DONATION_EFFECT_RESULT";
+    public const string DonationRuntimeState = "DONATION_RUNTIME_STATE";
 }
 
 public sealed class GameCommandEnvelope
@@ -134,6 +135,21 @@ public sealed class DonationEffectResult
     public string? Error { get; set; }
 }
 
+/// <summary>
+/// Mod -> Companion gameplay gate state for donation delivery and timed effects.
+/// The Mod is authoritative because only it can observe Unity scene and gameplay state.
+/// </summary>
+public sealed class DonationRuntimeStateEvent
+{
+    public bool IsReady { get; set; }
+    public bool TimersPaused { get; set; } = true;
+    public string Reason { get; set; } = "STARTING";
+    public string Area { get; set; } = "UNKNOWN";
+    public string Evidence { get; set; } = string.Empty;
+    public int PendingDonations { get; set; }
+    public long Revision { get; set; }
+}
+
 public sealed class GameStatusEvent
 {
     public bool InGame { get; set; }
@@ -146,6 +162,13 @@ public sealed class GameStatusEvent
     // ready game integration; a cache fallback may repeat the most recent proven state.
     public bool RuntimePumpActive { get; set; }
     public long RuntimeUpdateCount { get; set; }
+    // Backup copy of the donation gate. The dedicated DONATION_RUNTIME_STATE event is
+    // sent immediately on transitions; these fields make reconnect/status recovery safe.
+    public bool DonationReady { get; set; }
+    public bool DonationTimersPaused { get; set; } = true;
+    public string DonationPauseReason { get; set; } = "STARTING";
+    public int PendingDonationCount { get; set; }
+    public long DonationStateRevision { get; set; }
 }
 
 public sealed class AppearanceCatalogRequest

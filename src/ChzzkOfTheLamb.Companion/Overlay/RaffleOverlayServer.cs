@@ -26,6 +26,10 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
     private long _stateRequests;
     private DateTimeOffset? _lastStateRequestAt;
     private readonly Dictionary<string, List<ScheduledOverlayBuff>> _buffQueues = new(StringComparer.Ordinal);
+    private readonly List<string> _buffOrder = new();
+    private bool _buffTimersPaused = true;
+    private DateTimeOffset? _buffPauseStartedAt = DateTimeOffset.UtcNow;
+    private string _buffPauseReason = "STARTING";
 
     public RaffleOverlayServer(int port = 17883)
     {
@@ -149,16 +153,22 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
 
         lock (_gate)
         {
-            var now = DateTimeOffset.UtcNow;
+            var now = GetBuffNowLocked();
             foreach (var definition in definitions)
             {
                 if (!_buffQueues.TryGetValue(definition.Key, out var queue))
                 {
                     queue = new List<ScheduledOverlayBuff>();
                     _buffQueues[definition.Key] = queue;
+                    _buffOrder.Add(definition.Key);
                 }
 
                 queue.RemoveAll(x => x.ExpiresAt <= now);
+                if (queue.Count == 0)
+                {
+                    _buffOrder.Remove(definition.Key);
+                    _buffOrder.Add(definition.Key);
+                }
                 var startsAt = queue.Count == 0 ? now : (queue[^1].ExpiresAt > now ? queue[^1].ExpiresAt : now);
                 var expiresAt = startsAt.AddSeconds(definition.DurationSeconds);
                 queue.Add(new ScheduledOverlayBuff(
@@ -172,6 +182,58 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
             }
         }
     }
+
+    public void SetDonationRuntimeState(bool timersPaused, string reason)
+    {
+        string log;
+        lock (_gate)
+        {
+            var now = DateTimeOffset.UtcNow;
+            reason = string.IsNullOrWhiteSpace(reason) ? (timersPaused ? "PAUSED" : "READY") : reason;
+            if (_buffTimersPaused == timersPaused)
+            {
+                _buffPauseReason = reason;
+                return;
+            }
+
+            if (timersPaused)
+            {
+                _buffTimersPaused = true;
+                _buffPauseStartedAt = now;
+                _buffPauseReason = reason;
+                log = $"[OVERLAY][BUFF-TIMER][PAUSED] reason={reason}, activeKeys={_buffQueues.Count}";
+            }
+            else
+            {
+                var pausedFor = _buffPauseStartedAt.HasValue ? now - _buffPauseStartedAt.Value : TimeSpan.Zero;
+                if (pausedFor > TimeSpan.Zero)
+                {
+                    foreach (var queue in _buffQueues.Values)
+                    {
+                        for (var i = 0; i < queue.Count; i++)
+                        {
+                            var item = queue[i];
+                            queue[i] = item with
+                            {
+                                StartsAt = item.StartsAt + pausedFor,
+                                ExpiresAt = item.ExpiresAt + pausedFor
+                            };
+                        }
+                    }
+                }
+
+                _buffTimersPaused = false;
+                _buffPauseStartedAt = null;
+                _buffPauseReason = reason;
+                log = $"[OVERLAY][BUFF-TIMER][RESUMED] pausedForMs={pausedFor.TotalMilliseconds:F0}, activeKeys={_buffQueues.Count}";
+            }
+        }
+
+        Console.WriteLine(log);
+    }
+
+    private DateTimeOffset GetBuffNowLocked()
+        => _buffTimersPaused && _buffPauseStartedAt.HasValue ? _buffPauseStartedAt.Value : DateTimeOffset.UtcNow;
 
     private static List<BuffDefinition> GetBuffDefinitions(string effect, string eventName)
     {
@@ -221,6 +283,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
         lock (_gate)
         {
             var now = DateTimeOffset.UtcNow;
+            var buffNow = GetBuffNowLocked();
             if (_phase != "raffle" && _visibleUntil.HasValue && now >= _visibleUntil.Value)
             {
                 _phase = "hidden";
@@ -234,27 +297,31 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
             foreach (var entry in _buffQueues.ToArray())
             {
                 var before = entry.Value.Count;
-                entry.Value.RemoveAll(x => x.ExpiresAt <= now);
+                entry.Value.RemoveAll(x => x.ExpiresAt <= buffNow);
                 if (before != entry.Value.Count)
                     Console.WriteLine($"[OVERLAY][BUFF] advanced key={entry.Key}, expired={before - entry.Value.Count}, remainingQueue={entry.Value.Count}");
                 if (entry.Value.Count == 0)
+                {
                     _buffQueues.Remove(entry.Key);
+                    _buffOrder.Remove(entry.Key);
+                }
             }
 
             var remainingMs = _phase == "raffle" && _endsAt.HasValue
                 ? Math.Max(0, (long)Math.Ceiling((_endsAt.Value - now).TotalMilliseconds))
                 : 0L;
 
-            var buffs = _buffQueues
-                .OrderBy(x => x.Key, StringComparer.Ordinal)
-                .Select(x =>
+            var buffs = _buffOrder
+                .Where(key => _buffQueues.ContainsKey(key))
+                .Select(key =>
                 {
-                    var active = x.Value.FirstOrDefault(b => b.StartsAt <= now && b.ExpiresAt > now);
+                    var queue = _buffQueues[key];
+                    var active = queue.FirstOrDefault(b => b.StartsAt <= buffNow && b.ExpiresAt > buffNow);
                     if (active is null) return null;
-                    var queuedCount = x.Value.Count(b => b.StartsAt > now);
+                    var queuedCount = queue.Count(b => b.StartsAt > buffNow);
                     return new OverlayBuffState(
                         active.Key, active.Icon, active.Name, active.Detail,
-                        Math.Max(0, (long)Math.Ceiling((active.ExpiresAt - now).TotalMilliseconds)),
+                        Math.Max(0, (long)Math.Ceiling((active.ExpiresAt - buffNow).TotalMilliseconds)),
                         queuedCount);
                 })
                 .Where(x => x is not null)
@@ -270,7 +337,9 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
                 _donationNickname,
                 _donationAmount,
                 _donationEventName,
-                buffs);
+                buffs,
+                _buffTimersPaused,
+                _buffPauseReason);
         }
     }
 
@@ -386,7 +455,9 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
         string? DonationNickname,
         long DonationAmount,
         string? DonationEventName,
-        OverlayBuffState[] ActiveBuffs);
+        OverlayBuffState[] ActiveBuffs,
+        bool BuffTimersPaused,
+        string BuffPauseReason);
 
     private sealed record OverlayBuffState(
         string Key,
@@ -440,7 +511,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
   .winner{font-size:43px;font-weight:1000;color:#fff3d2;margin-top:5px;text-shadow:0 4px 13px #000}
   .donor{font-size:28px;font-weight:900;color:#fff;margin-top:4px}
   .donationEvent{font-size:36px;font-weight:1000;color:#00c471;margin-top:6px;text-shadow:0 3px 12px #000}
-  #buffs{width:min(720px,100%);display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;pointer-events:none}
+  #buffs{width:min(720px,100%);display:flex;flex-direction:row;justify-content:flex-start;gap:8px;flex-wrap:wrap;pointer-events:none}
   .buff{min-width:168px;display:grid;grid-template-columns:42px 1fr;column-gap:9px;align-items:center;background:rgba(12,9,15,.88);border:1px solid rgba(248,235,207,.62);border-radius:14px;padding:8px 11px;box-shadow:0 6px 20px rgba(0,0,0,.38)}
   .buffIcon{grid-row:1/3;font-size:30px;line-height:1;text-align:center;filter:drop-shadow(0 2px 4px #000)}
   .buffName{font-size:14px;line-height:1.15;font-weight:900;color:#fff3d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -483,7 +554,8 @@ function render(s){
     const sec=Math.max(0,Math.ceil(Number(b.remainingMs||0)/1000));
     const queued=Number(b.queuedCount||0);
     const queueText=queued>0?` · 대기 ${queued}`:'';
-    return `<div class="buff"><div class="buffIcon">${esc(b.icon||'✦')}</div><div class="buffName">${esc(b.name||'후원 버프')}${queueText}</div><div class="buffMeta"><span>${esc(b.detail||'')}</span><span class="buffTime">${sec}s</span></div></div>`;
+    const timer=s.buffTimersPaused?'일시정지':`${sec}s`;
+    return `<div class="buff"><div class="buffIcon">${esc(b.icon||'✦')}</div><div class="buffName">${esc(b.name||'후원 버프')}${queueText}</div><div class="buffMeta"><span>${esc(b.detail||'')}</span><span class="buffTime">${timer}</span></div></div>`;
   }).join('');
   lastPhase=phase;
 }
