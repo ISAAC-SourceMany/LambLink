@@ -1,4 +1,4 @@
-# v1.0.0 RC29 배포 체크리스트
+# v1.0.0 RC30 진단 테스트·배포 체크리스트
 
 ## 1. Korean Font Fix 4.2.1 실제 바이너리 준비
 
@@ -25,7 +25,7 @@
 
 성공하면:
 
-`dist\ChzzkOfTheLamb-v1.0.0-rc29-distribution.zip`
+`dist\ChzzkOfTheLamb-v1.0.0-rc30-distribution.zip`
 
 이 생성됩니다.
 
@@ -37,7 +37,9 @@
 - 게임 로그에 `COTL Korean Font Fix 4.2.1 loaded`가 찍히는지 확인
 - `Loaded bundled Korean TMP font: KoreanRuntimeFont`가 찍히는지 확인
 - CHZZK Companion이 AWS SSO 없이 로그인 플로우를 시작하는지 확인
-- OBS overlay / raffle / donation / buff/debuff 확인
+- OBS overlay / raffle / 초록색 Chzzk 이름표 확인
+- 마을·던전 실제 CHZZK 후원을 각각 테스트하고 동일 요청 ID의 RX/RULE/TX/APPLIED/ACK 확인
+- 실패 시 `support` 명령으로 개인정보 제거 지원 ZIP 생성 확인
 
 ## 5. 정식 1.0.0 전 남은 권장 작업
 

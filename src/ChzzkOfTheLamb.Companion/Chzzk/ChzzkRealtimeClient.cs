@@ -86,6 +86,7 @@ public sealed class ChzzkRealtimeClient(ChzzkApiClient api)
         var subscribed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         long sessionPacketCount = 0;
         long sessionChatCount = 0;
+        long sessionDonationCount = 0;
 
         // CHZZK explicitly uses Engine.IO v3 (Socket.IO v1/v2). In EIO=3 the heartbeat direction
         // is CLIENT -> ping(2) -> SERVER -> pong(3). Engine.IO v4 reversed this direction.
@@ -274,6 +275,8 @@ public sealed class ChzzkRealtimeClient(ChzzkApiClient api)
                     }
                     case "DONATION":
                     {
+                        sessionDonationCount++;
+                        Console.WriteLine($"[CHZZK] DONATION frame received: sessionDonation={sessionDonationCount}, packets={sessionPacketCount}, bytes={Encoding.UTF8.GetByteCount(payload)}");
                         var donation = DeserializeEventPayload<DonationEvent>(payload);
                         if (donation is not null) Donation?.Invoke(donation);
                         else Console.Error.WriteLine($"[CHZZK] DONATION parse failed: payload={Abbreviate(payload, 1200)}");

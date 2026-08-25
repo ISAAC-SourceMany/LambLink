@@ -14,23 +14,35 @@ using ChzzkOfTheLamb.Companion.Storage;
 using ChzzkOfTheLamb.Companion.ViewerPage;
 using ChzzkOfTheLamb.Protocol;
 
-const string ReleaseVersion = "1.0.0-rc29";
+const string ReleaseVersion = "1.0.0-rc30";
 const string ProductionApiBase = "https://y0eblkdmu5.execute-api.ap-northeast-2.amazonaws.com";
 const string ProductionFrontendUrl = "https://d1gvw9ccym1qvn.cloudfront.net";
 
 var dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ChzzkOfTheLamb");
 Directory.CreateDirectory(dataDir);
-var diagnosticLogPath = Path.Combine(dataDir, "companion-rc29.log");
-using var diagnosticLogWriter = new StreamWriter(
-    new FileStream(diagnosticLogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite),
-    new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)) { AutoFlush = true };
-Console.SetOut(TextWriter.Synchronized(new TeeTextWriter(Console.Out, diagnosticLogWriter)));
-Console.WriteLine($"[DIAG][SESSION-BEGIN] version={ReleaseVersion}, utc={DateTimeOffset.UtcNow:O}, pid={Environment.ProcessId}, log={diagnosticLogPath}");
+var diagnosticLogPath = Path.Combine(dataDir, "companion-rc30.log");
+var originalConsoleOut = Console.Out;
+var originalConsoleError = Console.Error;
+using var diagnosticLogWriter = new RollingFileTextWriter(
+    diagnosticLogPath,
+    maxBytes: 5L * 1024 * 1024,
+    archiveCount: 4);
+Console.SetOut(TextWriter.Synchronized(new TeeTextWriter(originalConsoleOut, diagnosticLogWriter)));
+Console.SetError(TextWriter.Synchronized(new TeeTextWriter(originalConsoleError, diagnosticLogWriter)));
+var supportBundles = new SupportBundleService(dataDir, ReleaseVersion, diagnosticLogPath);
+AppDomain.CurrentDomain.UnhandledException += (_, eventArgs) =>
+    Console.Error.WriteLine($"[DIAG][UNHANDLED] terminating={eventArgs.IsTerminating}, exception={eventArgs.ExceptionObject}");
+TaskScheduler.UnobservedTaskException += (_, eventArgs) =>
+{
+    Console.Error.WriteLine($"[DIAG][UNOBSERVED-TASK] {eventArgs.Exception}");
+    eventArgs.SetObserved();
+};
+Console.WriteLine($"[DIAG][SESSION-BEGIN] version={ReleaseVersion}, utc={DateTimeOffset.UtcNow:O}, pid={Environment.ProcessId}, log={diagnosticLogPath}, retention=5MiB+4archives, stdout=true, stderr=true");
 
 #if RELEASE_DISTRIBUTION
-const bool IsReleaseDistribution = true;
+bool IsReleaseDistribution = true;
 #else
-const bool IsReleaseDistribution = false;
+bool IsReleaseDistribution = false;
 #endif
 
 ChzzkCredentials? chzzkCredentials = null;
@@ -167,6 +179,9 @@ long gameConnectionGeneration = 0;
 long catalogSyncGeneration = 0;
 long lastRuntimePumpStatusUnixMs = 0;
 var gameSyncPhase = "DISCONNECTED";
+var donationTraces = new DonationTraceRegistry();
+long donationEventSequence = 0;
+string? lastSupportBundlePath = null;
 
 await using var bridge = new GameBridgeServer();
 bridge.ConnectionChanged += connected =>
@@ -440,15 +455,19 @@ bridge.MessageReceived += envelope =>
             case GameMessageTypes.DonationEffectResult:
             {
                 var result = JsonSerializer.Deserialize<DonationEffectResult>(envelope.PayloadJson)!;
+                var matched = donationTraces.TryComplete(result.RequestId, out var trace, out var elapsedMs);
+                var correlation = matched
+                    ? $"matched=true, elapsedMs={elapsedMs:F1}, source={trace!.Source}, area={trace.Area}"
+                    : "matched=false, elapsedMs=unknown";
                 if (result.Success)
                 {
-                    Console.WriteLine($"[DONATION][RESULT] request={ShortId(result.RequestId)} SUCCESS event='{result.EventName}' effect={result.Effect}; {result.Details}");
+                    Console.WriteLine($"[DONATION][ACK][SUCCESS] request={ShortId(result.RequestId)}, {correlation}, event='{result.EventName}', effect={result.Effect}; details={result.Details}");
                     overlay.ShowDonation(result.Nickname, result.Amount, result.EventName, seconds: 5);
                     overlay.RegisterDonationBuff(result.Effect, result.EventName);
                 }
                 else
                 {
-                    Console.WriteLine($"[DONATION][RESULT] request={ShortId(result.RequestId)} FAILED event='{result.EventName}' effect={result.Effect}; error={result.Error}");
+                    Console.WriteLine($"[DONATION][ACK][FAILED] request={ShortId(result.RequestId)}, {correlation}, event='{result.EventName}', effect={result.Effect}; error={result.Error}");
                 }
                 break;
             }
@@ -890,22 +909,37 @@ if (!developmentMode && api is not null && accessToken is not null)
 
     realtime.Donation += donation =>
     {
-        var amount = donation.ParsedAmount;
-        var area = lastGameStatus?.Area ?? "UNKNOWN";
-        var decision = rules.ResolveDecision(amount, area);
-        Console.WriteLine($"[DONATION][RECEIVED] nickname='{donation.DonatorNickname}', channel={donation.DonatorChannelId}, amount={amount:N0}, area={area}, text='{donation.DonationText ?? string.Empty}'");
-        if (decision.Effect == "NONE")
+        var eventSequence = Interlocked.Increment(ref donationEventSequence);
+        var requestId = Guid.NewGuid().ToString("N");
+        try
         {
-            Console.WriteLine($"[DONATION][RULE] amount={amount:N0} -> NONE ({decision.EventName})");
-            return;
-        }
+            var amount = donation.ParsedAmount;
+            var area = lastGameStatus?.Area ?? "UNKNOWN";
+            var decision = rules.ResolveDecision(amount, area);
+            var donorHash = DiagnosticPrivacy.ShortHash(donation.DonatorChannelId);
+            Console.WriteLine($"[DONATION][RX] seq={eventSequence}, request={ShortId(requestId)}, source=CHZZK, donationType={donation.DonationType}, donorHash={donorHash}, amount={amount:N0}, area={area}, messageChars={donation.DonationText?.Length ?? 0}");
+            if (decision.Effect == "NONE")
+            {
+                Console.WriteLine($"[DONATION][TERMINAL][NO-EFFECT] request={ShortId(requestId)}, amount={amount:N0}, area={area}, rule={decision.EventName}");
+                return;
+            }
 
-        _ = SendDonationEffectAsync(
-            donation.DonatorChannelId,
-            donation.DonatorNickname,
-            amount,
-            donation.DonationText,
-            decision);
+            _ = SendDonationEffectSafeAsync(
+                requestId,
+                "CHZZK",
+                donorHash,
+                donation.DonatorChannelId,
+                donation.DonatorNickname,
+                amount,
+                donation.DonationText,
+                area,
+                decision,
+                stop.Token);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[DONATION][TERMINAL][HANDLER-EXCEPTION] seq={eventSequence}, request={ShortId(requestId)}, type={ex.GetType().FullName}, error={ex}");
+        }
     };
 
     realtime.Subscription += sub =>
@@ -1077,7 +1111,17 @@ async Task ConsoleLoopAsync()
             var decision = rules.ResolveDecision(amount, area);
             Console.WriteLine($"[DEV DONATION] {amount:N0} area={area} -> {decision.EventName} ({decision.Effect})");
             if (decision.Effect != "NONE")
-                await SendDonationEffectAsync("dev-donor", "DEV 후원자", amount, "development test", decision);
+                await SendDonationEffectSafeAsync(
+                    Guid.NewGuid().ToString("N"),
+                    "DEV-CONSOLE",
+                    DiagnosticPrivacy.ShortHash("dev-donor"),
+                    "dev-donor",
+                    "DEV 후원자",
+                    amount,
+                    "development test",
+                    area,
+                    decision,
+                    stop.Token);
             continue;
         }
 
@@ -1095,6 +1139,57 @@ async Task ConsoleLoopAsync()
                 viewerPage.TryOpen(out var openMessage);
                 Console.WriteLine($"[VIEWER PAGE] {openMessage}");
                 break;
+            case "support":
+            case "support bundle":
+            {
+                try
+                {
+                    Console.WriteLine("[SUPPORT] 개인정보 제거 지원 로그 묶음을 로컬에서 생성합니다. 자동 업로드하지 않습니다...");
+                    var lastPumpUnixMs = Interlocked.Read(ref lastRuntimePumpStatusUnixMs);
+                    var pumpAgeSeconds = lastPumpUnixMs <= 0
+                        ? -1
+                        : (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - lastPumpUnixMs) / 1000.0;
+                    var gameReady = bridge.IsGameConnected
+                                    && lastGameStatus?.RuntimePumpActive == true
+                                    && pumpAgeSeconds is >= 0 and <= 15
+                                    && lastGameStatus?.InGame == true
+                                    && currentSaveId != "unknown";
+                    var snapshot = new SupportBundleSnapshot(
+                        DateTimeOffset.UtcNow,
+                        bridge.IsGameConnected,
+                        gameReady,
+                        gameSyncPhase,
+                        currentSaveId,
+                        !developmentMode,
+                        cloud?.IsAuthenticated == true,
+                        latestCatalogCount,
+                        latestCatalogSaveId,
+                        raffle.IsOpen,
+                        raffle.ParticipantCount,
+                        donationTraces.PendingCount);
+                    var bundle = await Task.Run(() => supportBundles.Create(snapshot), stop.Token);
+                    lastSupportBundlePath = bundle.ZipPath;
+                    Console.WriteLine($"[SUPPORT][READY] report={bundle.ReportId}, bytes={bundle.Bytes}, file={bundle.ZipPath}");
+                    Console.WriteLine("[SUPPORT] 압축 내부를 확인한 뒤 개발자에게 전달하세요.");
+                }
+                catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"[SUPPORT][FAILED] type={ex.GetType().FullName}, error={ex}");
+                }
+                break;
+            }
+            case "support open":
+            {
+                var path = lastSupportBundlePath;
+                if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                {
+                    Console.WriteLine("[SUPPORT] 먼저 'support' 명령으로 로그 묶음을 생성하세요.");
+                    break;
+                }
+                Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
+                break;
+            }
             case "raffle start":
                 _ = raffle.StartAsync(settings.Raffle.DurationSeconds, stop.Token);
                 break;
@@ -1126,7 +1221,7 @@ async Task ConsoleLoopAsync()
                     ? "PUMP_STALE"
                     : gameSyncPhase;
                 var overlayPollAge = overlay.StatePollAgeSeconds;
-                Console.WriteLine($"MODE={(developmentMode ? "DEV" : "CHZZK")}, CHZZK={(developmentMode ? "disabled" : streamerChannelName)}, GAME={gameReady}, GAME_SOCKET={bridge.IsGameConnected}, GAME_READY={gameReady}, SYNC={displayedSyncPhase}, PUMP_AGE={(pumpAgeSeconds < 0 ? "none" : pumpAgeSeconds.ToString("F1") + "s")}, SAVE={currentSaveId}, RECRUIT={currentRecruitFollowerId?.ToString() ?? "none"}, RAFFLE={raffle.IsOpen}, participants={raffle.ParticipantCount}, queue={pendingRaffleRequests.Count}, OVERLAY={(overlay.IsClientPolling ? "ready" : "not-polling")}, OVERLAY_POLL_AGE={(overlayPollAge < 0 ? "none" : overlayPollAge.ToString("F1") + "s")}, CLOUD={(cloud?.IsAuthenticated == true ? "connected" : "off")}, CATALOG={latestCatalogCount}, CATALOG_SAVE={latestCatalogSaveId}");
+                Console.WriteLine($"MODE={(developmentMode ? "DEV" : "CHZZK")}, CHZZK={(developmentMode ? "disabled" : streamerChannelName)}, GAME={gameReady}, GAME_SOCKET={bridge.IsGameConnected}, GAME_READY={gameReady}, SYNC={displayedSyncPhase}, PUMP_AGE={(pumpAgeSeconds < 0 ? "none" : pumpAgeSeconds.ToString("F1") + "s")}, SAVE={currentSaveId}, RECRUIT={currentRecruitFollowerId?.ToString() ?? "none"}, RAFFLE={raffle.IsOpen}, participants={raffle.ParticipantCount}, queue={pendingRaffleRequests.Count}, OVERLAY={(overlay.IsClientPolling ? "ready" : "not-polling")}, OVERLAY_POLL_AGE={(overlayPollAge < 0 ? "none" : overlayPollAge.ToString("F1") + "s")}, CLOUD={(cloud?.IsAuthenticated == true ? "connected" : "off")}, CATALOG={latestCatalogCount}, CATALOG_SAVE={latestCatalogSaveId}, DONATION_PENDING={donationTraces.PendingCount}");
                 Console.WriteLine($"VIEWER_PAGE={viewerPage.Url ?? "not-ready"}");
                 break;
             }
@@ -1160,32 +1255,80 @@ catch (OperationCanceledException) when (stop.IsCancellationRequested)
 }
 finally
 {
+    Console.WriteLine($"[DIAG][SESSION-END] version={ReleaseVersion}, utc={DateTimeOffset.UtcNow:O}, pendingDonations={donationTraces.PendingCount}, cancellationRequested={stop.IsCancellationRequested}");
     cloud?.Dispose();
     http?.Dispose();
 }
 
-async Task SendDonationEffectAsync(string viewerId, string nickname, long amount, string? message, DonationDecision decision)
+async Task SendDonationEffectSafeAsync(
+    string requestId,
+    string source,
+    string donorHash,
+    string viewerId,
+    string nickname,
+    long amount,
+    string? message,
+    string area,
+    DonationDecision decision,
+    CancellationToken cancellationToken)
 {
-    var requestId = Guid.NewGuid().ToString("N");
-    Console.WriteLine($"[DONATION][RULE] request={ShortId(requestId)} amount={amount:N0} tier={decision.TierName} -> event='{decision.EventName}' effect={decision.Effect}");
-
-    if (!bridge.IsGameConnected)
+    try
     {
-        Console.WriteLine($"[DONATION][SEND] request={ShortId(requestId)} skipped: game mod is not connected.");
-        return;
+        Console.WriteLine($"[DONATION][RULE] request={ShortId(requestId)}, source={source}, donorHash={donorHash}, amount={amount:N0}, area={area}, tier={decision.TierName}, event='{decision.EventName}', effect={decision.Effect}");
+
+        if (!bridge.IsGameConnected)
+        {
+            Console.WriteLine($"[DONATION][TERMINAL][NOT-SENT] request={ShortId(requestId)}, reason=game-socket-disconnected, sync={gameSyncPhase}");
+            return;
+        }
+
+        donationTraces.Begin(requestId, source, donorHash, amount, area, decision.TierName, decision.Effect, decision.EventName);
+        var command = new DonationEffectCommand(
+            viewerId,
+            nickname,
+            amount,
+            decision.Effect,
+            message,
+            decision.EventName,
+            requestId);
+
+        Console.WriteLine($"[DONATION][TX][BEGIN] request={ShortId(requestId)}, event='{decision.EventName}', effect={decision.Effect}, messageChars={message?.Length ?? 0}");
+        var sent = await bridge.SendAsync(GameMessageTypes.DonationEffect, command, cancellationToken);
+        if (!sent)
+        {
+            donationTraces.TryAbandon(requestId, out _, out var elapsedMs);
+            Console.WriteLine($"[DONATION][TERMINAL][TX-FAILED] request={ShortId(requestId)}, elapsedMs={elapsedMs:F1}, reason=bridge-send-returned-false");
+            return;
+        }
+
+        Console.WriteLine($"[DONATION][TX][SENT] request={ShortId(requestId)}, awaiting=DONATION_EFFECT_RESULT, timeoutSeconds=15");
+        _ = MonitorDonationAcknowledgementAsync(requestId, cancellationToken);
     }
+    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+    {
+        donationTraces.TryAbandon(requestId, out _, out _);
+    }
+    catch (Exception ex)
+    {
+        donationTraces.TryAbandon(requestId, out _, out var elapsedMs);
+        Console.Error.WriteLine($"[DONATION][TERMINAL][EXCEPTION] request={ShortId(requestId)}, elapsedMs={elapsedMs:F1}, type={ex.GetType().FullName}, error={ex}");
+    }
+}
 
-    var command = new DonationEffectCommand(
-        viewerId,
-        nickname,
-        amount,
-        decision.Effect,
-        message,
-        decision.EventName,
-        requestId);
-
-    Console.WriteLine($"[DONATION][SEND] request={ShortId(requestId)} -> game bridge, event='{decision.EventName}', effect={decision.Effect}");
-    await bridge.SendAsync(GameMessageTypes.DonationEffect, command, stop.Token);
+async Task MonitorDonationAcknowledgementAsync(string requestId, CancellationToken cancellationToken)
+{
+    try
+    {
+        await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken);
+        if (donationTraces.TryAbandon(requestId, out var trace, out var elapsedMs))
+        {
+            Console.Error.WriteLine($"[DONATION][TERMINAL][ACK-TIMEOUT] request={ShortId(requestId)}, elapsedMs={elapsedMs:F1}, source={trace!.Source}, area={trace.Area}, effect={trace.Effect}, gameSocket={bridge.IsGameConnected}, sync={gameSyncPhase}");
+        }
+    }
+    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+    {
+        // Normal application shutdown.
+    }
 }
 
 static string ShortId(string? value) =>
@@ -1196,6 +1339,7 @@ void PrintCommands()
     Console.WriteLine("Commands:");
     Console.WriteLine("  status | help | exit");
     Console.WriteLine("  viewer | viewer copy | viewer open");
+    Console.WriteLine("  support | support open       (개인정보 제거 로그 ZIP 생성/열기)");
     Console.WriteLine("  raffle start | raffle cancel | raffle draw");
     Console.WriteLine("  forms | form allow <id> | form deny <id> | refresh-forms");
     if (!IsReleaseDistribution)

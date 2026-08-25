@@ -23,7 +23,7 @@ public sealed class Plugin : BaseUnityPlugin
     public const string PluginName = "CHZZK Companion Integration";
     public const string PluginVersion = "1.0.0";
     public const string CotlApiGuid = "io.github.xhayper.COTL_API";
-    public const string BuildTag = "rc29-viewer-page-sharing";
+    public const string BuildTag = "rc30-support-diagnostics-live-donation";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private readonly CancellationTokenSource _runtimeLifetime = new();
@@ -285,7 +285,7 @@ public sealed class Plugin : BaseUnityPlugin
                     case GameMessageTypes.DonationEffect:
                     {
                         var result = _donations!.ApplyFromJson(command.PayloadJson);
-                        _ = _bridge!.SendAsync(GameMessageTypes.DonationEffectResult, result);
+                        _ = SendDonationEffectResultAsync(result);
                         break;
                     }
                     case GameMessageTypes.SyncChzzkFollowerMarkers:
@@ -571,6 +571,23 @@ public sealed class Plugin : BaseUnityPlugin
         Volatile.Write(ref _diagnosticStageStarted, Stopwatch.GetTimestamp());
         Interlocked.Increment(ref _diagnosticProgress);
     }
+
+    private async System.Threading.Tasks.Task SendDonationEffectResultAsync(DonationEffectResult result)
+    {
+        var started = Stopwatch.GetTimestamp();
+        try
+        {
+            var sent = await _bridge!.TrySendAsync(GameMessageTypes.DonationEffectResult, result);
+            Logger.LogInfo($"[DONATION][RESULT-TX] request={ShortDiagnosticId(result.RequestId)}, success={result.Success}, sent={sent}, elapsedMs={ElapsedMilliseconds(started):F1}");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError($"[DONATION][RESULT-TX-FAILED] request={ShortDiagnosticId(result.RequestId)}, elapsedMs={ElapsedMilliseconds(started):F1}, error={ex}");
+        }
+    }
+
+    private static string ShortDiagnosticId(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "-" : value!.Substring(0, Math.Min(8, value.Length));
 
     private async System.Threading.Tasks.Task RunDiagnosticWatchdogAsync(CancellationToken ct)
     {

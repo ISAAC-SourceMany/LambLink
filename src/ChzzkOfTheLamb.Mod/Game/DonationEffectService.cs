@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using BepInEx.Logging;
@@ -27,14 +28,18 @@ public sealed class DonationEffectService
     public DonationEffectResult ApplyFromJson(string payloadJson)
     {
         DonationEffectCommand? command = null;
+        var started = Stopwatch.GetTimestamp();
+        var stage = "DESERIALIZE";
         try
         {
             command = JsonConvert.DeserializeObject<DonationEffectCommand>(payloadJson)
                       ?? throw new InvalidOperationException("Invalid DonationEffect command.");
 
+            stage = "CONTEXT";
             var actualArea = DungeonContext.GetArea(out var areaEvidence);
-            _log.LogInfo($"[DONATION][INPUT] request={Short(command.RequestId)}, viewer={command.ViewerId}, nickname='{command.Nickname}', amount={command.Amount}, effect={command.Effect}, event='{command.EventName}', actualArea={actualArea}, evidence={areaEvidence}");
+            _log.LogInfo($"[DONATION][RX] request={Short(command.RequestId)}, amount={command.Amount}, effect={command.Effect}, event='{command.EventName}', messageChars={command.Message?.Length ?? 0}, actualArea={actualArea}, evidence={areaEvidence}");
 
+            stage = "READY-CHECK";
             if (PlayerFarming.Instance == null || DataManager.Instance == null)
                 throw new InvalidOperationException("game is not ready");
 
@@ -56,8 +61,10 @@ public sealed class DonationEffectService
                 command.EventName = corrected.Name;
             }
 
+            stage = "APPLY";
             var details = ApplyExact(command);
-            _log.LogInfo($"[DONATION][APPLIED] request={Short(command.RequestId)}, area={actualArea}, event='{command.EventName}', effect={command.Effect}, details={details}");
+            stage = "RESULT";
+            _log.LogInfo($"[DONATION][APPLIED] request={Short(command.RequestId)}, elapsedMs={ElapsedMilliseconds(started):F1}, area={actualArea}, event='{command.EventName}', effect={command.Effect}, details={details}");
 
             return new DonationEffectResult
             {
@@ -73,7 +80,7 @@ public sealed class DonationEffectService
         catch (Exception ex)
         {
             var root = ex.GetBaseException();
-            _log.LogWarning($"[DONATION][FAILED] request={Short(command?.RequestId)}, effect={command?.Effect ?? "unknown"}: {root.Message}");
+            _log.LogWarning($"[DONATION][FAILED] request={Short(command?.RequestId)}, elapsedMs={ElapsedMilliseconds(started):F1}, stage={stage}, effect={command?.Effect ?? "unknown"}, type={root.GetType().FullName}: {root.Message}");
             return new DonationEffectResult
             {
                 RequestId = command?.RequestId ?? string.Empty,
@@ -401,7 +408,7 @@ public sealed class DonationEffectService
         follower.Satiation = Mathf.Clamp(follower.Satiation + amount, 0f, 100f);
         if (amount > 0f)
             follower.Starvation = Mathf.Max(0f, follower.Starvation - amount);
-        return $"{follower.Name} satiation {(amount >= 0 ? "+" : string.Empty)}{amount:0}";
+        return $"random follower satiation {(amount >= 0 ? "+" : string.Empty)}{amount:0}";
     }
 
     private string FaithAndFood(float faith, float food, DonationEffectCommand command)
@@ -436,7 +443,7 @@ public sealed class DonationEffectService
 
         follower.Satiation = 100f;
         follower.Starvation = 0f;
-        return $"faith +20; {follower.Name} fully fed";
+        return "faith +20; selected follower fully fed";
     }
 
     private string ApplyLegacySmall(DonationEffectCommand c) =>
@@ -496,4 +503,7 @@ public sealed class DonationEffectService
 
     private static string Short(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "-" : value!.Substring(0, Math.Min(8, value.Length));
+
+    private static double ElapsedMilliseconds(long started) =>
+        (Stopwatch.GetTimestamp() - started) * 1000.0 / Stopwatch.Frequency;
 }

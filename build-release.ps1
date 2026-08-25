@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$release = '1.0.0-rc29'
+$release = '1.0.0-rc30'
 $distRoot = Join-Path $root 'dist'
 $dist = Join-Path $distRoot "ChzzkOfTheLamb-v$release"
 $companionOut = Join-Path $dist 'Companion'
@@ -14,10 +14,10 @@ function Assert-NativeSuccess([string]$Step) {
   if ($LASTEXITCODE -ne 0) { throw "$Step failed with exit code $LASTEXITCODE." }
 }
 
-Write-Host '[0/9] Verifying RC29 source identity and removing stale compiler outputs...'
+Write-Host '[0/9] Verifying RC30 source identity and removing stale compiler outputs...'
 $criticalSources = @{
   'src\ChzzkOfTheLamb.Mod\ChzzkOfTheLamb.Mod.csproj' = '5e2aac6c30559e9bc2fd2fddb131aeb1f95e60d46faec187b71ec612dd63a938'
-  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = '7c8161988291a61763ce874f9058cae349e23801ecc196321ed6aecd4dc93373'
+  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = 'b502dde11ae9de4a98a63d4681cd9083ebdd5daa11587bb52c8c6857e51d5d88'
   'src\ChzzkOfTheLamb.Mod\BridgeRuntimeHost.cs' = '9261721e2708f59debb6785e2eeec611063738bd36744a55dec94f529ae3bc6b'
   'src\ChzzkOfTheLamb.Mod\Network\ModBridgeClient.cs' = 'dbe786dbd6cfa0df9144c87820e696b5ec076a8ee9c3f5b018b358179ff15595'
   'src\ChzzkOfTheLamb.Mod\Game\IndoctrinationRafflePatch.cs' = '753830ca22dc89e571da9861fac0ab2a0306497de81c89482d6f7fbccfa026eb'
@@ -25,30 +25,36 @@ $criticalSources = @{
   'src\ChzzkOfTheLamb.Mod\Game\FollowerService.cs' = '39e2b9939254ffb233b2ea075c627683789241e0a037ec7c02c74d1ccb94746c'
   'src\ChzzkOfTheLamb.Mod\Game\FollowerAppearanceService.cs' = 'e840ef802b18b8c52155c01f63bf0e1d3bc8d69e2f433407f7c2d7eb3e08ddc4'
   'src\ChzzkOfTheLamb.Mod\Game\GameSaveService.cs' = '5b48b8ce1f0c50ae47a9e160ce4244ab9b3712c2cc96e8cc55678163ded72c5d'
+  'src\ChzzkOfTheLamb.Mod\Game\DonationEffectService.cs' = 'f5c52600b34d34b9439a2ad69919f520830a81e7f69f578b0c3fa6a9d8126e3f'
   'src\ChzzkOfTheLamb.Protocol\GameMessages.cs' = '112e647244272e6e950104dad456fb74b8f75d423b9814244ded14e5ef6e116f'
-  'src\ChzzkOfTheLamb.Companion\Program.cs' = '42709ddb6760a16a5f8eeda47c103b211b2cd3a485b13d0fd92a3e2a79964951'
+  'src\ChzzkOfTheLamb.Companion\Program.cs' = 'd570ffe09e9602a560948fb020d1d9e370246fa56cad71ffa53aed1eea60df26'
+  'src\ChzzkOfTheLamb.Companion\Chzzk\ChzzkRealtimeClient.cs' = '09ce1e58e9308f7fecfb320635b3e5b32f6c2c0a9414d0200594226df18a7c8a'
   'src\ChzzkOfTheLamb.Companion\ViewerPage\ViewerPageShare.cs' = '2e9041cf4209e76f258c7a0cdab0847431f4affef002bd03b1ee37efef36692a'
   'src\ChzzkOfTheLamb.Companion\GameBridge\GameBridgeServer.cs' = '6199cf43fea8adbcb9b166f31370975f2ac954af3834bbdf3866142e55fe8da9'
   'src\ChzzkOfTheLamb.Companion\Diagnostics\TeeTextWriter.cs' = '3edd24b12f8aaac9a1de768be84d0d6711c1b30c28a8bff39507912ffffcd305'
+  'src\ChzzkOfTheLamb.Companion\Diagnostics\RollingFileTextWriter.cs' = 'c44b021eda8285598fbfff015881f3406fef8c84545d08f78db757a70b81793a'
+  'src\ChzzkOfTheLamb.Companion\Diagnostics\DonationTraceRegistry.cs' = 'c56b6c0f3970917911b1ef21eae00c543b4783eaeb1d1f445ec2ccf9da9061e8'
+  'src\ChzzkOfTheLamb.Companion\Diagnostics\DiagnosticPrivacy.cs' = 'c9afc180f204d35c8175e1be3c37167686add4e8c43b8d737e0c7a00ce406f36'
+  'src\ChzzkOfTheLamb.Companion\Diagnostics\SupportBundleService.cs' = 'd17c653e9698dd32157ac88d28bf243aa8df45ff616dbb1df201412b33248ba3'
   'src\ChzzkOfTheLamb.Companion\Appearance\AppearanceStore.cs' = '6726689d6ffcef4c31d4064649fdc7be38c28d219fdf8eb7cb9db4afa75b893b'
   'src\ChzzkOfTheLamb.Companion\Overlay\RaffleOverlayServer.cs' = '9a96dbc2b08020fc4d76c51174fa8bc3add4fdae978bf227c1c968b49d726325'
-  'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj' = '87264c485d7af770ee1c8abcff837554d4a45a5eebc34ed11174e51086dd805c'
-  'src\ChzzkOfTheLamb.Installer\Program.cs' = 'bf186366a7deff80162104bc70eead52276acd52b80f1d62ae7c50e3f94e8c95'
-  'src\ChzzkOfTheLamb.Installer\ChzzkOfTheLamb.Installer.csproj' = '90f35730b0231545a858b758b928f40f82cf803fb2244237438153cd9064e430'
-  'installer\installer-manifest.template.json' = '623c926b2d7763f3a8a2cc85fd139345373a0bdb7d12fd8cc97beb1e746de016'
-  'prepare-installer-manifest.ps1' = 'a6f64fd06bd80d8bb5e2d51767bcf1662d72b55776e92fa31554e0fd0d15126e'
-  'build-distribution.ps1' = '6d42e6cabdac225180240c0786954038e42feadcb59c530042718f3873a3ee16'
-  'DISTRIBUTION-RC29.md' = '1a70199f0a8b207ab85ba915cb379cadc017246544897f28081aed3ac7ba9dbb'
+  'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj' = 'fecb11859c5e5c02c14bd4d180970e91423f615dc9fc92c67f394ee773ba31a6'
+  'src\ChzzkOfTheLamb.Installer\Program.cs' = '241d5956e323a31673610b1d8ea2fab4d764c9288d931bf03abe5d09399c5a36'
+  'src\ChzzkOfTheLamb.Installer\ChzzkOfTheLamb.Installer.csproj' = 'e02126e687cdc5d3884e1028f39b6f076a88cca8d1ca9e675eda89cbf30dd00b'
+  'installer\installer-manifest.template.json' = 'f97f77ad0ade2e39c0dd38ca088fedbe7fb913dc8059f5ece669dd1188e161cc'
+  'prepare-installer-manifest.ps1' = '4823b1f50f91e2c529b43a234d6bf90d0e0a2f79ec730713828b8df38cd9a736'
+  'build-distribution.ps1' = 'b21911b69a85c164fe42a0688b506e4753ded77abbcfef997094e6ba92c6fa6a'
+  'DISTRIBUTION-RC30.md' = '1b613fce1a7b68b451fe926418a04db9d87c3610900ddcc26c530efc864582f8'
 }
 foreach ($relativePath in $criticalSources.Keys) {
   $sourcePath = Join-Path $root $relativePath
-  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC29 source: $relativePath" }
+  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC30 source: $relativePath" }
   $actualHash = (Get-FileHash $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actualHash -ne $criticalSources[$relativePath]) {
-    throw "Critical RC29 source does not match the reviewed version: $relativePath"
+    throw "Critical RC30 source does not match the reviewed version: $relativePath"
   }
 }
-Write-Host '[VERIFY] Critical RC29 source hashes OK.'
+Write-Host '[VERIFY] Critical RC30 source hashes OK.'
 
 Get-ChildItem -Path (Join-Path $root 'src') -Directory -Recurse -Force |
   Where-Object { $_.Name -in @('bin', 'obj') } |
@@ -67,7 +73,7 @@ Write-Host '[ASSET] Korean Font Fix 4.2.1 verified.'
 Write-Host '[2/9] Cleaning dist/release-hosting component artifacts...'
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $companionOut, $pluginOut, $hosting | Out-Null
-foreach ($f in @('COTL-KoreanFontFix-4.2.1.zip',"ChzzkOfTheLamb-Mod-$release.zip","ChzzkOfTheLamb-Companion-$release-win-x64.zip","ChzzkOfTheLamb-Setup-$release.exe","installer-manifest-$release.json")) {
+foreach ($f in @('COTL-KoreanFontFix-4.2.1-rc30.zip',"ChzzkOfTheLamb-Mod-$release.zip","ChzzkOfTheLamb-Companion-$release-win-x64.zip","ChzzkOfTheLamb-Setup-$release.exe","installer-manifest-$release.json")) {
   $p = Join-Path $hosting $f; if (Test-Path $p) { Remove-Item $p -Force }
 }
 
@@ -95,38 +101,56 @@ function Test-ByteSequence([byte[]]$Haystack, [byte[]]$Needle) {
   }
   return $false
 }
-$buildTag = 'rc29-viewer-page-sharing'
+$buildTag = 'rc30-support-diagnostics-live-donation'
 $hasBuildTag = (Test-ByteSequence $modBytes ([System.Text.Encoding]::UTF8.GetBytes($buildTag))) -or
                (Test-ByteSequence $modBytes ([System.Text.Encoding]::Unicode.GetBytes($buildTag)))
 if (-not $hasBuildTag) {
-  throw 'Built mod DLL does not contain the RC29 build tag. Refusing to package a stale DLL.'
+  throw 'Built mod DLL does not contain the RC30 build tag. Refusing to package a stale DLL.'
 }
 foreach ($marker in @('io.github.xhayper.COTL_API', 'RAFFLE_ROUND_CLOSED', '[NAMEPLATE][PATCH-VERIFY]', '[NAMEPLATE][INLINE-APPLIED]', '[IDENTITY-COMMIT]', 'CHZZK nameplate marker dropped', '<color=#00C471>Chzzk</color> ')) {
   $hasMarker = (Test-ByteSequence $modBytes ([System.Text.Encoding]::UTF8.GetBytes($marker))) -or
                (Test-ByteSequence $modBytes ([System.Text.Encoding]::Unicode.GetBytes($marker)))
-  if (-not $hasMarker) { throw "Built mod DLL is missing required RC29 marker: $marker" }
+  if (-not $hasMarker) { throw "Built mod DLL is missing required RC30 marker: $marker" }
 }
 foreach ($forbidden in @('[NAMEPLATE][IDENTITY-REPAIRED]', '[FOLLOWER-MARKER][IDENTITY-REPAIRED]')) {
   $hasForbidden = (Test-ByteSequence $modBytes ([System.Text.Encoding]::UTF8.GetBytes($forbidden))) -or
                   (Test-ByteSequence $modBytes ([System.Text.Encoding]::Unicode.GetBytes($forbidden)))
   if ($hasForbidden) { throw "Built Mod contains forbidden ID-only identity repair marker: $forbidden" }
 }
-Write-Host "[VERIFY] RC29 mod build tag found; SHA-256=$((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"
+foreach ($marker in @('[DONATION][RX]', '[DONATION][APPLIED]', '[DONATION][RESULT-TX]', 'stage=')) {
+  $hasMarker = (Test-ByteSequence $modBytes ([System.Text.Encoding]::UTF8.GetBytes($marker))) -or
+               (Test-ByteSequence $modBytes ([System.Text.Encoding]::Unicode.GetBytes($marker)))
+  if (-not $hasMarker) { throw "Built mod DLL is missing RC30 donation diagnostic marker: $marker" }
+}
+Write-Host "[VERIFY] RC30 mod build tag and donation diagnostics found; SHA-256=$((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"
+
+Write-Host '[5/9] Building and validating Companion diagnostics...'
+$companionProject = Join-Path $root 'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj'
+dotnet build $companionProject -c Release --no-restore
+Assert-NativeSuccess 'Release Companion validation build'
+$companionValidationDll = Join-Path $root 'src\ChzzkOfTheLamb.Companion\bin\Release\net8.0\ChzzkOfTheLamb.Companion.dll'
+if (-not (Test-Path $companionValidationDll)) { throw "Companion validation assembly was not produced: $companionValidationDll" }
+$companionValidationBytes = [System.IO.File]::ReadAllBytes($companionValidationDll)
+foreach ($forbidden in @('[FOLLOWER-MIGRATION][RC26-RESTORED]', 'name drift retained for repair')) {
+  $hasForbidden = (Test-ByteSequence $companionValidationBytes ([System.Text.Encoding]::UTF8.GetBytes($forbidden))) -or
+                  (Test-ByteSequence $companionValidationBytes ([System.Text.Encoding]::Unicode.GetBytes($forbidden)))
+  if ($hasForbidden) { throw "Built Companion contains forbidden unsaved-result recovery marker: $forbidden" }
+}
+foreach ($marker in @('[DONATION][TERMINAL][ACK-TIMEOUT]', '[SUPPORT][READY]', 'companion-rc30.log')) {
+  $hasMarker = (Test-ByteSequence $companionValidationBytes ([System.Text.Encoding]::UTF8.GetBytes($marker))) -or
+               (Test-ByteSequence $companionValidationBytes ([System.Text.Encoding]::Unicode.GetBytes($marker)))
+  if (-not $hasMarker) { throw "Built Companion validation assembly is missing RC30 diagnostic marker: $marker" }
+}
+Write-Host '[VERIFY] RC30 support and donation markers found in compiled Companion assembly.'
 
 Write-Host '[5/9] Publishing Companion self-contained single-file...'
-dotnet publish (Join-Path $root 'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $companionOut
+dotnet publish $companionProject -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $companionOut
 Assert-NativeSuccess 'Release Companion publish'
 $companionExe = Join-Path $companionOut 'ChzzkOfTheLamb.Companion.exe'
 if (-not (Test-Path $companionExe)) { throw "Companion EXE was not produced: $companionExe" }
 $companionVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($companionExe)
-if ($companionVersion.FileVersion -ne '1.0.0.29') { throw "Unexpected Companion file version: $($companionVersion.FileVersion)" }
-$companionBytes = [System.IO.File]::ReadAllBytes($companionExe)
-foreach ($forbidden in @('[FOLLOWER-MIGRATION][RC26-RESTORED]', 'name drift retained for repair')) {
-  $hasForbidden = (Test-ByteSequence $companionBytes ([System.Text.Encoding]::UTF8.GetBytes($forbidden))) -or
-                  (Test-ByteSequence $companionBytes ([System.Text.Encoding]::Unicode.GetBytes($forbidden)))
-  if ($hasForbidden) { throw "Built Companion contains forbidden unsaved-result recovery marker: $forbidden" }
-}
-Write-Host '[VERIFY] RC29 Companion version, sharing commands, and safe reconciliation markers verified.'
+if ($companionVersion.FileVersion -ne '1.0.0.30') { throw "Unexpected Companion file version: $($companionVersion.FileVersion)" }
+Write-Host '[VERIFY] RC30 Companion EXE exists and file version is 1.0.0.30.'
 
 Write-Host '[6/9] Creating normalized downloadable component ZIPs...'
 $temp = Join-Path $distRoot '_component-build'
@@ -142,7 +166,7 @@ $fontPkg = Join-Path $temp 'font\BepInEx\plugins\COTL_KoreanFontFix'
 New-Item -ItemType Directory -Force -Path $fontPkg | Out-Null
 Copy-Item $fontDll (Join-Path $fontPkg 'COTL_KoreanFontFix.dll') -Force
 Copy-Item $fontBundle (Join-Path $fontPkg 'koreanfont.bundle') -Force
-Compress-Archive -Path (Join-Path $temp 'font\*') -DestinationPath (Join-Path $hosting 'COTL-KoreanFontFix-4.2.1.zip') -CompressionLevel Optimal
+Compress-Archive -Path (Join-Path $temp 'font\*') -DestinationPath (Join-Path $hosting 'COTL-KoreanFontFix-4.2.1-rc30.zip') -CompressionLevel Optimal
 
 Compress-Archive -Path (Join-Path $companionOut '*') -DestinationPath (Join-Path $hosting "ChzzkOfTheLamb-Companion-$release-win-x64.zip") -CompressionLevel Optimal
 
@@ -154,7 +178,7 @@ Assert-NativeSuccess 'Release Installer publish'
 $installerExe = Join-Path $installerPublish 'ChzzkOfTheLamb.Installer.exe'
 if (-not (Test-Path $installerExe)) { throw "Installer EXE was not produced: $installerExe" }
 $installerVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($installerExe)
-if ($installerVersion.FileVersion -ne '1.0.0.29') { throw "Unexpected Installer file version: $($installerVersion.FileVersion)" }
+if ($installerVersion.FileVersion -ne '1.0.0.30') { throw "Unexpected Installer file version: $($installerVersion.FileVersion)" }
 if (-not $installerVersion.ProductVersion.StartsWith($release, [System.StringComparison]::OrdinalIgnoreCase)) {
   throw "Unexpected Installer product version: $($installerVersion.ProductVersion)"
 }
