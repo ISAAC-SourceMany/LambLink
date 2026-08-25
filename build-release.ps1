@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$release = '1.0.0-rc28'
+$release = '1.0.0-rc29'
 $distRoot = Join-Path $root 'dist'
 $dist = Join-Path $distRoot "ChzzkOfTheLamb-v$release"
 $companionOut = Join-Path $dist 'Companion'
@@ -14,10 +14,10 @@ function Assert-NativeSuccess([string]$Step) {
   if ($LASTEXITCODE -ne 0) { throw "$Step failed with exit code $LASTEXITCODE." }
 }
 
-Write-Host '[0/9] Verifying RC28 source identity and removing stale compiler outputs...'
+Write-Host '[0/9] Verifying RC29 source identity and removing stale compiler outputs...'
 $criticalSources = @{
   'src\ChzzkOfTheLamb.Mod\ChzzkOfTheLamb.Mod.csproj' = '5e2aac6c30559e9bc2fd2fddb131aeb1f95e60d46faec187b71ec612dd63a938'
-  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = '3ea1d6a66bb2dc90db17d366aee1e37fd2041476f2445129c34af294a19aa9ee'
+  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = '7c8161988291a61763ce874f9058cae349e23801ecc196321ed6aecd4dc93373'
   'src\ChzzkOfTheLamb.Mod\BridgeRuntimeHost.cs' = '9261721e2708f59debb6785e2eeec611063738bd36744a55dec94f529ae3bc6b'
   'src\ChzzkOfTheLamb.Mod\Network\ModBridgeClient.cs' = 'dbe786dbd6cfa0df9144c87820e696b5ec076a8ee9c3f5b018b358179ff15595'
   'src\ChzzkOfTheLamb.Mod\Game\IndoctrinationRafflePatch.cs' = '753830ca22dc89e571da9861fac0ab2a0306497de81c89482d6f7fbccfa026eb'
@@ -26,28 +26,29 @@ $criticalSources = @{
   'src\ChzzkOfTheLamb.Mod\Game\FollowerAppearanceService.cs' = 'e840ef802b18b8c52155c01f63bf0e1d3bc8d69e2f433407f7c2d7eb3e08ddc4'
   'src\ChzzkOfTheLamb.Mod\Game\GameSaveService.cs' = '5b48b8ce1f0c50ae47a9e160ce4244ab9b3712c2cc96e8cc55678163ded72c5d'
   'src\ChzzkOfTheLamb.Protocol\GameMessages.cs' = '112e647244272e6e950104dad456fb74b8f75d423b9814244ded14e5ef6e116f'
-  'src\ChzzkOfTheLamb.Companion\Program.cs' = '41097515f45fc5d733f6b4924a5c9cc7173c9ca1424c10744f9d6fd73893f9ce'
+  'src\ChzzkOfTheLamb.Companion\Program.cs' = '42709ddb6760a16a5f8eeda47c103b211b2cd3a485b13d0fd92a3e2a79964951'
+  'src\ChzzkOfTheLamb.Companion\ViewerPage\ViewerPageShare.cs' = '2e9041cf4209e76f258c7a0cdab0847431f4affef002bd03b1ee37efef36692a'
   'src\ChzzkOfTheLamb.Companion\GameBridge\GameBridgeServer.cs' = '6199cf43fea8adbcb9b166f31370975f2ac954af3834bbdf3866142e55fe8da9'
   'src\ChzzkOfTheLamb.Companion\Diagnostics\TeeTextWriter.cs' = '3edd24b12f8aaac9a1de768be84d0d6711c1b30c28a8bff39507912ffffcd305'
   'src\ChzzkOfTheLamb.Companion\Appearance\AppearanceStore.cs' = '6726689d6ffcef4c31d4064649fdc7be38c28d219fdf8eb7cb9db4afa75b893b'
   'src\ChzzkOfTheLamb.Companion\Overlay\RaffleOverlayServer.cs' = '9a96dbc2b08020fc4d76c51174fa8bc3add4fdae978bf227c1c968b49d726325'
-  'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj' = 'cd0f64d786139126906a06e3225ffcc27bd4d2ab99bb9eb92a3c6a15ef0ef930'
-  'src\ChzzkOfTheLamb.Installer\Program.cs' = '60291afd5c6bb938ea993da54162a84dd7be050ab278845600a33eeab7bb1da2'
-  'src\ChzzkOfTheLamb.Installer\ChzzkOfTheLamb.Installer.csproj' = '5fcc068dc02d29d732d010451ff19d65355a2c23cf3819618546f89a38df6f01'
-  'installer\installer-manifest.template.json' = '9729eba5c8f81c936422c0d15c3d71d350b83976ee6579536d2973258e7c1955'
-  'prepare-installer-manifest.ps1' = 'caf759158866b312b63f2830e49f01dd062a95d00ea4bc0c4d832ba935f54b0d'
-  'build-distribution.ps1' = '0c8587601e1e2998e2f4bd9055ca37284a04c6de5ef3c8328a45accb52a646f9'
-  'DISTRIBUTION-RC28.md' = '0a08112317209faef3f2768e8e39c885c5298190bb53489586f48efe98495dbd'
+  'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj' = '87264c485d7af770ee1c8abcff837554d4a45a5eebc34ed11174e51086dd805c'
+  'src\ChzzkOfTheLamb.Installer\Program.cs' = 'bf186366a7deff80162104bc70eead52276acd52b80f1d62ae7c50e3f94e8c95'
+  'src\ChzzkOfTheLamb.Installer\ChzzkOfTheLamb.Installer.csproj' = '90f35730b0231545a858b758b928f40f82cf803fb2244237438153cd9064e430'
+  'installer\installer-manifest.template.json' = '623c926b2d7763f3a8a2cc85fd139345373a0bdb7d12fd8cc97beb1e746de016'
+  'prepare-installer-manifest.ps1' = 'a6f64fd06bd80d8bb5e2d51767bcf1662d72b55776e92fa31554e0fd0d15126e'
+  'build-distribution.ps1' = '6d42e6cabdac225180240c0786954038e42feadcb59c530042718f3873a3ee16'
+  'DISTRIBUTION-RC29.md' = '1a70199f0a8b207ab85ba915cb379cadc017246544897f28081aed3ac7ba9dbb'
 }
 foreach ($relativePath in $criticalSources.Keys) {
   $sourcePath = Join-Path $root $relativePath
-  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC28 source: $relativePath" }
+  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC29 source: $relativePath" }
   $actualHash = (Get-FileHash $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actualHash -ne $criticalSources[$relativePath]) {
-    throw "Critical RC28 source does not match the reviewed version: $relativePath"
+    throw "Critical RC29 source does not match the reviewed version: $relativePath"
   }
 }
-Write-Host '[VERIFY] Critical RC28 source hashes OK.'
+Write-Host '[VERIFY] Critical RC29 source hashes OK.'
 
 Get-ChildItem -Path (Join-Path $root 'src') -Directory -Recurse -Force |
   Where-Object { $_.Name -in @('bin', 'obj') } |
@@ -94,23 +95,23 @@ function Test-ByteSequence([byte[]]$Haystack, [byte[]]$Needle) {
   }
   return $false
 }
-$buildTag = 'rc28-inline-nameplate-safe-reconcile'
+$buildTag = 'rc29-viewer-page-sharing'
 $hasBuildTag = (Test-ByteSequence $modBytes ([System.Text.Encoding]::UTF8.GetBytes($buildTag))) -or
                (Test-ByteSequence $modBytes ([System.Text.Encoding]::Unicode.GetBytes($buildTag)))
 if (-not $hasBuildTag) {
-  throw 'Built mod DLL does not contain the RC28 build tag. Refusing to package a stale DLL.'
+  throw 'Built mod DLL does not contain the RC29 build tag. Refusing to package a stale DLL.'
 }
 foreach ($marker in @('io.github.xhayper.COTL_API', 'RAFFLE_ROUND_CLOSED', '[NAMEPLATE][PATCH-VERIFY]', '[NAMEPLATE][INLINE-APPLIED]', '[IDENTITY-COMMIT]', 'CHZZK nameplate marker dropped', '<color=#00C471>Chzzk</color> ')) {
   $hasMarker = (Test-ByteSequence $modBytes ([System.Text.Encoding]::UTF8.GetBytes($marker))) -or
                (Test-ByteSequence $modBytes ([System.Text.Encoding]::Unicode.GetBytes($marker)))
-  if (-not $hasMarker) { throw "Built mod DLL is missing required RC28 marker: $marker" }
+  if (-not $hasMarker) { throw "Built mod DLL is missing required RC29 marker: $marker" }
 }
 foreach ($forbidden in @('[NAMEPLATE][IDENTITY-REPAIRED]', '[FOLLOWER-MARKER][IDENTITY-REPAIRED]')) {
   $hasForbidden = (Test-ByteSequence $modBytes ([System.Text.Encoding]::UTF8.GetBytes($forbidden))) -or
                   (Test-ByteSequence $modBytes ([System.Text.Encoding]::Unicode.GetBytes($forbidden)))
   if ($hasForbidden) { throw "Built Mod contains forbidden ID-only identity repair marker: $forbidden" }
 }
-Write-Host "[VERIFY] RC28 mod build tag found; SHA-256=$((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"
+Write-Host "[VERIFY] RC29 mod build tag found; SHA-256=$((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"
 
 Write-Host '[5/9] Publishing Companion self-contained single-file...'
 dotnet publish (Join-Path $root 'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $companionOut
@@ -118,14 +119,14 @@ Assert-NativeSuccess 'Release Companion publish'
 $companionExe = Join-Path $companionOut 'ChzzkOfTheLamb.Companion.exe'
 if (-not (Test-Path $companionExe)) { throw "Companion EXE was not produced: $companionExe" }
 $companionVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($companionExe)
-if ($companionVersion.FileVersion -ne '1.0.0.28') { throw "Unexpected Companion file version: $($companionVersion.FileVersion)" }
+if ($companionVersion.FileVersion -ne '1.0.0.29') { throw "Unexpected Companion file version: $($companionVersion.FileVersion)" }
 $companionBytes = [System.IO.File]::ReadAllBytes($companionExe)
 foreach ($forbidden in @('[FOLLOWER-MIGRATION][RC26-RESTORED]', 'name drift retained for repair')) {
   $hasForbidden = (Test-ByteSequence $companionBytes ([System.Text.Encoding]::UTF8.GetBytes($forbidden))) -or
                   (Test-ByteSequence $companionBytes ([System.Text.Encoding]::Unicode.GetBytes($forbidden)))
   if ($hasForbidden) { throw "Built Companion contains forbidden unsaved-result recovery marker: $forbidden" }
 }
-Write-Host '[VERIFY] RC28 Companion version and safe reconciliation markers verified.'
+Write-Host '[VERIFY] RC29 Companion version, sharing commands, and safe reconciliation markers verified.'
 
 Write-Host '[6/9] Creating normalized downloadable component ZIPs...'
 $temp = Join-Path $distRoot '_component-build'
@@ -153,7 +154,7 @@ Assert-NativeSuccess 'Release Installer publish'
 $installerExe = Join-Path $installerPublish 'ChzzkOfTheLamb.Installer.exe'
 if (-not (Test-Path $installerExe)) { throw "Installer EXE was not produced: $installerExe" }
 $installerVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($installerExe)
-if ($installerVersion.FileVersion -ne '1.0.0.28') { throw "Unexpected Installer file version: $($installerVersion.FileVersion)" }
+if ($installerVersion.FileVersion -ne '1.0.0.29') { throw "Unexpected Installer file version: $($installerVersion.FileVersion)" }
 if (-not $installerVersion.ProductVersion.StartsWith($release, [System.StringComparison]::OrdinalIgnoreCase)) {
   throw "Unexpected Installer product version: $($installerVersion.ProductVersion)"
 }

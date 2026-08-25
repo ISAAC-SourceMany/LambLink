@@ -1,4 +1,4 @@
-# v1.0.0 RC28 배포 체크리스트
+# v1.0.0 RC29 배포 체크리스트
 
 ## 1. Korean Font Fix 4.2.1 실제 바이너리 준비
 
@@ -25,7 +25,7 @@
 
 성공하면:
 
-`dist\ChzzkOfTheLamb-v1.0.0-rc28-distribution.zip`
+`dist\ChzzkOfTheLamb-v1.0.0-rc29-distribution.zip`
 
 이 생성됩니다.
 

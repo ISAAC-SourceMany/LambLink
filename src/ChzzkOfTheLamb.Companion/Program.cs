@@ -11,15 +11,16 @@ using ChzzkOfTheLamb.Companion.Raffle;
 using ChzzkOfTheLamb.Companion.Overlay;
 using ChzzkOfTheLamb.Companion.Rules;
 using ChzzkOfTheLamb.Companion.Storage;
+using ChzzkOfTheLamb.Companion.ViewerPage;
 using ChzzkOfTheLamb.Protocol;
 
-const string ReleaseVersion = "1.0.0-rc28";
+const string ReleaseVersion = "1.0.0-rc29";
 const string ProductionApiBase = "https://y0eblkdmu5.execute-api.ap-northeast-2.amazonaws.com";
 const string ProductionFrontendUrl = "https://d1gvw9ccym1qvn.cloudfront.net";
 
 var dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ChzzkOfTheLamb");
 Directory.CreateDirectory(dataDir);
-var diagnosticLogPath = Path.Combine(dataDir, "companion-rc28.log");
+var diagnosticLogPath = Path.Combine(dataDir, "companion-rc29.log");
 using var diagnosticLogWriter = new StreamWriter(
     new FileStream(diagnosticLogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite),
     new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)) { AutoFlush = true };
@@ -53,6 +54,7 @@ var forceDevelopmentMode = !IsReleaseDistribution && IsTruthy(Environment.GetEnv
 var settings = CompanionSettings.LoadOrCreate(Path.Combine(dataDir, "settings.json"));
 var followers = new ViewerFollowerRepository(Path.Combine(dataDir, "viewer-followers.json"));
 var appearances = new AppearanceStore(Path.Combine(dataDir, "viewer-appearances.json"));
+var viewerPage = new ViewerPageShare(dataDir);
 var raffle = new RaffleManager();
 var rules = new DonationRuleEngine(settings.Donation);
 
@@ -638,7 +640,22 @@ async Task<bool> TryConnectCloudAsync(bool logFailure)
             if (!string.IsNullOrWhiteSpace(frontendUrl))
             {
                 var publicFrontendUrl = frontendUrl.Trim().TrimEnd('/');
-                Console.WriteLine($"[CLOUD] viewer setup URL: {publicFrontendUrl}/?streamer={Uri.EscapeDataString(streamerChannelId)}");
+                var fallbackViewerUrl = $"{publicFrontendUrl}/?streamer={Uri.EscapeDataString(streamerChannelId)}";
+                Console.WriteLine($"[CLOUD] viewer setup URL: {fallbackViewerUrl}");
+                try
+                {
+                    viewerPage.Configure(publicFrontendUrl, streamerChannelId);
+                    viewerPage.PrintBanner(Console.Out);
+                    foreach (var warning in viewerPage.LastWarnings)
+                        Console.WriteLine($"[VIEWER PAGE][WARNING] {warning}");
+                }
+                catch (Exception ex)
+                {
+                    // Sharing helpers are convenience features. A shortcut/file-system failure
+                    // must never invalidate the authenticated cloud session or catalog upload.
+                    Console.WriteLine($"[VIEWER PAGE][WARNING] 공유 도구 초기화 실패: {ex.Message}");
+                    Console.WriteLine($"[VIEWER PAGE] 공유 주소: {fallbackViewerUrl}");
+                }
             }
             return true;
         }
@@ -1066,6 +1083,18 @@ async Task ConsoleLoopAsync()
 
         switch (normalized)
         {
+            case "viewer":
+            case "viewer url":
+                viewerPage.PrintBanner(Console.Out);
+                break;
+            case "viewer copy":
+                viewerPage.TryCopyToClipboard(out var copyMessage);
+                Console.WriteLine($"[VIEWER PAGE] {copyMessage}");
+                break;
+            case "viewer open":
+                viewerPage.TryOpen(out var openMessage);
+                Console.WriteLine($"[VIEWER PAGE] {openMessage}");
+                break;
             case "raffle start":
                 _ = raffle.StartAsync(settings.Raffle.DurationSeconds, stop.Token);
                 break;
@@ -1098,6 +1127,7 @@ async Task ConsoleLoopAsync()
                     : gameSyncPhase;
                 var overlayPollAge = overlay.StatePollAgeSeconds;
                 Console.WriteLine($"MODE={(developmentMode ? "DEV" : "CHZZK")}, CHZZK={(developmentMode ? "disabled" : streamerChannelName)}, GAME={gameReady}, GAME_SOCKET={bridge.IsGameConnected}, GAME_READY={gameReady}, SYNC={displayedSyncPhase}, PUMP_AGE={(pumpAgeSeconds < 0 ? "none" : pumpAgeSeconds.ToString("F1") + "s")}, SAVE={currentSaveId}, RECRUIT={currentRecruitFollowerId?.ToString() ?? "none"}, RAFFLE={raffle.IsOpen}, participants={raffle.ParticipantCount}, queue={pendingRaffleRequests.Count}, OVERLAY={(overlay.IsClientPolling ? "ready" : "not-polling")}, OVERLAY_POLL_AGE={(overlayPollAge < 0 ? "none" : overlayPollAge.ToString("F1") + "s")}, CLOUD={(cloud?.IsAuthenticated == true ? "connected" : "off")}, CATALOG={latestCatalogCount}, CATALOG_SAVE={latestCatalogSaveId}");
+                Console.WriteLine($"VIEWER_PAGE={viewerPage.Url ?? "not-ready"}");
                 break;
             }
             case "help":
@@ -1165,6 +1195,7 @@ void PrintCommands()
 {
     Console.WriteLine("Commands:");
     Console.WriteLine("  status | help | exit");
+    Console.WriteLine("  viewer | viewer copy | viewer open");
     Console.WriteLine("  raffle start | raffle cancel | raffle draw");
     Console.WriteLine("  forms | form allow <id> | form deny <id> | refresh-forms");
     if (!IsReleaseDistribution)

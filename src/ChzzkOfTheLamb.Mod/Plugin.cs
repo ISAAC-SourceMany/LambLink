@@ -23,7 +23,7 @@ public sealed class Plugin : BaseUnityPlugin
     public const string PluginName = "CHZZK Companion Integration";
     public const string PluginVersion = "1.0.0";
     public const string CotlApiGuid = "io.github.xhayper.COTL_API";
-    public const string BuildTag = "rc28-inline-nameplate-safe-reconcile";
+    public const string BuildTag = "rc29-viewer-page-sharing";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private readonly CancellationTokenSource _runtimeLifetime = new();
