@@ -22,6 +22,9 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
     private string? _donationNickname;
     private long _donationAmount;
     private string? _donationEventName;
+    private readonly LinkedList<DonationOverlayItem> _donationQueue = new();
+    private DonationOverlayItem? _activeDonation;
+    private long _donationSequence;
     private long _overlayPageRequests;
     private long _stateRequests;
     private DateTimeOffset? _lastStateRequestAt;
@@ -76,9 +79,12 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
         string activeCommand;
         lock (_gate)
         {
+            var now = DateTimeOffset.UtcNow;
+            AdvanceTransientPhaseLocked(now);
+            RequeueActiveDonationLocked(now, "raffle-opened");
             _phase = "raffle";
             _command = string.IsNullOrWhiteSpace(command) ? "!신도" : command;
-            _endsAt = DateTimeOffset.UtcNow.AddSeconds(Math.Max(1, durationSeconds));
+            _endsAt = now.AddSeconds(Math.Max(1, durationSeconds));
             _visibleUntil = null;
             _participantCount = 0;
             _winnerNickname = null;
@@ -99,9 +105,12 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
     {
         lock (_gate)
         {
+            var now = DateTimeOffset.UtcNow;
+            AdvanceTransientPhaseLocked(now);
+            RequeueActiveDonationLocked(now, "raffle-winner");
             _phase = "winner";
             _endsAt = null;
-            _visibleUntil = DateTimeOffset.UtcNow.AddSeconds(Math.Max(1, seconds));
+            _visibleUntil = now.AddSeconds(Math.Max(1, seconds));
             _winnerNickname = nickname;
         }
     }
@@ -110,9 +119,12 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
     {
         lock (_gate)
         {
+            var now = DateTimeOffset.UtcNow;
+            AdvanceTransientPhaseLocked(now);
+            RequeueActiveDonationLocked(now, "raffle-empty");
             _phase = "empty";
             _endsAt = null;
-            _visibleUntil = DateTimeOffset.UtcNow.AddSeconds(Math.Max(1, seconds));
+            _visibleUntil = now.AddSeconds(Math.Max(1, seconds));
             _winnerNickname = null;
         }
     }
@@ -121,9 +133,12 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
     {
         lock (_gate)
         {
+            var now = DateTimeOffset.UtcNow;
+            AdvanceTransientPhaseLocked(now);
+            RequeueActiveDonationLocked(now, "raffle-cancelled");
             _phase = "cancelled";
             _endsAt = null;
-            _visibleUntil = DateTimeOffset.UtcNow.AddSeconds(Math.Max(1, seconds));
+            _visibleUntil = now.AddSeconds(Math.Max(1, seconds));
             _winnerNickname = null;
         }
     }
@@ -133,17 +148,72 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
     {
         lock (_gate)
         {
-            // Do not hide an active raffle countdown. Donation execution still happens and
-            // is fully logged; the visual card is skipped only while the raffle is on screen.
-            if (_phase == "raffle") return;
+            var now = DateTimeOffset.UtcNow;
+            AdvanceTransientPhaseLocked(now);
+            var item = new DonationOverlayItem(
+                ++_donationSequence,
+                string.IsNullOrWhiteSpace(nickname) ? "후원자" : nickname,
+                Math.Max(0, amount),
+                string.IsNullOrWhiteSpace(eventName) ? "이벤트 발동" : eventName,
+                TimeSpan.FromSeconds(Math.Max(1, seconds)));
 
-            _phase = "donation";
-            _endsAt = null;
-            _visibleUntil = DateTimeOffset.UtcNow.AddSeconds(Math.Max(1, seconds));
-            _donationNickname = nickname;
-            _donationAmount = Math.Max(0, amount);
-            _donationEventName = eventName;
+            _donationQueue.AddLast(item);
+            Console.WriteLine($"[OVERLAY][DONATION-QUEUE][ENQUEUED] sequence={item.Sequence}, phase={_phase}, pending={_donationQueue.Count}, event='{item.EventName}'");
+            StartNextDonationLocked(now, "queue-ready");
         }
+    }
+
+    private void AdvanceTransientPhaseLocked(DateTimeOffset now)
+    {
+        if (_phase == "raffle" || !_visibleUntil.HasValue || now < _visibleUntil.Value) return;
+
+        if (_phase == "donation" && _activeDonation is not null)
+            Console.WriteLine($"[OVERLAY][DONATION-QUEUE][COMPLETED] sequence={_activeDonation.Sequence}, pending={_donationQueue.Count}, event='{_activeDonation.EventName}'");
+
+        _phase = "hidden";
+        _visibleUntil = null;
+        _winnerNickname = null;
+        _donationNickname = null;
+        _donationAmount = 0;
+        _donationEventName = null;
+        _activeDonation = null;
+        StartNextDonationLocked(now, "previous-card-completed");
+    }
+
+    private void StartNextDonationLocked(DateTimeOffset now, string reason)
+    {
+        if (_phase != "hidden" || _donationQueue.First is null) return;
+        var item = _donationQueue.First.Value;
+        _donationQueue.RemoveFirst();
+        ActivateDonationLocked(item, now, reason);
+    }
+
+    private void ActivateDonationLocked(DonationOverlayItem item, DateTimeOffset now, string reason)
+    {
+        _activeDonation = item;
+        _phase = "donation";
+        _endsAt = null;
+        _visibleUntil = now + item.DisplayDuration;
+        _donationNickname = item.Nickname;
+        _donationAmount = item.Amount;
+        _donationEventName = item.EventName;
+        Console.WriteLine($"[OVERLAY][DONATION-QUEUE][DISPLAY] sequence={item.Sequence}, reason={reason}, durationMs={item.DisplayDuration.TotalMilliseconds:F0}, pending={_donationQueue.Count}, event='{item.EventName}'");
+    }
+
+    private void RequeueActiveDonationLocked(DateTimeOffset now, string reason)
+    {
+        var active = _activeDonation;
+        if (_phase != "donation" || active is null) return;
+
+        var remaining = _visibleUntil.HasValue ? _visibleUntil.Value - now : active.DisplayDuration;
+        if (remaining < TimeSpan.FromSeconds(1)) remaining = TimeSpan.FromSeconds(1);
+        var resumed = active with { DisplayDuration = remaining };
+        _donationQueue.AddFirst(resumed);
+        Console.WriteLine($"[OVERLAY][DONATION-QUEUE][PREEMPTED] sequence={resumed.Sequence}, reason={reason}, remainingMs={remaining.TotalMilliseconds:F0}, pending={_donationQueue.Count}");
+        _activeDonation = null;
+        _donationNickname = null;
+        _donationAmount = 0;
+        _donationEventName = null;
     }
 
     public void RegisterDonationBuff(string effect, string eventName)
@@ -284,15 +354,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
         {
             var now = DateTimeOffset.UtcNow;
             var buffNow = GetBuffNowLocked();
-            if (_phase != "raffle" && _visibleUntil.HasValue && now >= _visibleUntil.Value)
-            {
-                _phase = "hidden";
-                _visibleUntil = null;
-                _winnerNickname = null;
-                _donationNickname = null;
-                _donationAmount = 0;
-                _donationEventName = null;
-            }
+            AdvanceTransientPhaseLocked(now);
 
             foreach (var entry in _buffQueues.ToArray())
             {
@@ -337,6 +399,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
                 _donationNickname,
                 _donationAmount,
                 _donationEventName,
+                _donationQueue.Count,
                 buffs,
                 _buffTimersPaused,
                 _buffPauseReason);
@@ -455,6 +518,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
         string? DonationNickname,
         long DonationAmount,
         string? DonationEventName,
+        int PendingDonationCount,
         OverlayBuffState[] ActiveBuffs,
         bool BuffTimersPaused,
         string BuffPauseReason);
@@ -474,6 +538,13 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
         string Detail,
         DateTimeOffset StartsAt,
         DateTimeOffset ExpiresAt);
+
+    private sealed record DonationOverlayItem(
+        long Sequence,
+        string Nickname,
+        long Amount,
+        string EventName,
+        TimeSpan DisplayDuration);
 
     private sealed record BuffDefinition(
         string Key,
@@ -511,6 +582,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
   .winner{font-size:43px;font-weight:1000;color:#fff3d2;margin-top:5px;text-shadow:0 4px 13px #000}
   .donor{font-size:28px;font-weight:900;color:#fff;margin-top:4px}
   .donationEvent{font-size:36px;font-weight:1000;color:#00c471;margin-top:6px;text-shadow:0 3px 12px #000}
+  .donationQueue{font-size:15px;font-weight:800;color:#d8cdbb;margin-top:8px}
   #buffs{width:min(720px,100%);display:flex;flex-direction:row;justify-content:flex-start;gap:8px;flex-wrap:wrap;pointer-events:none}
   .buff{min-width:168px;display:grid;grid-template-columns:42px 1fr;column-gap:9px;align-items:center;background:rgba(12,9,15,.88);border:1px solid rgba(248,235,207,.62);border-radius:14px;padding:8px 11px;box-shadow:0 6px 20px rgba(0,0,0,.38)}
   .buffIcon{grid-row:1/3;font-size:30px;line-height:1;text-align:center;filter:drop-shadow(0 2px 4px #000)}
@@ -547,7 +619,9 @@ function render(s){
     panel.innerHTML=`<div class="result"><div class="resultTitle">신도 모집</div><div class="winner">취소되었습니다</div></div>`;
   } else if(phase==='donation'){
     const amount=Number(s.donationAmount||0).toLocaleString('ko-KR');
-    panel.innerHTML=`<div class="result"><div class="resultTitle">CHZZK 후원 이벤트</div><div class="donor">${esc(s.donationNickname||'후원자')} · ${amount}원</div><div class="donationEvent">${esc(s.donationEventName||'이벤트 발동')}</div></div>`;
+    const pending=Number(s.pendingDonationCount||0);
+    const queue=pending>0?`<div class="donationQueue">다음 후원 이벤트 ${pending}건 대기 중</div>`:'';
+    panel.innerHTML=`<div class="result"><div class="resultTitle">CHZZK 후원 이벤트</div><div class="donor">${esc(s.donationNickname||'후원자')} · ${amount}원</div><div class="donationEvent">${esc(s.donationEventName||'이벤트 발동')}</div>${queue}</div>`;
   }
   const active=Array.isArray(s.activeBuffs)?s.activeBuffs:[];
   buffs.innerHTML=active.map(b=>{

@@ -1,0 +1,60 @@
+# RC32 validation record
+
+## Acceptance contract
+
+- Preserve the validated rc29 raffle, appearance catalog, viewer page, inline green `Chzzk` marker,
+  and donation-effect behavior.
+- Queue donations through loading, scene transitions, pause, dialogue and cutscenes; resolve the
+  authoritative area only when the event is safe to apply.
+- Pause game and overlay duration clocks together and render overlay cards left-to-right.
+- Preserve every successful donation presentation in ACK arrival order; show one donation card at a
+  time and resume a raffle-preempted card without discarding it.
+- Capture both Companion stdout and stderr with bounded retention.
+- Correlate an actual CHZZK donation from realtime frame through game result using one request ID.
+- Make every terminal state explicit, including send failure, game apply failure, result-send failure,
+  and a 15-second ready-gameplay acknowledgement timeout that pauses with the Mod gate.
+- Create a local-only, best-effort-redacted support ZIP without tokens, viewer data, settings, saves,
+  or automatic upload.
+- Keep rc32 build and installer identities separate from rc29 deployment files.
+
+## Evidence completed in the packaging environment
+
+- The supplied rc31 runtime log proves the Mod queued and applied three requests FIFO after the
+  transition (`680ed5c5`, `94889e41`, `0e9d2553`). Companion received three successful results, so
+  the observed omission was isolated to `ShowDonation` overwriting one presentation slot.
+- Static control-flow review confirms RC32 removes the raffle-time discard return, appends every
+  successful presentation with `AddLast`, advances with `RemoveFirst`, and requeues a raffle-
+  preempted active card with `AddFirst` while preserving its remaining display duration.
+- Critical-source SHA-256 maps in `build-plugin.ps1`, `build-companion.ps1`, and
+  `build-release.ps1` were recalculated and rechecked against the packaged files.
+- Installer manifest JSON parsed successfully and all rc32 component URLs use immutable rc32 names.
+- Static searches confirmed required markers for stdout/stderr logging, log rotation, support bundle,
+  CHZZK donation frame receipt, request correlation, game apply stage, result TX, ACK, and timeout.
+- Companion diagnostic markers are verified in the compiled Release DLL before publishing. The
+  compressed single-file EXE is verified by existence and Windows file-version metadata; compressed
+  bundle bytes are intentionally not treated as a searchable representation of managed strings.
+- Static searches confirmed the support bundle excludes `settings.json`, viewer mapping/appearance
+  contents, OAuth tokens, and game saves.
+- The tested rc31 pair was used as the baseline. Raffle, appearance, follower identity/nameplate,
+  cloud, donation rules, game-side donation queue and timed-buff clock remain unchanged. RC32 adds
+  only Companion-owned donation-card FIFO presentation, pending-count output and raffle preemption
+  recovery, plus matched version/build identities.
+
+## Environment limitation
+
+The packaging environment does not provide .NET SDK, PowerShell, Unity Editor, or the Windows game.
+Therefore compilation and runtime behavior are not claimed here. The Windows test machine must run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build-test-pair.ps1
+```
+
+The build scripts fail on non-zero restore/build/publish results, missing outputs, wrong file versions,
+stale hashes, missing rc32 build tags, or missing diagnostic markers. Runtime validation then follows
+`docs\RC32_DONATION_OVERLAY_FIFO_TEST.md`.
+
+## Release status
+
+Not ready for public deployment until the matched rc32 pair compiles on Windows and the development
+donation tests pass in Base, Dungeon, scene transition and Dungeon dialogue scenarios. Actual CHZZK
+donation receipt remains a documented conditional validation until revenue approval is available.

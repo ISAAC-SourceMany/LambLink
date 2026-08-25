@@ -1,4 +1,4 @@
-# ChzzkOfTheLamb v1.0.0 RC31 donation-safe runtime source
+# ChzzkOfTheLamb v1.0.0 RC32 donation overlay FIFO source
 
 외부 배포를 위한 release candidate 소스입니다.
 
@@ -17,21 +17,21 @@ Streamer OAuth는 AWS Auth Gateway를 통해 처리합니다.
 - Stops every build script immediately when a `dotnet` command returns a non-zero exit code.
 - Verifies expected DLL/EXE files exist before copying or packaging them.
 
-## RC31 matched diagnostic test pair
+## RC32 matched diagnostic test pair
 
-The installed Companion is not updated by building only the game plugin. Build both RC31
+The installed Companion is not updated by building only the game plugin. Build both RC32
 components together:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build-test-pair.ps1
 ```
 
-Close the installed Companion and run `dist\rc31-companion\ChzzkOfTheLamb.Companion.exe`.
-Replace the two game DLLs with the files under `dist\rc31-plugin`. The Companion title must show
-`v1.0.0-rc31`, and the game log must show
-`[BUILD=rc31-donation-safe-runtime-paused-buffs]` before testing.
+Close the installed Companion and run `dist\rc32-companion\ChzzkOfTheLamb.Companion.exe`.
+Replace the two game DLLs with the files under `dist\rc32-plugin`. The Companion title must show
+`v1.0.0-rc32`, and the game log must show
+`[BUILD=rc32-donation-overlay-fifo]` before testing.
 
-## RC31 loading/dialogue-safe donations and paused buff timers
+## RC32 loading/dialogue-safe donations and paused buff timers
 
 - Queues donation commands while the game is loading, changing scenes, paused, or in a detected
   dialogue/cutscene lifecycle.
@@ -41,23 +41,27 @@ Replace the two game DLLs with the files under `dist\rc31-plugin`. The Companion
 - Sends `DONATION_RUNTIME_STATE` to Companion so the OBS overlay timer pauses and resumes with the game.
 - Preserves first-seen buff order; cards fill from the left and new effect types are added to the right.
 - Pauses the Companion's 15-second acknowledgement budget while the Mod reports a blocked gate.
-- See `docs/RC31_DONATION_SAFE_RUNTIME_TEST.md`.
+- Queues every successful donation card in Companion and displays cards one at a time in ACK arrival
+  order instead of overwriting the currently visible card.
+- Shows the number of donation cards still waiting; an active raffle preempts and then resumes the
+  current donation card with its remaining display time.
+- See `docs/RC32_DONATION_OVERLAY_FIFO_TEST.md`.
 
 COTL_API 0.3.4 remains a hard BepInEx runtime dependency and load-order gate. Because its public
 surface does not provide a stable loading/dialogue lifecycle contract for the target game build,
-rc31 uses BepInEx/Harmony against verified runtime type/method pairs plus Unity scene/timeScale
+rc32 uses BepInEx/Harmony against verified runtime type/method pairs plus Unity scene/timeScale
 signals. It logs every discovered capability and never performs a per-frame global object scan.
 
 ## Support diagnostics and live donation correlation retained
 
-- Captures both `Console.Out` and `Console.Error` in `companion-rc31.log`.
+- Captures both `Console.Out` and `Console.Error` in `companion-rc32.log`.
 - Rotates the Companion log at 5 MiB and retains four archives.
 - Correlates CHZZK receipt, rule resolution, bridge send, Unity apply, and result ACK with one request ID.
 - Reports an explicit ACK timeout after 15 seconds of ready gameplay; loading/dialogue time is excluded.
 - Catches fire-and-forget donation exceptions, unhandled exceptions, and unobserved task exceptions.
 - Adds `support` to create a local, best-effort-redacted ZIP. Nothing is uploaded automatically.
 - Excludes OAuth tokens, settings, viewer mapping/appearance records, and game saves.
-- See `docs/RC31_DONATION_SAFE_RUNTIME_TEST.md`.
+- See `docs/RC32_DONATION_OVERLAY_FIFO_TEST.md`.
 
 ## RC28 safe deterministic inline CHZZK prefix
 
@@ -129,7 +133,7 @@ signals. It logs every discovered capability and never performs a per-frame glob
 - Sends an immediate `GAME_STATUS` from a thread-safe cache when `GET_GAME_STATUS` is decoded,
   then sends the authoritative Unity-main-thread snapshot.
 - Correlates Companion TX, Mod RX, Mod queue/dispatch, Mod TX, and Companion RX with numbered logs.
-- RC31 mirrors stdout and stderr to rotating `%LOCALAPPDATA%\ChzzkOfTheLamb\companion-rc31.log` files.
+- RC32 mirrors stdout and stderr to rotating `%LOCALAPPDATA%\ChzzkOfTheLamb\companion-rc32.log` files.
 - Runs a non-Unity watchdog that reports `NO-UPDATE` or the exact last main-thread stage after 5 seconds.
 - Splits catalog generation into save, type, singleton, unlock, palette, individual form, sort, and TX stages.
 - See `docs/RC21_DIAGNOSTIC_WATCHDOG_FALLBACK.md` for the single-run decision table.
@@ -155,19 +159,19 @@ signals. It logs every discovered capability and never performs a per-frame glob
 
 ## External release packaging
 
-RC31 release packaging bundles COTL Korean Font Fix 4.2.1 (`COTL_KoreanFontFix.dll` + `koreanfont.bundle`) under `BepInEx\plugins\COTL_KoreanFontFix` through the installer. Run `build-distribution.ps1`; see `DISTRIBUTION-RC31.md` and `DEPLOY-RELEASE.md`.
+RC32 release packaging bundles COTL Korean Font Fix 4.2.1 (`COTL_KoreanFontFix.dll` + `koreanfont.bundle`) under `BepInEx\plugins\COTL_KoreanFontFix` through the installer. Run `build-distribution.ps1`; see `DISTRIBUTION-RC32.md` and `DEPLOY-RELEASE.md`.
 
-## v1.0.0 RC31 Installer
+## v1.0.0 RC32 Installer
 
 외부 배포용 GUI Bootstrapper 프로젝트 `ChzzkOfTheLamb.Installer`가 추가되었습니다. 사용자는 Setup EXE 하나만 실행하며, 설치기가 Steam 게임 위치를 자동 탐색하고 BepInEx/COTL_API/한글 폰트 패치/Mod/Companion을 다운로드·SHA-256 검증·설치합니다. 설치 진단은 `%LOCALAPPDATA%\ChzzkOfTheLamb\installer.log`에 기록됩니다.
 
 
-## RC29 viewer-page sharing retained in RC31
+## RC29 viewer-page sharing retained in RC32
 
 - The green CHZZK platform marker is composed into the existing visible TMP name string while the saved `FollowerInfo.Name` remains untouched. No separate badge GameObject, position calculation, or badge lifetime is involved.
 - Installer ZIP extraction and recursive component installation run on worker tasks instead of the WinForms UI thread. Detailed `[EXTRACT]` / `[INSTALL] ... elapsed=` diagnostics were added so long Companion installs remain responsive and bottlenecks are visible.
 - After CHZZK login, Companion prints a dedicated viewer-page banner, supports `viewer`, `viewer copy`, and `viewer open`, persists the URL, and refreshes a Windows desktop `.url` shortcut for the authenticated channel.
-- Installer and CDN component names are pinned to `1.0.0-rc31`; the installer rejects a manifest whose `release` is not exactly `1.0.0-rc31`.
+- Installer and CDN component names are pinned to `1.0.0-rc32`; the installer rejects a manifest whose `release` is not exactly `1.0.0-rc32`.
 
 
 ## RC14 installer fixes
