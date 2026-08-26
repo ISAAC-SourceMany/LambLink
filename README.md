@@ -58,6 +58,22 @@ ChzzkOfTheLamb은 단순히 채팅을 화면에 띄우는 도구가 아니라, �
 
 사용자에게 AWS CLI, AWS SSO, .NET Runtime 또는 DLL 수동 복사를 요구하지 않습니다. 문제가 생기면 Companion의 `support` 명령으로 개인정보를 최대한 제거한 진단 ZIP을 만들 수 있으며, 파일은 자동 업로드되지 않습니다.
 
+### Cult of the Lamb 한글 폰트 패치
+
+이 저장소에는 Cult of the Lamb에서 한글 문자열과 한글 직접 입력을 안정적으로 표시하기 위해 별도로 개발한 **COTL Korean Font Fix**가 포함되어 있습니다.
+
+- BepInEx와 TextMeshPro 기반의 독립 게임 플러그인
+- Noto Sans KR로 미리 생성한 정적 TMP 폰트와 다중 atlas 사용
+- 기존 게임 폰트를 강제로 교체하지 않고 fallback 경로로 한글 표시
+- NFC 정규화와 `TMP_InputField` 한글 IME 입력 지원
+- 폰트 번들 생성, 플러그인 빌드, 배포 ZIP 패키징 스크립트 제공
+
+현재 ChzzkOfTheLamb **RC35 설치기는 실제 배포 검증을 마친 4.2.1 자산을 SHA-256으로 확인해 설치**합니다. `tools/COTL_KoreanFontFix`에는 이후 진단 추적 코드를 제거해 정리한 **4.3.0 소스와 독립 배포 도구**가 보존되어 있습니다. 두 버전을 혼동하지 않도록 RC35 배포 자산과 독립 패치 소스를 구분해 관리합니다.
+
+- [한글 폰트 패치 빌드·사용 문서](tools/COTL_KoreanFontFix/README.md)
+- [한글 폰트 패치 4.3.0 변경 사항](tools/COTL_KoreanFontFix/RELEASE_NOTES.md)
+- [폰트 패치 개발 이력](docs/history/font-fix-4.3.0.md)
+
 ## 후원 시스템
 
 치지직 후원 금액이 1,000원 이상이면 현재 게임 위치와 금액 구간에 맞는 이벤트 하나가 무작위로 선택됩니다. **도움 효과와 방해 효과가 모두 포함**되어 있으므로 방송에서 시청자에게 미리 안내하는 것을 권장합니다.

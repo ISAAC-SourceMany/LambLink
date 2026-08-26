@@ -19,6 +19,15 @@
 
 조사 자료에는 게임 파일 자체가 아니라 개발 과정에서 작성한 기술 메모만 보관합니다.
 
+## 한글 폰트 패치
+
+- [COTL Korean Font Fix 빌드·사용 문서](../tools/COTL_KoreanFontFix/README.md)
+- [4.3.0 변경 사항](../tools/COTL_KoreanFontFix/RELEASE_NOTES.md)
+- [4.2.1 atlas 진단판 개발 기록](history/font-fix-4.2.1-atlas-trace.md)
+- [4.3.0 배포판 개발 기록](history/font-fix-4.3.0.md)
+
+RC35 자동 설치기는 검증된 4.2.1 배포 자산을 사용합니다. 도구 디렉터리의 4.3.0은 독립 패치의 최신 보존 소스이며 RC35 설치 패키지에 자동으로 대체 적용되지 않습니다.
+
 ## 릴리스 문서
 
 - [RC35 검증 기록](releases/VALIDATION-RC35.md)
