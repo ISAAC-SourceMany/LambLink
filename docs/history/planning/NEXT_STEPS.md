@@ -1,5 +1,7 @@
 # Next implementation steps
 
+> Historical planning snapshot. This document describes the project state at the time it was written and is not the current roadmap.
+
 ## Milestone A — compile and live transport verification
 
 - Build with the exact installed Cult of the Lamb/BepInEx assemblies.

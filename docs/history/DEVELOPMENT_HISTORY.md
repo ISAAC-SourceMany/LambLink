@@ -1,6 +1,6 @@
 # ChzzkOfTheLamb devbridge10a
 
-This revision is based on direct inspection of the user-provided COTL 1.5.25.1049 `Assembly-CSharp.dll`. It replaces heuristic appearance option discovery with the actual vanilla data flow and adds local rendering of the game's own follower-form UI template for web thumbnails. See `docs/COTL_1_5_25_APPEARANCE_REVERSE_ENGINEERING.md`.
+This revision is based on direct inspection of the user-provided COTL 1.5.25.1049 `Assembly-CSharp.dll`. It replaces heuristic appearance option discovery with the actual vanilla data flow and adds local rendering of the game's own follower-form UI template for web thumbnails. See [`../research/COTL_1_5_25_APPEARANCE_REVERSE_ENGINEERING.md`](../research/COTL_1_5_25_APPEARANCE_REVERSE_ENGINEERING.md).
 
 # ChzzkOfTheLamb devbridge7
 
