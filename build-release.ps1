@@ -96,6 +96,22 @@ foreach ($relativePath in $criticalSources.Keys) {
   if (-not (Test-Path $sourcePath)) { throw "Missing critical RC35 source: $relativePath" }
   $actualHash = (Get-FileHash $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actualHash -ne $criticalSources[$relativePath]) {
+    # Git for Windows commonly checks text files out as CRLF when core.autocrlf=true,
+    # while the reviewed RC35 hashes were recorded from the repository's LF blobs.
+    # Normalize only CRLF line endings and hash the UTF-8 bytes again; any semantic
+    # source change still fails the identity check.
+    $sourceBytes = [System.IO.File]::ReadAllBytes($sourcePath)
+    $sourceText = [System.Text.Encoding]::UTF8.GetString($sourceBytes)
+    $normalizedBytes = [System.Text.Encoding]::UTF8.GetBytes($sourceText.Replace("`r`n", "`n"))
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+      $actualHash = ([System.BitConverter]::ToString($sha256.ComputeHash($normalizedBytes))).Replace('-', '').ToLowerInvariant()
+    }
+    finally {
+      $sha256.Dispose()
+    }
+  }
+  if ($actualHash -ne $criticalSources[$relativePath]) {
     throw "Critical RC35 source does not match the reviewed version: $relativePath"
   }
 }
