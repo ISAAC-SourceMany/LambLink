@@ -1,12 +1,12 @@
-# RC33 후원 오버레이 배치·복합 버프 동기화 테스트
+# RC34 후원 오버레이 배치·복합 버프 동기화 테스트
 
-RC33는 게임 Mod와 Companion을 반드시 한 쌍으로 시험한다. 설치된 이전 Companion을 실행하면
+RC34는 게임 Mod와 Companion을 반드시 한 쌍으로 시험한다. 설치된 이전 Companion을 실행하면
 `DONATION_RUNTIME_STATE` 동기화와 오버레이 타이머 정지가 작동하지 않는다.
 
 ## 빌드
 
 압축을 깊은 다운로드 경로에 풀어도 정리 단계가 Windows 확장 경로를 사용해 처리된다. 그래도
-외부 백신이나 동기화 프로그램이 파일을 잠그는 환경에서는 `C:\COTL\rc33`처럼 짧은 경로가 권장된다.
+외부 백신이나 동기화 프로그램이 파일을 잠그는 환경에서는 `C:\COTL\rc34`처럼 짧은 경로가 권장된다.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build-test-pair.ps1
@@ -14,12 +14,12 @@ powershell -ExecutionPolicy Bypass -File .\build-test-pair.ps1
 
 결과:
 
-- `dist\rc33-plugin\ChzzkOfTheLamb.Mod.dll`
-- `dist\rc33-plugin\ChzzkOfTheLamb.Protocol.dll`
-- `dist\rc33-companion\ChzzkOfTheLamb.Companion.exe`
+- `dist\rc34-plugin\ChzzkOfTheLamb.Mod.dll`
+- `dist\rc34-plugin\ChzzkOfTheLamb.Protocol.dll`
+- `dist\rc34-companion\ChzzkOfTheLamb.Companion.exe`
 
-Companion 첫 화면은 `v1.0.0-rc33`, BepInEx 로그는
-`[BUILD=rc33-overlay-left-synchronized-buffs]`여야 한다.
+Companion 첫 화면은 `v1.0.0-rc34`, BepInEx 로그는
+`[BUILD=rc34-overlay-top-left-ltr]`여야 한다.
 
 ## 기본 확인
 
@@ -43,7 +43,7 @@ DONATION_QUEUE=0
 
 ## 개발 후원 테스트
 
-`build-test-pair.ps1`이 만든 테스트 Companion에서 `[TEST TOOLS] RC33_TEST_TOOLS enabled`를
+`build-test-pair.ps1`이 만든 테스트 Companion에서 `[TEST TOOLS] RC34_TEST_TOOLS enabled`를
 확인한 뒤 다음을 실행한다. 이 Companion은 CHZZK LIVE 로그인도 유지하지만 배포하면 안 된다.
 
 ```text
@@ -71,7 +71,8 @@ dev donation 1000
 OBS 브라우저 소스를 1920×1080으로 설정한 뒤 `dev donation 3000`을 실행한다.
 
 - 후원 카드의 최대 폭은 480px이어야 한다. 이전 720px 카드의 2/3이다.
-- 제목, 후원자, 이벤트명, 대기 건수도 함께 축소되어야 한다.
+- 카드의 가로 폭만 줄어들고 제목, 후원자, 이벤트명, 세로 패딩과 글자 크기는 기존과 같아야 한다.
+- 카드 왼쪽과 위쪽은 각각 OBS 화면 경계에서 정확히 18px 떨어져야 한다.
 - 래플 모집과 당첨자 카드는 기존 크기를 유지해야 한다.
 
 ## 버프 오버레이 배치
@@ -80,8 +81,15 @@ OBS 브라우저 소스를 1920×1080으로 설정한 뒤 `dev donation 3000`을
 
 - 버프 영역의 시작점은 중앙 카드 내부가 아니라 OBS 화면 왼쪽에서 18px 떨어진 위치여야 한다.
 - 최초 효과가 가장 왼쪽에 유지되고 새 종류는 그 오른쪽에 추가되어야 한다.
+- 후원 카드가 보이는 동안 버프 행은 카드 아래 10px 간격으로 내려가며, 카드가 사라지면 화면 위쪽 18px로 돌아가야 한다.
 - 동일 종류의 추가 후원은 기존 카드의 `대기 N`으로 표시된다.
 - 창 너비가 부족할 때만 다음 줄로 줄바꿈되어야 한다.
+
+Companion 시작 로그에서 아래 행을 확인한다. 이 행이 없으면 이전 Companion을 실행한 것이다.
+
+```text
+[OVERLAY][LAYOUT] donation=viewport-top-left-18,width=480px-only,buffs=viewport-left-to-right
+```
 
 ## 복합 버프 그룹 동기화
 

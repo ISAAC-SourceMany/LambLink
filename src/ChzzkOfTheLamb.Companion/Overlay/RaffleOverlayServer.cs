@@ -70,6 +70,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
         _listener.Start();
         _acceptLoop = Task.Run(() => AcceptLoopAsync(_cts.Token));
         Console.WriteLine($"[OVERLAY] OBS browser source: {OverlayUrl}");
+        Console.WriteLine("[OVERLAY][LAYOUT] donation=viewport-top-left-18,width=480px-only,buffs=viewport-left-to-right");
     }
 
     public void Open(int durationSeconds, string command)
@@ -583,12 +584,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
   #stage{width:min(760px,calc(100vw - 36px));display:flex;flex-direction:column;align-items:center;gap:10px}
   #wrap{width:min(720px,100%);opacity:0;transform:translateY(-14px) scale(.98);transition:opacity .22s ease,transform .22s ease;pointer-events:none}
   #wrap.show{opacity:1;transform:translateY(0) scale(1)}
-  #wrap.donationView{width:min(480px,calc(100vw - 36px))}
-  #wrap.donationView .panel{border-radius:15px;padding:12px 16px 11px}
-  #wrap.donationView .resultTitle{font-size:12px}
-  #wrap.donationView .donor{font-size:19px}
-  #wrap.donationView .donationEvent{font-size:24px;margin-top:4px}
-  #wrap.donationView .donationQueue{font-size:10px;margin-top:5px}
+  #wrap.donationView{position:fixed!important;left:18px!important;right:auto!important;top:18px!important;width:min(480px,calc(100vw - 36px))!important;margin:0!important}
   .panel{position:relative;background:rgba(12,9,15,.90);border:2px solid rgba(248,235,207,.78);border-radius:22px;padding:18px 24px 16px;box-shadow:0 10px 34px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.05)}
   .eyebrow{font-size:17px;font-weight:800;letter-spacing:.08em;color:#e7d5b0;text-align:center}
   .main{display:flex;align-items:center;justify-content:center;gap:22px;margin-top:6px}
@@ -605,7 +601,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
   .donor{font-size:28px;font-weight:900;color:#fff;margin-top:4px}
   .donationEvent{font-size:36px;font-weight:1000;color:#00c471;margin-top:6px;text-shadow:0 3px 12px #000}
   .donationQueue{font-size:15px;font-weight:800;color:#d8cdbb;margin-top:8px}
-  #buffs{position:fixed;left:18px;top:18px;width:calc(100vw - 36px);display:flex;flex-direction:row;justify-content:flex-start;align-items:flex-start;gap:8px;flex-wrap:wrap;pointer-events:none}
+  #buffs{position:fixed!important;left:18px!important;right:auto!important;top:18px;width:calc(100vw - 36px)!important;margin:0!important;transform:none!important;direction:ltr;display:flex;flex-direction:row;justify-content:flex-start!important;align-items:flex-start;align-content:flex-start;gap:8px;flex-wrap:wrap;pointer-events:none}
   .buff{min-width:168px;display:grid;grid-template-columns:42px 1fr;column-gap:9px;align-items:center;background:rgba(12,9,15,.88);border:1px solid rgba(248,235,207,.62);border-radius:14px;padding:8px 11px;box-shadow:0 6px 20px rgba(0,0,0,.38)}
   .buffIcon{grid-row:1/3;font-size:30px;line-height:1;text-align:center;filter:drop-shadow(0 2px 4px #000)}
   .buffName{font-size:14px;line-height:1.15;font-weight:900;color:#fff3d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -615,13 +611,36 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
 </style>
 </head>
 <body>
-<div id="stage"><div id="wrap"><div class="panel" id="panel"></div></div><div id="buffs"></div></div>
+<div id="stage"><div id="wrap"><div class="panel" id="panel"></div></div></div><div id="buffs"></div>
 <script>
 const wrap=document.getElementById('wrap');
 const panel=document.getElementById('panel');
 const buffs=document.getElementById('buffs');
 let durationMs=30000,lastPhase='hidden';
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function applyOverlayLayout(phase){
+  const donationMode=phase==='donation';
+  if(donationMode){
+    wrap.style.position='fixed';
+    wrap.style.left='18px';
+    wrap.style.right='auto';
+    wrap.style.top='18px';
+    wrap.style.width='min(480px,calc(100vw - 36px))';
+    wrap.style.margin='0';
+  }else{
+    for(const property of ['position','left','right','top','width','margin']) wrap.style.removeProperty(property);
+  }
+  buffs.style.position='fixed';
+  buffs.style.left='18px';
+  buffs.style.right='auto';
+  buffs.style.width='calc(100vw - 36px)';
+  buffs.style.margin='0';
+  buffs.style.transform='none';
+  buffs.style.direction='ltr';
+  buffs.style.flexDirection='row';
+  buffs.style.justifyContent='flex-start';
+  buffs.style.top=donationMode?`${Math.ceil(18+wrap.getBoundingClientRect().height+10)}px`:'18px';
+}
 function render(s){
   const phase=s.phase||'hidden';
   wrap.classList.toggle('show',phase!=='hidden');
@@ -646,6 +665,7 @@ function render(s){
     const queue=pending>0?`<div class="donationQueue">다음 후원 이벤트 ${pending}건 대기 중</div>`:'';
     panel.innerHTML=`<div class="result"><div class="resultTitle">CHZZK 후원 이벤트</div><div class="donor">${esc(s.donationNickname||'후원자')} · ${amount}원</div><div class="donationEvent">${esc(s.donationEventName||'이벤트 발동')}</div>${queue}</div>`;
   }
+  applyOverlayLayout(phase);
   const active=Array.isArray(s.activeBuffs)?s.activeBuffs:[];
   buffs.innerHTML=active.map(b=>{
     const sec=Math.max(0,Math.ceil(Number(b.remainingMs||0)/1000));

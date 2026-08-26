@@ -18,8 +18,8 @@ internal static class Program
 
 internal sealed class InstallerForm : Form
 {
-    private const string ReleaseVersion = "1.0.0-rc33";
-    private const string DefaultManifestUrl = "https://d1gvw9ccym1qvn.cloudfront.net/releases/installer-manifest-1.0.0-rc33.json";
+    private const string ReleaseVersion = "1.0.0-rc34";
+    private const string DefaultManifestUrl = "https://d1gvw9ccym1qvn.cloudfront.net/releases/installer-manifest-1.0.0-rc34.json";
     private readonly TextBox _gamePath = new() { Dock = DockStyle.Fill, ReadOnly = true };
     private readonly Button _browse = new() { Text = "찾아보기", AutoSize = true };
     private readonly Button _install = new() { Text = "설치", AutoSize = true };
@@ -32,7 +32,7 @@ internal sealed class InstallerForm : Form
 
     public InstallerForm()
     {
-        Text = "ChzzkOfTheLamb Setup 1.0.0-rc33";
+        Text = "ChzzkOfTheLamb Setup 1.0.0-rc34";
         Width = 720;
         Height = 500;
         StartPosition = FormStartPosition.CenterScreen;
@@ -218,7 +218,7 @@ internal sealed class InstallerForm : Form
     private static async Task<InstallerManifest> DownloadManifestAsync(string url, CancellationToken token)
     {
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("ChzzkOfTheLamb-Installer/1.0.0-rc33");
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("ChzzkOfTheLamb-Installer/1.0.0-rc34");
         var json = await http.GetStringAsync(url, token);
         var manifest = JsonSerializer.Deserialize<InstallerManifest>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                        ?? throw new InvalidDataException("installer manifest를 읽을 수 없습니다.");
@@ -236,7 +236,7 @@ internal sealed class InstallerForm : Form
     private static async Task DownloadFileAsync(string url, string path, CancellationToken token)
     {
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("ChzzkOfTheLamb-Installer/1.0.0-rc33");
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("ChzzkOfTheLamb-Installer/1.0.0-rc34");
         using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token);
         response.EnsureSuccessStatusCode();
         await using var input = await response.Content.ReadAsStreamAsync(token);
