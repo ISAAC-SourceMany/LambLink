@@ -1,4 +1,4 @@
-# v1.0.0 RC34 진단 테스트·배포 체크리스트
+# v1.0.0 RC35 진단 테스트·배포 체크리스트
 
 ## 1. Korean Font Fix 4.2.1 실제 바이너리 준비
 
@@ -25,7 +25,7 @@
 
 성공하면:
 
-`dist\ChzzkOfTheLamb-v1.0.0-rc34-distribution.zip`
+`dist\ChzzkOfTheLamb-v1.0.0-rc35-distribution.zip`
 
 이 생성됩니다.
 

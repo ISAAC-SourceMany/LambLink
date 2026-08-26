@@ -14,13 +14,13 @@ using ChzzkOfTheLamb.Companion.Storage;
 using ChzzkOfTheLamb.Companion.ViewerPage;
 using ChzzkOfTheLamb.Protocol;
 
-const string ReleaseVersion = "1.0.0-rc34";
+const string ReleaseVersion = "1.0.0-rc35";
 const string ProductionApiBase = "https://y0eblkdmu5.execute-api.ap-northeast-2.amazonaws.com";
 const string ProductionFrontendUrl = "https://d1gvw9ccym1qvn.cloudfront.net";
 
 var dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ChzzkOfTheLamb");
 Directory.CreateDirectory(dataDir);
-var diagnosticLogPath = Path.Combine(dataDir, "companion-rc34.log");
+var diagnosticLogPath = Path.Combine(dataDir, "companion-rc35.log");
 var originalConsoleOut = Console.Out;
 var originalConsoleError = Console.Error;
 using var diagnosticLogWriter = new RollingFileTextWriter(
@@ -90,7 +90,7 @@ if (IsReleaseDistribution)
     Console.WriteLine("[MODE] RELEASE / CHZZK LIVE");
     Console.WriteLine("[CONFIG] AWS CLI/SSO: not used by distribution build");
     if (DeveloperCommandsEnabled)
-        Console.WriteLine("[TEST TOOLS] RC34_TEST_TOOLS enabled: dev donation command is available; do not distribute this Companion.");
+        Console.WriteLine("[TEST TOOLS] RC35_TEST_TOOLS enabled: dev donation command is available; do not distribute this Companion.");
 }
 else
 {
@@ -1191,6 +1191,11 @@ async Task ConsoleLoopAsync()
 
         switch (normalized)
         {
+            case "overlay":
+            case "overlay url":
+                Console.WriteLine($"[OVERLAY] OBS browser source: {overlay.OverlayUrl}");
+                Console.WriteLine($"[OVERLAY] clientDocument={overlay.ClientDocumentVersion}, current={overlay.IsClientDocumentCurrent}");
+                break;
             case "viewer":
             case "viewer url":
                 viewerPage.PrintBanner(Console.Out);
@@ -1285,7 +1290,7 @@ async Task ConsoleLoopAsync()
                     ? "PUMP_STALE"
                     : gameSyncPhase;
                 var overlayPollAge = overlay.StatePollAgeSeconds;
-                Console.WriteLine($"MODE={(developmentMode ? "DEV" : "CHZZK")}, CHZZK={(developmentMode ? "disabled" : streamerChannelName)}, GAME={gameReady}, GAME_SOCKET={bridge.IsGameConnected}, GAME_READY={gameReady}, SYNC={displayedSyncPhase}, PUMP_AGE={(pumpAgeSeconds < 0 ? "none" : pumpAgeSeconds.ToString("F1") + "s")}, SAVE={currentSaveId}, AREA={lastDonationRuntimeState.Area}, DONATION_GATE={lastDonationRuntimeState.Reason}, DONATION_READY={lastDonationRuntimeState.IsReady}, DONATION_QUEUE={lastDonationRuntimeState.PendingDonations}, RECRUIT={currentRecruitFollowerId?.ToString() ?? "none"}, RAFFLE={raffle.IsOpen}, participants={raffle.ParticipantCount}, queue={pendingRaffleRequests.Count}, OVERLAY={(overlay.IsClientPolling ? "ready" : "not-polling")}, OVERLAY_POLL_AGE={(overlayPollAge < 0 ? "none" : overlayPollAge.ToString("F1") + "s")}, CLOUD={(cloud?.IsAuthenticated == true ? "connected" : "off")}, CATALOG={latestCatalogCount}, CATALOG_SAVE={latestCatalogSaveId}, DONATION_PENDING={donationTraces.PendingCount}");
+                Console.WriteLine($"MODE={(developmentMode ? "DEV" : "CHZZK")}, CHZZK={(developmentMode ? "disabled" : streamerChannelName)}, GAME={gameReady}, GAME_SOCKET={bridge.IsGameConnected}, GAME_READY={gameReady}, SYNC={displayedSyncPhase}, PUMP_AGE={(pumpAgeSeconds < 0 ? "none" : pumpAgeSeconds.ToString("F1") + "s")}, SAVE={currentSaveId}, AREA={lastDonationRuntimeState.Area}, DONATION_GATE={lastDonationRuntimeState.Reason}, DONATION_READY={lastDonationRuntimeState.IsReady}, DONATION_QUEUE={lastDonationRuntimeState.PendingDonations}, RECRUIT={currentRecruitFollowerId?.ToString() ?? "none"}, RAFFLE={raffle.IsOpen}, participants={raffle.ParticipantCount}, queue={pendingRaffleRequests.Count}, OVERLAY={(overlay.IsClientPolling ? "ready" : "not-polling")}, OVERLAY_DOC={overlay.ClientDocumentVersion}, OVERLAY_DOC_CURRENT={overlay.IsClientDocumentCurrent}, OVERLAY_POLL_AGE={(overlayPollAge < 0 ? "none" : overlayPollAge.ToString("F1") + "s")}, CLOUD={(cloud?.IsAuthenticated == true ? "connected" : "off")}, CATALOG={latestCatalogCount}, CATALOG_SAVE={latestCatalogSaveId}, DONATION_PENDING={donationTraces.PendingCount}");
                 Console.WriteLine($"VIEWER_PAGE={viewerPage.Url ?? "not-ready"}");
                 break;
             }
@@ -1433,6 +1438,7 @@ void PrintCommands()
 {
     Console.WriteLine("Commands:");
     Console.WriteLine("  status | help | exit");
+    Console.WriteLine("  overlay | overlay url       (OBS 브라우저 소스 URL/문서 버전 확인)");
     Console.WriteLine("  viewer | viewer copy | viewer open");
     Console.WriteLine("  support | support open       (개인정보 제거 로그 ZIP 생성/열기)");
     Console.WriteLine("  raffle start | raffle cancel | raffle draw");

@@ -1,12 +1,12 @@
-# RC34 후원 오버레이 배치·복합 버프 동기화 테스트
+# RC35 오버레이 문서 갱신·후원 카드 배치 테스트
 
-RC34는 게임 Mod와 Companion을 반드시 한 쌍으로 시험한다. 설치된 이전 Companion을 실행하면
+RC35는 게임 Mod와 Companion을 반드시 한 쌍으로 시험한다. 설치된 이전 Companion을 실행하면
 `DONATION_RUNTIME_STATE` 동기화와 오버레이 타이머 정지가 작동하지 않는다.
 
 ## 빌드
 
 압축을 깊은 다운로드 경로에 풀어도 정리 단계가 Windows 확장 경로를 사용해 처리된다. 그래도
-외부 백신이나 동기화 프로그램이 파일을 잠그는 환경에서는 `C:\COTL\rc34`처럼 짧은 경로가 권장된다.
+외부 백신이나 동기화 프로그램이 파일을 잠그는 환경에서는 `C:\COTL\rc35`처럼 짧은 경로가 권장된다.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build-test-pair.ps1
@@ -14,12 +14,37 @@ powershell -ExecutionPolicy Bypass -File .\build-test-pair.ps1
 
 결과:
 
-- `dist\rc34-plugin\ChzzkOfTheLamb.Mod.dll`
-- `dist\rc34-plugin\ChzzkOfTheLamb.Protocol.dll`
-- `dist\rc34-companion\ChzzkOfTheLamb.Companion.exe`
+- `dist\rc35-plugin\ChzzkOfTheLamb.Mod.dll`
+- `dist\rc35-plugin\ChzzkOfTheLamb.Protocol.dll`
+- `dist\rc35-companion\ChzzkOfTheLamb.Companion.exe`
 
-Companion 첫 화면은 `v1.0.0-rc34`, BepInEx 로그는
-`[BUILD=rc34-overlay-top-left-ltr]`여야 한다.
+Companion 첫 화면은 `v1.0.0-rc35`, BepInEx 로그는
+`[BUILD=rc35-overlay-document-handshake]`여야 한다.
+
+## OBS 오버레이 문서 1회 갱신
+
+rc34 이하 페이지는 Companion이 종료되어도 OBS 메모리에 남아 `/overlay/state`만 계속 요청할 수 있다.
+그래서 rc35로 처음 전환할 때는 Companion이 출력하는 버전 포함 URL을 OBS 브라우저 소스에 한 번
+입력하거나, 기존 브라우저 소스의 `현재 페이지의 캐시 새로고침`을 한 번 실행해야 한다.
+
+```text
+http://127.0.0.1:17883/overlay?v=rc35-overlay-document-v1
+```
+
+이후 버전부터는 상태 응답의 문서 버전이 달라지면 페이지가 스스로 새 문서를 다시 요청한다.
+이전 문서가 살아 있으면 Companion이 아래 경고를 남긴다.
+
+```text
+[OVERLAY][STALE-DOCUMENT]
+[OVERLAY][STALE-DOCUMENT][ACTION]
+```
+
+정상 문서가 로드되면 다음 순서가 나와야 한다.
+
+```text
+[OVERLAY][CLIENT] page loaded: ... document=rc35-overlay-document-v1
+[OVERLAY][CLIENT-DOCUMENT] current=rc35-overlay-document-v1, versionHandshake=true
+```
 
 ## 기본 확인
 
@@ -31,6 +56,8 @@ AREA=BASE 또는 DUNGEON
 DONATION_GATE=READY
 DONATION_READY=True
 DONATION_QUEUE=0
+OVERLAY_DOC=rc35-overlay-document-v1
+OVERLAY_DOC_CURRENT=True
 ```
 
 모드 로그에는 다음 기능 검증 행이 있어야 한다.
@@ -43,7 +70,7 @@ DONATION_QUEUE=0
 
 ## 개발 후원 테스트
 
-`build-test-pair.ps1`이 만든 테스트 Companion에서 `[TEST TOOLS] RC34_TEST_TOOLS enabled`를
+`build-test-pair.ps1`이 만든 테스트 Companion에서 `[TEST TOOLS] RC35_TEST_TOOLS enabled`를
 확인한 뒤 다음을 실행한다. 이 Companion은 CHZZK LIVE 로그인도 유지하지만 배포하면 안 된다.
 
 ```text
@@ -88,7 +115,14 @@ OBS 브라우저 소스를 1920×1080으로 설정한 뒤 `dev donation 3000`을
 Companion 시작 로그에서 아래 행을 확인한다. 이 행이 없으면 이전 Companion을 실행한 것이다.
 
 ```text
-[OVERLAY][LAYOUT] donation=viewport-top-left-18,width=480px-only,buffs=viewport-left-to-right
+[OVERLAY][LAYOUT] donation=separate-fixed-layer,left=18px,top=18px,outerWidth=480px,buffs=separate-viewport-left-layer
+```
+
+후원 카드가 실제로 표시되면 브라우저가 계산한 좌표가 로그에 기록된다. 1920×1080 OBS 소스라면
+`donation`의 앞 세 값이 반드시 `18,18,480`이어야 한다.
+
+```text
+[OVERLAY][CLIENT-LAYOUT] document=rc35-overlay-document-v1, phase=donation, viewport=1920x1080, donation=18,18,480,..., buffs=18,...
 ```
 
 ## 복합 버프 그룹 동기화
@@ -134,4 +168,5 @@ Companion 로그에는 같은 `group` 번호와 같은 `startsIn`이 기록되�
 Companion에서 `support` 명령을 실행하고 생성된 ZIP과 `BepInEx\LogOutput.log`를 전달한다.
 특히 `[DONATION][GATE]`, `[DONATION][STORY-HOOK]`, `[DONATION][QUEUE]`,
 `[DONATION][BUFF-GROUP]`, `[DONATION][ACK-WAIT]`, `[OVERLAY][BUFF-GROUP]`,
-`[OVERLAY][DONATION-QUEUE]` 행을 보존한다.
+`[OVERLAY][DONATION-QUEUE]`, `[OVERLAY][STALE-DOCUMENT]`, `[OVERLAY][CLIENT-DOCUMENT]`,
+`[OVERLAY][CLIENT-LAYOUT]` 행을 보존한다.

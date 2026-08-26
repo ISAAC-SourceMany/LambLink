@@ -7,6 +7,7 @@ namespace ChzzkOfTheLamb.Companion.Overlay;
 
 public sealed class RaffleOverlayServer : IAsyncDisposable
 {
+    private const string OverlayDocumentVersion = "rc35-overlay-document-v1";
     private readonly object _gate = new();
     private readonly int _port;
     private TcpListener? _listener;
@@ -28,6 +29,9 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
     private long _overlayPageRequests;
     private long _stateRequests;
     private DateTimeOffset? _lastStateRequestAt;
+    private string? _lastClientDocumentVersion;
+    private bool _staleClientWarningLogged;
+    private bool _currentClientDocumentLogged;
     private readonly Dictionary<string, List<ScheduledOverlayBuff>> _buffQueues = new(StringComparer.Ordinal);
     private readonly List<string> _buffOrder = new();
     private long _buffGroupSequence;
@@ -40,7 +44,23 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
         _port = port;
     }
 
-    public string OverlayUrl => $"http://127.0.0.1:{_port}/overlay";
+    public string OverlayUrl => $"http://127.0.0.1:{_port}/overlay?v={Uri.EscapeDataString(OverlayDocumentVersion)}";
+
+    public string ClientDocumentVersion
+    {
+        get
+        {
+            lock (_gate) return _lastClientDocumentVersion ?? "none";
+        }
+    }
+
+    public bool IsClientDocumentCurrent
+    {
+        get
+        {
+            lock (_gate) return string.Equals(_lastClientDocumentVersion, OverlayDocumentVersion, StringComparison.Ordinal);
+        }
+    }
 
     public bool IsClientPolling
     {
@@ -70,7 +90,8 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
         _listener.Start();
         _acceptLoop = Task.Run(() => AcceptLoopAsync(_cts.Token));
         Console.WriteLine($"[OVERLAY] OBS browser source: {OverlayUrl}");
-        Console.WriteLine("[OVERLAY][LAYOUT] donation=viewport-top-left-18,width=480px-only,buffs=viewport-left-to-right");
+        Console.WriteLine($"[OVERLAY][DOCUMENT] version={OverlayDocumentVersion}, autoReloadOnVersionChange=true");
+        Console.WriteLine("[OVERLAY][LAYOUT] donation=separate-fixed-layer,left=18px,top=18px,outerWidth=480px,buffs=separate-viewport-left-layer");
     }
 
     public void Open(int durationSeconds, string command)
@@ -408,6 +429,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
                 .ToArray();
 
             return new OverlayState(
+                OverlayDocumentVersion,
                 _phase,
                 _command,
                 remainingMs,
@@ -464,20 +486,54 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
                 if (path.Equals("/overlay/state", StringComparison.OrdinalIgnoreCase))
                 {
                     bool firstPoll;
+                    bool logStaleDocument;
+                    bool logCurrentDocument;
+                    long pageRequests;
+                    var clientDocumentVersion = GetQueryValue(target, "documentVersion");
+                    var clientDocumentIsCurrent = string.Equals(
+                        clientDocumentVersion, OverlayDocumentVersion, StringComparison.Ordinal);
                     lock (_gate)
                     {
                         firstPoll = _stateRequests == 0;
                         _stateRequests++;
                         _lastStateRequestAt = DateTimeOffset.UtcNow;
+                        _lastClientDocumentVersion = string.IsNullOrWhiteSpace(clientDocumentVersion)
+                            ? "legacy-or-unknown"
+                            : clientDocumentVersion;
+                        logStaleDocument = !clientDocumentIsCurrent && !_staleClientWarningLogged;
+                        logCurrentDocument = clientDocumentIsCurrent && !_currentClientDocumentLogged;
+                        if (logStaleDocument) _staleClientWarningLogged = true;
+                        if (logCurrentDocument) _currentClientDocumentLogged = true;
+                        pageRequests = _overlayPageRequests;
                     }
                     if (firstPoll)
                         Console.WriteLine($"[OVERLAY][CLIENT] state polling active: remote={client.Client.RemoteEndPoint}");
+                    if (logStaleDocument)
+                    {
+                        Console.WriteLine($"[OVERLAY][STALE-DOCUMENT] client={SafeLogValue(clientDocumentVersion ?? "missing")}, expected={OverlayDocumentVersion}, pageRequests={pageRequests}; OBS is still running an older in-memory overlay document.");
+                        Console.WriteLine($"[OVERLAY][STALE-DOCUMENT][ACTION] Refresh the OBS Browser Source once or replace its URL with: {OverlayUrl}");
+                    }
+                    if (logCurrentDocument)
+                        Console.WriteLine($"[OVERLAY][CLIENT-DOCUMENT] current={OverlayDocumentVersion}, versionHandshake=true");
                     var json = JsonSerializer.Serialize(Snapshot(), new JsonSerializerOptions
                     {
                         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
                     });
                     await WriteResponseAsync(stream, "200 OK", "application/json; charset=utf-8", json, ct,
-                        "Cache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\n");
+                        "Cache-Control: no-store, no-cache, must-revalidate, max-age=0\r\nPragma: no-cache\r\nExpires: 0\r\nAccess-Control-Allow-Origin: *\r\n");
+                    return;
+                }
+
+                if (path.Equals("/overlay/client-layout", StringComparison.OrdinalIgnoreCase))
+                {
+                    var documentVersion = SafeLogValue(GetQueryValue(target, "documentVersion") ?? "missing");
+                    var phase = SafeLogValue(GetQueryValue(target, "phase") ?? "unknown");
+                    var viewport = SafeLogValue(GetQueryValue(target, "viewport") ?? "unknown");
+                    var donation = SafeLogValue(GetQueryValue(target, "donation") ?? "unknown");
+                    var buffs = SafeLogValue(GetQueryValue(target, "buffs") ?? "unknown");
+                    Console.WriteLine($"[OVERLAY][CLIENT-LAYOUT] document={documentVersion}, phase={phase}, viewport={viewport}, donation={donation}, buffs={buffs}");
+                    await WriteResponseAsync(stream, "204 No Content", "text/plain; charset=utf-8", string.Empty, ct,
+                        "Cache-Control: no-store, no-cache, must-revalidate, max-age=0\r\nPragma: no-cache\r\nExpires: 0\r\n");
                     return;
                 }
 
@@ -485,9 +541,10 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
                 {
                     long pageRequest;
                     lock (_gate) pageRequest = ++_overlayPageRequests;
-                    Console.WriteLine($"[OVERLAY][CLIENT] page loaded: request={pageRequest}, remote={client.Client.RemoteEndPoint}");
+                    var requestedVersion = SafeLogValue(GetQueryValue(target, "v") ?? "none");
+                    Console.WriteLine($"[OVERLAY][CLIENT] page loaded: request={pageRequest}, document={OverlayDocumentVersion}, requested={requestedVersion}, remote={client.Client.RemoteEndPoint}");
                     await WriteResponseAsync(stream, "200 OK", "text/html; charset=utf-8", OverlayHtml, ct,
-                        "Cache-Control: no-store\r\n");
+                        "Cache-Control: no-store, no-cache, must-revalidate, max-age=0\r\nPragma: no-cache\r\nExpires: 0\r\n");
                     return;
                 }
 
@@ -500,6 +557,27 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
                 Console.WriteLine($"[OVERLAY] request failed: {ex.Message}");
             }
         }
+    }
+
+    private static string? GetQueryValue(string target, string key)
+    {
+        var queryStart = target.IndexOf('?');
+        if (queryStart < 0 || queryStart == target.Length - 1) return null;
+
+        foreach (var part in target[(queryStart + 1)..].Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var pair = part.Split('=', 2);
+            if (!Uri.UnescapeDataString(pair[0]).Equals(key, StringComparison.OrdinalIgnoreCase)) continue;
+            return pair.Length == 2 ? Uri.UnescapeDataString(pair[1].Replace('+', ' ')) : string.Empty;
+        }
+
+        return null;
+    }
+
+    private static string SafeLogValue(string value)
+    {
+        var sanitized = value.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return sanitized.Length <= 160 ? sanitized : sanitized[..160];
     }
 
     private static async Task WriteResponseAsync(NetworkStream stream, string status, string contentType, string body,
@@ -527,6 +605,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
     }
 
     private sealed record OverlayState(
+        string OverlayDocumentVersion,
         string Phase,
         string Command,
         long RemainingMs,
@@ -576,6 +655,9 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>My Lamb Raffle Overlay</title>
 <style>
   :root { color-scheme: dark; }
@@ -584,7 +666,9 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
   #stage{width:min(760px,calc(100vw - 36px));display:flex;flex-direction:column;align-items:center;gap:10px}
   #wrap{width:min(720px,100%);opacity:0;transform:translateY(-14px) scale(.98);transition:opacity .22s ease,transform .22s ease;pointer-events:none}
   #wrap.show{opacity:1;transform:translateY(0) scale(1)}
-  #wrap.donationView{position:fixed!important;left:18px!important;right:auto!important;top:18px!important;width:min(480px,calc(100vw - 36px))!important;margin:0!important}
+  #donationWrap{position:fixed;left:18px;right:auto;top:18px;width:min(480px,calc(100vw - 36px));box-sizing:border-box;margin:0;opacity:0;transition:opacity .22s ease;pointer-events:none}
+  #donationWrap.show{opacity:1}
+  #donationWrap .panel{width:100%;box-sizing:border-box}
   .panel{position:relative;background:rgba(12,9,15,.90);border:2px solid rgba(248,235,207,.78);border-radius:22px;padding:18px 24px 16px;box-shadow:0 10px 34px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.05)}
   .eyebrow{font-size:17px;font-weight:800;letter-spacing:.08em;color:#e7d5b0;text-align:center}
   .main{display:flex;align-items:center;justify-content:center;gap:22px;margin-top:6px}
@@ -601,7 +685,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
   .donor{font-size:28px;font-weight:900;color:#fff;margin-top:4px}
   .donationEvent{font-size:36px;font-weight:1000;color:#00c471;margin-top:6px;text-shadow:0 3px 12px #000}
   .donationQueue{font-size:15px;font-weight:800;color:#d8cdbb;margin-top:8px}
-  #buffs{position:fixed!important;left:18px!important;right:auto!important;top:18px;width:calc(100vw - 36px)!important;margin:0!important;transform:none!important;direction:ltr;display:flex;flex-direction:row;justify-content:flex-start!important;align-items:flex-start;align-content:flex-start;gap:8px;flex-wrap:wrap;pointer-events:none}
+  #buffs{position:fixed;left:18px;right:auto;top:18px;width:calc(100vw - 36px);box-sizing:border-box;margin:0;transform:none;direction:ltr;display:flex;flex-direction:row;justify-content:flex-start;align-items:flex-start;align-content:flex-start;gap:8px;flex-wrap:wrap;pointer-events:none}
   .buff{min-width:168px;display:grid;grid-template-columns:42px 1fr;column-gap:9px;align-items:center;background:rgba(12,9,15,.88);border:1px solid rgba(248,235,207,.62);border-radius:14px;padding:8px 11px;box-shadow:0 6px 20px rgba(0,0,0,.38)}
   .buffIcon{grid-row:1/3;font-size:30px;line-height:1;text-align:center;filter:drop-shadow(0 2px 4px #000)}
   .buffName{font-size:14px;line-height:1.15;font-weight:900;color:#fff3d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -611,40 +695,49 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
 </style>
 </head>
 <body>
-<div id="stage"><div id="wrap"><div class="panel" id="panel"></div></div></div><div id="buffs"></div>
+<div id="stage"><div id="wrap"><div class="panel" id="panel"></div></div></div>
+<div id="donationWrap"><div class="panel" id="donationPanel"></div></div>
+<div id="buffs"></div>
 <script>
+const overlayDocumentVersion='rc35-overlay-document-v1';
 const wrap=document.getElementById('wrap');
 const panel=document.getElementById('panel');
+const donationWrap=document.getElementById('donationWrap');
+const donationPanel=document.getElementById('donationPanel');
 const buffs=document.getElementById('buffs');
-let durationMs=30000,lastPhase='hidden';
+let durationMs=30000,lastPhase='hidden',lastLayoutSignature='';
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function ensureCurrentDocument(s){
+  const serverVersion=String(s.overlayDocumentVersion||'');
+  if(!serverVersion||serverVersion===overlayDocumentVersion)return true;
+  location.replace(`/overlay?v=${encodeURIComponent(serverVersion)}&reload=${Date.now()}`);
+  return false;
+}
 function applyOverlayLayout(phase){
   const donationMode=phase==='donation';
-  if(donationMode){
-    wrap.style.position='fixed';
-    wrap.style.left='18px';
-    wrap.style.right='auto';
-    wrap.style.top='18px';
-    wrap.style.width='min(480px,calc(100vw - 36px))';
-    wrap.style.margin='0';
-  }else{
-    for(const property of ['position','left','right','top','width','margin']) wrap.style.removeProperty(property);
-  }
-  buffs.style.position='fixed';
-  buffs.style.left='18px';
-  buffs.style.right='auto';
-  buffs.style.width='calc(100vw - 36px)';
-  buffs.style.margin='0';
-  buffs.style.transform='none';
-  buffs.style.direction='ltr';
-  buffs.style.flexDirection='row';
-  buffs.style.justifyContent='flex-start';
-  buffs.style.top=donationMode?`${Math.ceil(18+wrap.getBoundingClientRect().height+10)}px`:'18px';
+  buffs.style.top=donationMode?`${18+donationWrap.offsetHeight+10}px`:'18px';
+}
+function reportLayout(phase){
+  requestAnimationFrame(()=>{
+    const donation=donationWrap.getBoundingClientRect();
+    const buffBox=buffs.getBoundingClientRect();
+    const metric=r=>`${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`;
+    const viewport=`${innerWidth}x${innerHeight}`;
+    const donationMetric=metric(donation);
+    const buffMetric=metric(buffBox);
+    const signature=`${phase}|${viewport}|${donationMetric}|${buffMetric}`;
+    if(signature===lastLayoutSignature)return;
+    lastLayoutSignature=signature;
+    const query=new URLSearchParams({documentVersion:overlayDocumentVersion,phase,viewport,donation:donationMetric,buffs:buffMetric});
+    fetch(`/overlay/client-layout?${query}`,{cache:'no-store'}).catch(()=>{});
+  });
 }
 function render(s){
+  if(!ensureCurrentDocument(s))return;
   const phase=s.phase||'hidden';
-  wrap.classList.toggle('show',phase!=='hidden');
-  wrap.classList.toggle('donationView',phase==='donation');
+  const donationMode=phase==='donation';
+  wrap.classList.toggle('show',phase!=='hidden'&&!donationMode);
+  donationWrap.classList.toggle('show',donationMode);
   wrap.classList.remove('urgent');
   if(phase==='raffle'){
     if(lastPhase!=='raffle' && s.remainingMs>0) durationMs=s.remainingMs;
@@ -663,7 +756,7 @@ function render(s){
     const amount=Number(s.donationAmount||0).toLocaleString('ko-KR');
     const pending=Number(s.pendingDonationCount||0);
     const queue=pending>0?`<div class="donationQueue">다음 후원 이벤트 ${pending}건 대기 중</div>`:'';
-    panel.innerHTML=`<div class="result"><div class="resultTitle">CHZZK 후원 이벤트</div><div class="donor">${esc(s.donationNickname||'후원자')} · ${amount}원</div><div class="donationEvent">${esc(s.donationEventName||'이벤트 발동')}</div>${queue}</div>`;
+    donationPanel.innerHTML=`<div class="result"><div class="resultTitle">CHZZK 후원 이벤트</div><div class="donor">${esc(s.donationNickname||'후원자')} · ${amount}원</div><div class="donationEvent">${esc(s.donationEventName||'이벤트 발동')}</div>${queue}</div>`;
   }
   applyOverlayLayout(phase);
   const active=Array.isArray(s.activeBuffs)?s.activeBuffs:[];
@@ -674,10 +767,11 @@ function render(s){
     const timer=s.buffTimersPaused?'일시정지':`${sec}s`;
     return `<div class="buff"><div class="buffIcon">${esc(b.icon||'✦')}</div><div class="buffName">${esc(b.name||'후원 버프')}${queueText}</div><div class="buffMeta"><span>${esc(b.detail||'')}</span><span class="buffTime">${timer}</span></div></div>`;
   }).join('');
+  reportLayout(phase);
   lastPhase=phase;
 }
 async function tick(){
-  try{const r=await fetch('/overlay/state',{cache:'no-store'});if(r.ok)render(await r.json())}catch(e){}
+  try{const r=await fetch(`/overlay/state?documentVersion=${encodeURIComponent(overlayDocumentVersion)}`,{cache:'no-store'});if(r.ok)render(await r.json())}catch(e){}
 }
 setInterval(tick,200);tick();
 </script>
