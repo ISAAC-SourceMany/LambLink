@@ -72,7 +72,7 @@ $criticalSources = @{
   'src\ChzzkOfTheLamb.Mod\Game\DonationStoryLifecycle.cs' = 'ee98c5488b3e3bbdad64f9b2049af27f18003d0ce666ac8dbb189eea9808fa05'
   'src\ChzzkOfTheLamb.Mod\Game\DungeonDonationBuffs.cs' = '6036326733c961605ac99c2b7cf7e108c4cc89fac2c906d94919bca12a4153b5'
   'src\ChzzkOfTheLamb.Protocol\GameMessages.cs' = '55312e81b19340d18188ad0cf6efbcb7a06f6bef0ccb243f1ae568172d401a64'
-  'src\ChzzkOfTheLamb.Companion\Program.cs' = 'bd2bea3f1fb1e8c58dd12461d25144250ce86a827b0433444752630149b146da'
+  'src\ChzzkOfTheLamb.Companion\Program.cs' = '4d67cd57e26f9551bfea638c77a56a76558a6b52163be43353f15a9740ce6998'
   'src\ChzzkOfTheLamb.Companion\Chzzk\ChzzkRealtimeClient.cs' = '09ce1e58e9308f7fecfb320635b3e5b32f6c2c0a9414d0200594226df18a7c8a'
   'src\ChzzkOfTheLamb.Companion\ViewerPage\ViewerPageShare.cs' = '2e9041cf4209e76f258c7a0cdab0847431f4affef002bd03b1ee37efef36692a'
   'src\ChzzkOfTheLamb.Companion\GameBridge\GameBridgeServer.cs' = '6199cf43fea8adbcb9b166f31370975f2ac954af3834bbdf3866142e55fe8da9'
@@ -89,7 +89,7 @@ $criticalSources = @{
   'installer\installer-manifest.template.json' = '47166217008c309203e9d599e804ecacb1bd6891c71e9a6a76f5d42baeec5872'
   'prepare-installer-manifest.ps1' = '01f3a4b6e90a55502bc4c7a5e7714ae0deee6e6bc8b3865b9a6d7bc5136ce86b'
   'build-distribution.ps1' = '019c174ec9d9e4dcd136f244b917d9041652c49e9e1475a0c4f02eaee3796455'
-  'DISTRIBUTION-RC35.md' = 'a2ae2f844ae810279e68b702347a4b19971812659c31a0332aee2bcc7cdfb782'
+  'DISTRIBUTION-RC35.md' = 'f06717d06f489f6b34bf3404069b09b7b603cb43311fe8afa1e527de2aefe708'
 }
 foreach ($relativePath in $criticalSources.Keys) {
   $sourcePath = Join-Path $root $relativePath
@@ -183,11 +183,21 @@ foreach ($marker in @('[DONATION][TERMINAL][ACK-TIMEOUT]', '[DONATION][GATE][RX]
                (Test-ByteSequence $companionValidationBytes ([System.Text.Encoding]::Unicode.GetBytes($marker)))
   if (-not $hasMarker) { throw "Built Companion validation assembly is missing RC35 diagnostic marker: $marker" }
 }
-foreach ($forbiddenMarker in @('RC35_TEST_TOOLS enabled')) {
+foreach ($forbiddenMarker in @(
+  'RC35_TEST_TOOLS enabled',
+  'dev spawn ',
+  'dev join ',
+  'dev donation ',
+  'AWS_PROFILE',
+  'cotl-dev',
+  'aws sso login',
+  'Failed to start AWS CLI.'
+)) {
   $hasForbidden = (Test-ByteSequence $companionValidationBytes ([System.Text.Encoding]::UTF8.GetBytes($forbiddenMarker))) -or
                   (Test-ByteSequence $companionValidationBytes ([System.Text.Encoding]::Unicode.GetBytes($forbiddenMarker)))
-  if ($hasForbidden) { throw "Release Companion unexpectedly contains test tools: $forbiddenMarker" }
+  if ($hasForbidden) { throw "Release Companion unexpectedly contains development-only code: $forbiddenMarker" }
 }
+Write-Host '[VERIFY] RC35 release Companion excludes test commands and local AWS CLI/SSO credential code.'
 Write-Host '[VERIFY] RC35 support and donation markers found in compiled Companion assembly.'
 
 Write-Host '[5/9] Publishing Companion self-contained single-file...'

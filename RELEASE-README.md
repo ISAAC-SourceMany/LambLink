@@ -1,4 +1,4 @@
-# ChzzkOfTheLamb v1.0.0 RC35 — diagnostic test GUI Installer
+# ChzzkOfTheLamb v1.0.0 RC35 — 배포용 GUI Installer
 
 외부 사용자 배포 방식이 `ZIP + PowerShell`에서 **설치 EXE 하나**로 변경되었습니다.
 
@@ -38,7 +38,11 @@
    - `ChzzkOfTheLamb-Mod-1.0.0-rc35.zip`
    - `ChzzkOfTheLamb-Companion-1.0.0-rc35-win-x64.zip`
    - `installer-manifest-1.0.0-rc35.json`
-5. 실제 후원 진단 테스트를 통과한 뒤 사용자에게 `ChzzkOfTheLamb-Setup-1.0.0-rc35.exe` 하나만 배포합니다.
+5. 클린 PC 설치 검증 후 사용자에게 `ChzzkOfTheLamb-Setup-1.0.0-rc35.exe` 하나만 배포합니다.
+
+수익 창출 승인 전에는 실제 CHZZK 후원 수신만 미검증 상태입니다. 개발 후원으로 게임 적용,
+대기열, 지역별 효과, 오버레이 표시를 검증했으며 실제 후원은 승인 후 동일 요청 ID 로그로
+추가 확인합니다.
 
 BepInEx와 COTL_API는 manifest에서 각각 공식 GitHub/Thunderstore URL을 사용합니다. 설치기는 모든 파일을 SHA-256으로 검증한 뒤 설치합니다.
 

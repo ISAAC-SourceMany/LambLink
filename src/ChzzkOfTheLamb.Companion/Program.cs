@@ -44,12 +44,6 @@ bool IsReleaseDistribution = true;
 #else
 bool IsReleaseDistribution = false;
 #endif
-#if RC_TEST_TOOLS
-bool DeveloperCommandsEnabled = true;
-#else
-bool DeveloperCommandsEnabled = false;
-#endif
-
 ChzzkCredentials? chzzkCredentials = null;
 #if !RELEASE_DISTRIBUTION
 try
@@ -89,8 +83,9 @@ if (IsReleaseDistribution)
 {
     Console.WriteLine("[MODE] RELEASE / CHZZK LIVE");
     Console.WriteLine("[CONFIG] AWS CLI/SSO: not used by distribution build");
-    if (DeveloperCommandsEnabled)
-        Console.WriteLine("[TEST TOOLS] RC35_TEST_TOOLS enabled: dev donation command is available; do not distribute this Companion.");
+#if RC_TEST_TOOLS
+    Console.WriteLine("[TEST TOOLS] RC35_TEST_TOOLS enabled: dev donation command is available; do not distribute this Companion.");
+#endif
 }
 else
 {
@@ -1135,7 +1130,8 @@ async Task ConsoleLoopAsync()
             _ = UploadLatestCatalogAsync();
             continue;
         }
-        if (DeveloperCommandsEnabled && normalized.StartsWith("dev spawn "))
+#if RC_TEST_TOOLS
+        if (normalized.StartsWith("dev spawn "))
         {
             var nickname = rawCommand.Substring("dev spawn ".Length).Trim();
             if (string.IsNullOrWhiteSpace(nickname))
@@ -1150,7 +1146,7 @@ async Task ConsoleLoopAsync()
                 new SpawnFollowerCommand(viewerId, nickname, currentSaveId, "developer-console", appearances.Get(streamerChannelId, viewerId)), stop.Token);
             continue;
         }
-        if (DeveloperCommandsEnabled && normalized.StartsWith("dev join "))
+        if (normalized.StartsWith("dev join "))
         {
             var nickname = rawCommand.Substring("dev join ".Length).Trim();
             if (string.IsNullOrWhiteSpace(nickname))
@@ -1163,7 +1159,7 @@ async Task ConsoleLoopAsync()
             Console.WriteLine(joined ? $"[DEV] raffle joined: {nickname}" : $"[DEV] raffle join rejected: {nickname}");
             continue;
         }
-        if (DeveloperCommandsEnabled && normalized.StartsWith("dev donation "))
+        if (normalized.StartsWith("dev donation "))
         {
             var amountText = rawCommand.Substring("dev donation ".Length).Trim().Replace(",", string.Empty);
             if (!long.TryParse(amountText, out var amount) || amount < 0)
@@ -1188,6 +1184,7 @@ async Task ConsoleLoopAsync()
                     stop.Token);
             continue;
         }
+#endif
 
         switch (normalized)
         {
@@ -1443,12 +1440,11 @@ void PrintCommands()
     Console.WriteLine("  support | support open       (개인정보 제거 로그 ZIP 생성/열기)");
     Console.WriteLine("  raffle start | raffle cancel | raffle draw");
     Console.WriteLine("  forms | form allow <id> | form deny <id> | refresh-forms");
-    if (DeveloperCommandsEnabled)
-    {
-        Console.WriteLine("  dev spawn <nickname>       (개발 전용)");
-        Console.WriteLine("  dev join <nickname>        (개발 전용)");
-        Console.WriteLine("  dev donation <amount>      (개발 전용)");
-    }
+#if RC_TEST_TOOLS
+    Console.WriteLine("  dev spawn <nickname>       (개발 전용)");
+    Console.WriteLine("  dev join <nickname>        (개발 전용)");
+    Console.WriteLine("  dev donation <amount>      (개발 전용)");
+#endif
 }
 
 static string BuildCatalogFingerprint(FollowerAppearanceCatalog catalog)

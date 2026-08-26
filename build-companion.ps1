@@ -50,7 +50,7 @@ function Clear-CompilerOutputs {
 }
 
 $criticalSources = @{
-  'src\ChzzkOfTheLamb.Companion\Program.cs' = 'bd2bea3f1fb1e8c58dd12461d25144250ce86a827b0433444752630149b146da'
+  'src\ChzzkOfTheLamb.Companion\Program.cs' = '4d67cd57e26f9551bfea638c77a56a76558a6b52163be43353f15a9740ce6998'
   'src\ChzzkOfTheLamb.Companion\Chzzk\ChzzkRealtimeClient.cs' = '09ce1e58e9308f7fecfb320635b3e5b32f6c2c0a9414d0200594226df18a7c8a'
   'src\ChzzkOfTheLamb.Companion\ViewerPage\ViewerPageShare.cs' = '2e9041cf4209e76f258c7a0cdab0847431f4affef002bd03b1ee37efef36692a'
   'src\ChzzkOfTheLamb.Companion\GameBridge\GameBridgeServer.cs' = '6199cf43fea8adbcb9b166f31370975f2ac954af3834bbdf3866142e55fe8da9'

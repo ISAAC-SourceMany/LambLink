@@ -18,9 +18,9 @@ powershell -ExecutionPolicy Bypass -File .\build-distribution.ps1
 - `CDN-UPLOAD\`: 이 안의 네 파일을 CloudFront 원본의 `/releases/` 경로에 같은 이름으로 업로드합니다.
 - `USER-DOWNLOAD\`: `ChzzkOfTheLamb-Setup-1.0.0-rc35.exe` 하나를 사용자에게 배포합니다.
 
-설치기는 rc35 전용 매니페스트만 허용합니다. rc35 후원 대기열 검증 전에는 CDN에 업로드하거나
-rc29 파일을 교체하지 않습니다. 검증 후 rc35 설치기는 `installer-manifest-1.0.0-rc35.json`과
-rc35 구성요소만 참조합니다.
+설치기는 rc35 전용 매니페스트만 허용하며 `installer-manifest-1.0.0-rc35.json`과 rc35
+구성요소만 참조합니다. 개발 후원 기반의 게임 적용·대기열·오버레이 검증은 완료했습니다.
+실제 CHZZK 후원 수신은 수익 창출 승인 후 추가 검증하는 조건부 항목입니다.
 
 ## rc35 진단과 지원 로그 묶음
 

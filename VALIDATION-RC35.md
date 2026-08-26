@@ -58,6 +58,9 @@
 - Browser code reports calculated layout bounds on phase/viewport changes. This provides direct target-
   environment evidence such as `phase=donation ... donation=18,18,480,...` instead of inferring layout
   solely from compiled strings.
+- The matched RC35 Mod and Companion were built and exercised on the target Windows game environment.
+  The user confirmed that the versioned OBS document loaded and that the donation card width/position
+  and left-to-right buff layout now behave as requested.
 - Companion startup emits exact `[OVERLAY][DOCUMENT]` and `[OVERLAY][LAYOUT]` markers, and both test and
   release build scripts reject compiled assemblies without document-handshake, independent-layer and
   client-layout-report markers.
@@ -91,6 +94,7 @@ stale hashes, missing rc35 build tags, or missing diagnostic markers. Runtime va
 
 ## Release status
 
-Not ready for public deployment until the matched rc35 pair compiles on Windows and the layout plus
-grouped-buff test passes in Dungeon. Actual CHZZK donation receipt remains a documented conditional
-validation until revenue approval is available.
+Ready with limitations for a conditional RC35 distribution. The Windows matched-pair build and the
+reported overlay regression scenario passed. Actual CHZZK donation receipt remains unverified until
+revenue approval is available; development donations cover rule selection, bridge delivery, game
+application, queued transitions and overlay presentation but do not prove the live platform frame.

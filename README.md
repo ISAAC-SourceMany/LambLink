@@ -9,6 +9,8 @@
 
 Release Companion은 AWS CLI/SSO를 사용하지 않으며 CHZZK Client Secret을 포함하지 않습니다.
 Streamer OAuth는 AWS Auth Gateway를 통해 처리합니다.
+`RC_TEST_TOOLS`가 없는 배포 빌드에서는 `dev spawn`, `dev join`, `dev donation` 명령 코드도
+컴파일 대상에서 제외됩니다.
 
 ## Build fix 1
 
