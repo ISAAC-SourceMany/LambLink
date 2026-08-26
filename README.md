@@ -89,7 +89,7 @@ ChzzkOfTheLamb은 단순히 채팅을 화면에 띄우는 도구가 아니라, �
 8. Companion의 `viewer copy` 명령으로 시청자 외형 설정 주소를 복사해 방송 공지나 채팅에 공유합니다.
 9. Cult of the Lamb을 실행한 뒤 Companion에서 `status`를 입력해 `GAME=True`, `SYNC=READY`, `OVERLAY=ready`인지 확인합니다.
 
-설치 화면, OBS 권장 설정, 시청자 안내문과 문제 해결 방법은 **[한글 사용자 설명서](docs/USER_GUIDE_KO.md)**에서 자세히 확인할 수 있습니다.
+설치 화면, OBS 권장 설정, 시청자 안내문과 문제 해결 방법은 **[한글 사용자 설명서](docs/guides/USER_GUIDE_KO.md)**에서 자세히 확인할 수 있습니다.
 
 ## 스트리머가 방송 전에 확인할 것
 
@@ -152,9 +152,10 @@ Companion ─────→ OBS 브라우저 오버레이
 
 ## 개발 문서
 
-- [개발 환경 설정](docs/SETUP.md)
-- [구조 설명](docs/ARCHITECTURE.md)
-- [개발 이력](docs/DEVELOPMENT_HISTORY_README.md)
+- [문서 전체 안내](docs/README.md)
+- [개발 환경 설정](docs/development/SETUP.md)
+- [구조 설명](docs/development/ARCHITECTURE.md)
+- [개발 이력](docs/history/README.md)
 - [rc35 배포 및 진단](DISTRIBUTION-RC35.md)
 - [히스토리 복원 기록](HISTORY_RECONSTRUCTION.md)
 
