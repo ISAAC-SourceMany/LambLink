@@ -12,6 +12,40 @@ function Get-LowerSha256([string]$Path) {
     return (Get-FileHash $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
+function Remove-DirectoryTree([string]$Path) {
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    if (-not [System.IO.Directory]::Exists($fullPath)) { return }
+
+    try {
+        Remove-Item -LiteralPath $fullPath -Recurse -Force -ErrorAction Stop
+    }
+    catch {
+        if (-not [System.IO.Directory]::Exists($fullPath)) {
+            Write-Host "[CLEAN] Removed after transient PowerShell path race: $fullPath"
+            return
+        }
+
+        $extendedPath = if ($fullPath.StartsWith('\\')) {
+            '\\?\UNC\' + $fullPath.Substring(2)
+        } else {
+            '\\?\' + $fullPath
+        }
+
+        try {
+            [System.IO.Directory]::Delete($extendedPath, $true)
+        }
+        catch {
+            if ([System.IO.Directory]::Exists($fullPath)) {
+                throw "Failed to clean build directory: $fullPath ($($_.Exception.Message))"
+            }
+        }
+    }
+
+    if ([System.IO.Directory]::Exists($fullPath)) {
+        throw "Build directory still exists after cleanup: $fullPath"
+    }
+}
+
 Write-Host "[1/5] Building $release runtime pair and GUI installer..."
 & (Join-Path $root 'build-release.ps1')
 
@@ -62,7 +96,7 @@ foreach ($componentId in $localComponents.Keys) {
 }
 
 Write-Host '[4/5] Assembling user-download and CDN-upload folders...'
-if (Test-Path $bundleRoot) { Remove-Item $bundleRoot -Recurse -Force }
+Remove-DirectoryTree $bundleRoot
 if (Test-Path $bundleZip) { Remove-Item $bundleZip -Force }
 New-Item -ItemType Directory -Force -Path $userDir, $cdnDir | Out-Null
 Copy-Item (Join-Path $hosting $setupName) $userDir -Force

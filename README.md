@@ -1,4 +1,4 @@
-# ChzzkOfTheLamb v1.0.0 RC35 overlay document-handshake source
+# ChzzkOfTheLamb v1.0.0 RC33 synchronized buff overlay source
 
 외부 배포를 위한 release candidate 소스입니다.
 
@@ -9,8 +9,6 @@
 
 Release Companion은 AWS CLI/SSO를 사용하지 않으며 CHZZK Client Secret을 포함하지 않습니다.
 Streamer OAuth는 AWS Auth Gateway를 통해 처리합니다.
-`RC_TEST_TOOLS`가 없는 배포 빌드에서는 `dev spawn`, `dev join`, `dev donation` 명령 코드도
-컴파일 대상에서 제외됩니다.
 
 ## Build fix 1
 
@@ -19,9 +17,9 @@ Streamer OAuth는 AWS Auth Gateway를 통해 처리합니다.
 - Stops every build script immediately when a `dotnet` command returns a non-zero exit code.
 - Verifies expected DLL/EXE files exist before copying or packaging them.
 
-## RC35 matched diagnostic test pair
+## RC33 matched diagnostic test pair
 
-The installed Companion is not updated by building only the game plugin. Build both RC35
+The installed Companion is not updated by building only the game plugin. Build both RC33
 components together:
 
 ```powershell
@@ -31,12 +29,12 @@ powershell -ExecutionPolicy Bypass -File .\build-test-pair.ps1
 The cleanup stage supports long Windows extraction paths. It retries partially removed `bin`/`obj`
 trees through the Windows extended path prefix and still fails explicitly if a directory remains.
 
-Close the installed Companion and run `dist\rc35-companion\ChzzkOfTheLamb.Companion.exe`.
-Replace the two game DLLs with the files under `dist\rc35-plugin`. The Companion title must show
-`v1.0.0-rc35`, and the game log must show
-`[BUILD=rc35-overlay-document-handshake]` before testing.
+Close the installed Companion and run `dist\rc33-companion\ChzzkOfTheLamb.Companion.exe`.
+Replace the two game DLLs with the files under `dist\rc33-plugin`. The Companion title must show
+`v1.0.0-rc33`, and the game log must show
+`[BUILD=rc33-overlay-left-synchronized-buffs]` before testing.
 
-## RC35 loading/dialogue-safe donations and paused buff timers
+## RC33 loading/dialogue-safe donations and paused buff timers
 
 - Queues donation commands while the game is loading, changing scenes, paused, or in a detected
   dialogue/cutscene lifecycle.
@@ -44,13 +42,6 @@ Replace the two game DLLs with the files under `dist\rc35-plugin`. The Companion
   apply-time area: dungeon uses dungeon rules; every other ready location uses base rules.
 - Advances dungeon timed buffs only during safe gameplay frames.
 - Sends `DONATION_RUNTIME_STATE` to Companion so the OBS overlay timer pauses and resumes with the game.
-- Anchors the donation card to the OBS viewport's top-left with 18px margins and preserves its
-  original typography and vertical padding.
-- Serves the donation card from its own fixed DOM layer instead of reusing the centered raffle wrapper.
-- Adds an overlay-document version handshake. A current page automatically reloads when a later
-  Companion reports a different document version; legacy pages are detected and logged explicitly.
-- Reports the browser's calculated viewport/card/buff bounds on layout changes so the exact OBS result
-  can be verified from Companion logs.
 - Anchors buff/debuff cards to the OBS viewport's left edge; new effect types are added to the right.
 - Reduces only the donation-event card to a 480px maximum width (2/3 of the previous 720px), while
   keeping raffle and winner cards at their existing size.
@@ -61,23 +52,23 @@ Replace the two game DLLs with the files under `dist\rc35-plugin`. The Companion
   order instead of overwriting the currently visible card.
 - Shows the number of donation cards still waiting; an active raffle preempts and then resumes the
   current donation card with its remaining display time.
-- See `docs/RC35_OVERLAY_DOCUMENT_LAYOUT_TEST.md`.
+- See `docs/RC33_OVERLAY_AND_BUFF_GROUP_TEST.md`.
 
 COTL_API 0.3.4 remains a hard BepInEx runtime dependency and load-order gate. Because its public
 surface does not provide a stable loading/dialogue lifecycle contract for the target game build,
-rc35 uses BepInEx/Harmony against verified runtime type/method pairs plus Unity scene/timeScale
+rc33 uses BepInEx/Harmony against verified runtime type/method pairs plus Unity scene/timeScale
 signals. It logs every discovered capability and never performs a per-frame global object scan.
 
 ## Support diagnostics and live donation correlation retained
 
-- Captures both `Console.Out` and `Console.Error` in `companion-rc35.log`.
+- Captures both `Console.Out` and `Console.Error` in `companion-rc33.log`.
 - Rotates the Companion log at 5 MiB and retains four archives.
 - Correlates CHZZK receipt, rule resolution, bridge send, Unity apply, and result ACK with one request ID.
 - Reports an explicit ACK timeout after 15 seconds of ready gameplay; loading/dialogue time is excluded.
 - Catches fire-and-forget donation exceptions, unhandled exceptions, and unobserved task exceptions.
 - Adds `support` to create a local, best-effort-redacted ZIP. Nothing is uploaded automatically.
 - Excludes OAuth tokens, settings, viewer mapping/appearance records, and game saves.
-- See `docs/RC35_OVERLAY_DOCUMENT_LAYOUT_TEST.md`.
+- See `docs/RC33_OVERLAY_AND_BUFF_GROUP_TEST.md`.
 
 ## RC28 safe deterministic inline CHZZK prefix
 
@@ -149,7 +140,7 @@ signals. It logs every discovered capability and never performs a per-frame glob
 - Sends an immediate `GAME_STATUS` from a thread-safe cache when `GET_GAME_STATUS` is decoded,
   then sends the authoritative Unity-main-thread snapshot.
 - Correlates Companion TX, Mod RX, Mod queue/dispatch, Mod TX, and Companion RX with numbered logs.
-- RC35 mirrors stdout and stderr to rotating `%LOCALAPPDATA%\ChzzkOfTheLamb\companion-rc35.log` files.
+- RC33 mirrors stdout and stderr to rotating `%LOCALAPPDATA%\ChzzkOfTheLamb\companion-rc33.log` files.
 - Runs a non-Unity watchdog that reports `NO-UPDATE` or the exact last main-thread stage after 5 seconds.
 - Splits catalog generation into save, type, singleton, unlock, palette, individual form, sort, and TX stages.
 - See `docs/RC21_DIAGNOSTIC_WATCHDOG_FALLBACK.md` for the single-run decision table.
@@ -175,19 +166,19 @@ signals. It logs every discovered capability and never performs a per-frame glob
 
 ## External release packaging
 
-RC35 release packaging bundles COTL Korean Font Fix 4.2.1 (`COTL_KoreanFontFix.dll` + `koreanfont.bundle`) under `BepInEx\plugins\COTL_KoreanFontFix` through the installer. Run `build-distribution.ps1`; see `DISTRIBUTION-RC35.md` and `DEPLOY-RELEASE.md`.
+RC33 release packaging bundles COTL Korean Font Fix 4.2.1 (`COTL_KoreanFontFix.dll` + `koreanfont.bundle`) under `BepInEx\plugins\COTL_KoreanFontFix` through the installer. Run `build-distribution.ps1`; see `DISTRIBUTION-RC33.md` and `DEPLOY-RELEASE.md`.
 
-## v1.0.0 RC35 Installer
+## v1.0.0 RC33 Installer
 
 외부 배포용 GUI Bootstrapper 프로젝트 `ChzzkOfTheLamb.Installer`가 추가되었습니다. 사용자는 Setup EXE 하나만 실행하며, 설치기가 Steam 게임 위치를 자동 탐색하고 BepInEx/COTL_API/한글 폰트 패치/Mod/Companion을 다운로드·SHA-256 검증·설치합니다. 설치 진단은 `%LOCALAPPDATA%\ChzzkOfTheLamb\installer.log`에 기록됩니다.
 
 
-## RC29 viewer-page sharing retained in RC35
+## RC29 viewer-page sharing retained in RC33
 
 - The green CHZZK platform marker is composed into the existing visible TMP name string while the saved `FollowerInfo.Name` remains untouched. No separate badge GameObject, position calculation, or badge lifetime is involved.
 - Installer ZIP extraction and recursive component installation run on worker tasks instead of the WinForms UI thread. Detailed `[EXTRACT]` / `[INSTALL] ... elapsed=` diagnostics were added so long Companion installs remain responsive and bottlenecks are visible.
 - After CHZZK login, Companion prints a dedicated viewer-page banner, supports `viewer`, `viewer copy`, and `viewer open`, persists the URL, and refreshes a Windows desktop `.url` shortcut for the authenticated channel.
-- Installer and CDN component names are pinned to `1.0.0-rc35`; the installer rejects a manifest whose `release` is not exactly `1.0.0-rc35`.
+- Installer and CDN component names are pinned to `1.0.0-rc33`; the installer rejects a manifest whose `release` is not exactly `1.0.0-rc33`.
 
 
 ## RC14 installer fixes

@@ -5,6 +5,9 @@ RC33는 게임 Mod와 Companion을 반드시 한 쌍으로 시험한다. 설치�
 
 ## 빌드
 
+압축을 깊은 다운로드 경로에 풀어도 정리 단계가 Windows 확장 경로를 사용해 처리된다. 그래도
+외부 백신이나 동기화 프로그램이 파일을 잠그는 환경에서는 `C:\COTL\rc33`처럼 짧은 경로가 권장된다.
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build-test-pair.ps1
 ```

@@ -23,6 +23,13 @@
 
 ## Evidence completed in the packaging environment
 
+- A Windows PowerShell 5.1 test run compiled and verified the RC33 Mod, then failed before Companion
+  restore while recursively deleting a long `Protocol\obj` tree. The reported child path had already
+  disappeared, matching PowerShell's partial-delete/path-length failure rather than a C# build error.
+- All build entry points now enumerate only top-level project `bin`/`obj` targets. Cleanup first uses
+  `Remove-Item -LiteralPath`; if PowerShell partially deletes the tree and throws, it verifies the
+  target and retries the remainder through the Windows extended path prefix (`\\?\`). A remaining
+  directory still fails the build, so cleanup errors are not silently swallowed.
 - The supplied rc31 runtime log proves the Mod queued and applied three requests FIFO after the
   transition (`680ed5c5`, `94889e41`, `0e9d2553`). Companion received three successful results, so
   the observed omission was isolated to `ShowDonation` overwriting one presentation slot.
