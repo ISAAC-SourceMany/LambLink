@@ -53,6 +53,24 @@ public sealed class ChzzkApiClient
             DateTimeOffset.UtcNow);
     }
 
+    public async Task<ChzzkTokenSet> RefreshTokenAsync(string refreshToken, CancellationToken ct)
+    {
+        EnsureClientCredentials();
+        var response = await PostJsonAsync<JsonElement>("/auth/v1/token", new
+        {
+            grantType = "refresh_token",
+            refreshToken,
+            clientId = clientId!,
+            clientSecret = clientSecret!
+        }, bearer: null, ct);
+        var c = response.Content;
+        if (c.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+            throw new InvalidOperationException(response.Message ?? "No refreshed token content returned.");
+        return new ChzzkTokenSet(
+            c.GetProperty("accessToken").GetString()!, c.GetProperty("refreshToken").GetString()!,
+            c.GetProperty("tokenType").GetString() ?? "Bearer", ParseExpiresIn(c.GetProperty("expiresIn")), DateTimeOffset.UtcNow);
+    }
+
     public async Task<MeContent> GetMeAsync(string accessToken, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, BaseUrl + "/open/v1/users/me");

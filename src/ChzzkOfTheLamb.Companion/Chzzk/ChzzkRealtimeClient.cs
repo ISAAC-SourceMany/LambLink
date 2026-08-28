@@ -1,6 +1,7 @@
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using ChzzkOfTheLamb.Companion.Diagnostics;
 
 namespace ChzzkOfTheLamb.Companion.Chzzk;
 
@@ -20,6 +21,9 @@ public sealed class ChzzkRealtimeClient(ChzzkApiClient api)
     public event Action<SubscriptionEvent>? Subscription;
 
     public async Task RunAsync(string accessToken, CancellationToken ct)
+        => await RunAsync(() => accessToken, ct);
+
+    public async Task RunAsync(Func<string> accessTokenProvider, CancellationToken ct)
     {
         var attempt = 0;
         while (!ct.IsCancellationRequested)
@@ -35,8 +39,9 @@ public sealed class ChzzkRealtimeClient(ChzzkApiClient api)
 
                 // This call is also our broadcast/session availability probe. If Companion starts
                 // before a live is ready, it may fail; the supervisor simply keeps polling.
+                var accessToken = accessTokenProvider();
                 var sessionUrl = await api.CreateUserSessionUrlAsync(accessToken, ct);
-                connectedAtLeastOnce = await RunOneSessionAsync(sessionUrl, accessToken, ct);
+                await RunOneSessionAsync(sessionUrl, accessToken, () => connectedAtLeastOnce = true, ct);
 
                 // A normal return means the socket closed without an exception. Treat that exactly
                 // like a failure and reacquire a brand-new CHZZK Session URL + subscriptions.
@@ -66,7 +71,7 @@ public sealed class ChzzkRealtimeClient(ChzzkApiClient api)
         }
     }
 
-    private async Task<bool> RunOneSessionAsync(string sessionUrl, string accessToken, CancellationToken ct)
+    private async Task<bool> RunOneSessionAsync(string sessionUrl, string accessToken, Action markConnected, CancellationToken ct)
     {
         using var ws = new ClientWebSocket();
         // Keep the underlying websocket alive without treating normal CHZZK chat silence as
@@ -204,7 +209,7 @@ public sealed class ChzzkRealtimeClient(ChzzkApiClient api)
             var payload = root[1].ValueKind == JsonValueKind.String ? root[1].GetString()! : root[1].GetRawText();
 
             if (string.Equals(eventName, "error", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Socket.IO error: " + Abbreviate(payload, 500));
+                throw new InvalidOperationException("Socket.IO error: " + DiagnosticPrivacy.Redact(Abbreviate(payload, 500)));
 
             if (eventName == "SYSTEM")
             {
@@ -214,7 +219,7 @@ public sealed class ChzzkRealtimeClient(ChzzkApiClient api)
                 {
                     systemConnected = true;
                     var sessionKey = system.RootElement.GetProperty("data").GetProperty("sessionKey").GetString()!;
-                    Console.WriteLine($"[CHZZK] session connected: key={Abbreviate(sessionKey, 8)}");
+                    Console.WriteLine($"[CHZZK] session connected: keyHash={DiagnosticPrivacy.ShortHash(sessionKey)}");
                     await api.SubscribeAsync(accessToken, sessionKey, "chat", ct);
                     await api.SubscribeAsync(accessToken, sessionKey, "donation", ct);
                     await api.SubscribeAsync(accessToken, sessionKey, "subscription", ct);
@@ -231,7 +236,7 @@ public sealed class ChzzkRealtimeClient(ChzzkApiClient api)
                     var channelId = data.ValueKind == JsonValueKind.Object && data.TryGetProperty("channelId", out var channelNode)
                         ? channelNode.GetString()
                         : "?";
-                    Console.WriteLine($"[CHZZK] SYSTEM {type}: event={eventType}, channel={channelId}");
+                    Console.WriteLine($"[CHZZK] SYSTEM {type}: event={eventType}, channelHash={DiagnosticPrivacy.ShortHash(channelId)}");
 
                     if (type == "subscribed" && !string.IsNullOrWhiteSpace(eventType) && eventType != "?")
                     {
@@ -239,6 +244,7 @@ public sealed class ChzzkRealtimeClient(ChzzkApiClient api)
                         if (RequiredSubscriptions.All(x => subscribed.Contains(x)))
                         {
                             subscriptionsRequestedAt = null;
+                            markConnected();
                             Console.WriteLine("[CHZZK] realtime READY: CHAT / DONATION / SUBSCRIPTION confirmed.");
                         }
                     }
@@ -251,7 +257,7 @@ public sealed class ChzzkRealtimeClient(ChzzkApiClient api)
                 }
                 else
                 {
-                    Console.WriteLine($"[CHZZK] SYSTEM {type ?? "?"}: {Abbreviate(payload, 500)}");
+                    Console.WriteLine($"[CHZZK] SYSTEM {type ?? "?"}: {DiagnosticPrivacy.Redact(Abbreviate(payload, 500))}");
                 }
                 continue;
             }
@@ -267,7 +273,7 @@ public sealed class ChzzkRealtimeClient(ChzzkApiClient api)
                         var chat = DeserializeEventPayload<ChatEvent>(payload);
                         if (chat is null)
                         {
-                            Console.Error.WriteLine($"[CHZZK] CHAT parse failed: payload={Abbreviate(payload, 1200)}");
+                            Console.Error.WriteLine($"[CHZZK] CHAT parse failed: bytes={Encoding.UTF8.GetByteCount(payload)}");
                             break;
                         }
                         Chat?.Invoke(chat);
@@ -279,25 +285,25 @@ public sealed class ChzzkRealtimeClient(ChzzkApiClient api)
                         Console.WriteLine($"[CHZZK] DONATION frame received: sessionDonation={sessionDonationCount}, packets={sessionPacketCount}, bytes={Encoding.UTF8.GetByteCount(payload)}");
                         var donation = DeserializeEventPayload<DonationEvent>(payload);
                         if (donation is not null) Donation?.Invoke(donation);
-                        else Console.Error.WriteLine($"[CHZZK] DONATION parse failed: payload={Abbreviate(payload, 1200)}");
+                        else Console.Error.WriteLine($"[CHZZK] DONATION parse failed: bytes={Encoding.UTF8.GetByteCount(payload)}");
                         break;
                     }
                     case "SUBSCRIPTION":
                     {
                         var subscription = DeserializeEventPayload<SubscriptionEvent>(payload);
                         if (subscription is not null) Subscription?.Invoke(subscription);
-                        else Console.Error.WriteLine($"[CHZZK] SUBSCRIPTION parse failed: payload={Abbreviate(payload, 1200)}");
+                        else Console.Error.WriteLine($"[CHZZK] SUBSCRIPTION parse failed: bytes={Encoding.UTF8.GetByteCount(payload)}");
                         break;
                     }
                     default:
-                        Console.WriteLine($"[CHZZK] unhandled socket event={eventName ?? "?"}, payload={Abbreviate(payload, 500)}");
+                        Console.WriteLine($"[CHZZK] unhandled socket event={eventName ?? "?"}, payload={DiagnosticPrivacy.Redact(Abbreviate(payload, 500))}");
                         break;
                 }
             }
             catch (Exception ex)
             {
                 // A malformed user event must not tear down the whole realtime connection.
-                Console.Error.WriteLine($"[CHZZK] {eventName ?? "?"} event handler error: {ex.GetType().Name}: {ex.Message}; payload={Abbreviate(payload, 1200)}");
+                Console.Error.WriteLine($"[CHZZK] {eventName ?? "?"} event handler error: {ex.GetType().Name}: {ex.Message}; bytes={Encoding.UTF8.GetByteCount(payload)}");
             }
         }
 

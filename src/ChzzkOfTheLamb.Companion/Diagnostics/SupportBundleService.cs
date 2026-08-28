@@ -69,6 +69,7 @@ internal sealed class SupportBundleService(string dataDirectory, string releaseV
                         "settings.json",
                         "viewer-followers.json",
                         "viewer-appearances.json",
+                        "donation outbox and Mod receipt contents",
                         "game save data"
                     }
                 },

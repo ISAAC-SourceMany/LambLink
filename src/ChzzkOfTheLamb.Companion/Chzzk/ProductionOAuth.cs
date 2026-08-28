@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ChzzkOfTheLamb.Companion.Chzzk;
 
@@ -78,11 +79,23 @@ public static class ProductionOAuth
             payload.StreamerChannelName ?? string.Empty);
     }
 
+    public static async Task<ProductionOAuthResult> RefreshAsync(HttpClient http, string apiBaseUrl, string refreshToken, CancellationToken ct)
+    {
+        using var response = await http.PostAsJsonAsync(apiBaseUrl.TrimEnd('/') + "/auth/companion/refresh", new { refreshToken }, Json, ct);
+        var responseText = await response.Content.ReadAsStringAsync(ct);
+        response.EnsureSuccessStatusCode();
+        var payload = JsonSerializer.Deserialize<TokenResponse>(responseText, Json)
+                      ?? throw new InvalidOperationException("Auth gateway returned an empty refresh response.");
+        return new ProductionOAuthResult(payload.AccessToken, payload.RefreshToken ?? string.Empty,
+            payload.TokenType ?? "Bearer", payload.ExpiresIn, payload.StreamerChannelId, payload.StreamerChannelName ?? string.Empty);
+    }
+
     private sealed class TokenResponse
     {
         public string AccessToken { get; set; } = string.Empty;
         public string? RefreshToken { get; set; }
         public string? TokenType { get; set; }
+        [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
         public long ExpiresIn { get; set; }
         public string StreamerChannelId { get; set; } = string.Empty;
         public string? StreamerChannelName { get; set; }

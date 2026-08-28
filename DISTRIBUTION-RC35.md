@@ -80,7 +80,7 @@ Companion은 `%LOCALAPPDATA%\ChzzkOfTheLamb\viewer-page-url.txt`와
 3. Companion 첫 줄이 `v1.0.0-rc35`인지 확인합니다.
 4. 로그인 후 `[VIEWER PAGE]` 배너, `viewer copy`, `viewer open`, 바탕화면 바로가기를 확인합니다.
 5. `status` 다음 줄의 `VIEWER_PAGE=https://.../?streamer=...`가 로그인 채널 ID와 일치하는지 확인합니다.
-6. BepInEx 로그에서 `[BUILD=rc35-overlay-document-handshake]`를 확인합니다.
+6. BepInEx 로그에서 `[BUILD=rc35-durable-donation-delivery]`를 확인합니다.
 7. 저장 슬롯·외형 카탈로그 동기화 후 자동 래플과 초록색 `Chzzk` 이름표를 재확인합니다.
 8. `docs\RC35_OVERLAY_DOCUMENT_LAYOUT_TEST.md`에 따라 오버레이 문서 버전, 후원 카드 480px·좌측 상단 18px 고정, 화면 왼쪽 버프 배치,
    복합 공격력·이동속도 효과의 동시 시작, Base/Dungeon/장면 전환 및 후원 카드 FIFO를 시험합니다.

@@ -82,6 +82,50 @@ public sealed class AppearanceApiClient : IDisposable
         return payload?.Appearance;
     }
 
+    public async Task<FollowerAppearanceSelection?> FinalizeViewerAppearanceAsync(string streamerChannelId, string viewerChannelId, string viewerNickname, string saveId, int generation, string? raffleId, int recruitFollowerId, string followerName, CancellationToken ct)
+    {
+        var body = JsonSerializer.Serialize(new { saveId, generation, raffleId, recruitFollowerId, followerName, viewerNickname }, _json);
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+        using var req = Authenticated(HttpMethod.Post,
+            $"streamers/{Uri.EscapeDataString(streamerChannelId)}/viewers/{Uri.EscapeDataString(viewerChannelId)}/appearance/finalize", content);
+        using var res = await _http.SendAsync(req, ct);
+        if (res.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        res.EnsureSuccessStatusCode();
+        var payload = await res.Content.ReadFromJsonAsync<ViewerAppearanceResponse>(_json, ct);
+        return payload?.Appearance;
+    }
+
+    public async Task UpdateReservationStatusAsync(string streamerChannelId, string viewerChannelId, string saveId, int generation, string? raffleId, string status, FollowerAppearanceSelection? appliedAppearance, CancellationToken ct)
+    {
+        var body = JsonSerializer.Serialize(new { saveId, generation, raffleId, status, appliedAppearance }, _json);
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+        using var req = Authenticated(HttpMethod.Post,
+            $"streamers/{Uri.EscapeDataString(streamerChannelId)}/viewers/{Uri.EscapeDataString(viewerChannelId)}/appearance/status", content);
+        using var res = await _http.SendAsync(req, ct);
+        res.EnsureSuccessStatusCode();
+    }
+
+    public async Task<IReadOnlyList<PendingAppearanceReservation>> GetPendingReservationsAsync(string streamerChannelId, string saveId, CancellationToken ct)
+    {
+        using var req = Authenticated(HttpMethod.Get,
+            $"streamers/{Uri.EscapeDataString(streamerChannelId)}/reservations?saveId={Uri.EscapeDataString(saveId)}", null);
+        using var res = await _http.SendAsync(req, ct);
+        res.EnsureSuccessStatusCode();
+        var payload = await res.Content.ReadFromJsonAsync<ReservationListResponse>(_json, ct);
+        return payload?.Reservations ?? new List<PendingAppearanceReservation>();
+    }
+
+    public async Task PutViewerStateAsync(string streamerChannelId, string viewerChannelId, object state, CancellationToken ct)
+    {
+        var jsonBody = JsonSerializer.Serialize(state, _json);
+        using var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+        content.Headers.ContentLength = Encoding.UTF8.GetByteCount(jsonBody);
+        using var req = Authenticated(HttpMethod.Put,
+            $"streamers/{Uri.EscapeDataString(streamerChannelId)}/viewers/{Uri.EscapeDataString(viewerChannelId)}/state", content);
+        using var res = await _http.SendAsync(req, ct);
+        res.EnsureSuccessStatusCode();
+    }
+
     private HttpRequestMessage Authenticated(HttpMethod method, string path, HttpContent? content)
     {
         EnsureAuthenticated();
@@ -115,4 +159,24 @@ public sealed class AppearanceApiClient : IDisposable
     {
         public FollowerAppearanceSelection? Appearance { get; set; }
     }
+
+    private sealed class ReservationListResponse
+    {
+        public List<PendingAppearanceReservation> Reservations { get; set; } = new();
+    }
+}
+
+public sealed class PendingAppearanceReservation
+{
+    public string ViewerChannelId { get; set; } = string.Empty;
+    public string ViewerNickname { get; set; } = string.Empty;
+    public string FollowerName { get; set; } = string.Empty;
+    public string? RaffleId { get; set; }
+    public int RecruitFollowerId { get; set; }
+    public int Generation { get; set; } = 1;
+    public string Status { get; set; } = string.Empty;
+    public long ReservedAt { get; set; }
+    public long StatusUpdatedAt { get; set; }
+    public FollowerAppearanceSelection? Appearance { get; set; }
+    public FollowerAppearanceSelection? AppliedAppearance { get; set; }
 }

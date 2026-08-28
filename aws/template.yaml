@@ -3,9 +3,19 @@ Transform: AWS::Serverless-2016-10-31
 Description: COTL CHZZK Companion viewer appearance service
 
 Parameters:
+  EnvironmentName:
+    Type: String
+    Default: staging
+    AllowedValues:
+      - staging
+      - prod
   TokenSigningSecret:
     Type: String
     NoEcho: true
+    Default: ''
+
+Conditions:
+  GenerateTokenSigningSecret: !Equals [!Ref TokenSigningSecret, '']
 
 Globals:
   Function:
@@ -14,6 +24,15 @@ Globals:
     MemorySize: 256
 
 Resources:
+  GeneratedTokenSigningSecret:
+    Type: AWS::SecretsManager::Secret
+    Condition: GenerateTokenSigningSecret
+    Properties:
+      Description: !Sub COTL ${EnvironmentName} session token signing secret
+      GenerateSecretString:
+        PasswordLength: 64
+        ExcludePunctuation: true
+
   AppearanceTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -34,18 +53,6 @@ Resources:
 
   Api:
     Type: AWS::Serverless::HttpApi
-    Properties:
-      CorsConfiguration:
-        AllowOrigins:
-          - '*'
-        AllowHeaders:
-          - authorization
-          - content-type
-        AllowMethods:
-          - GET
-          - POST
-          - PUT
-          - OPTIONS
 
   BackendFunction:
     Type: AWS::Serverless::Function
@@ -61,23 +68,27 @@ Resources:
                 - ssm:GetParameter
                 - ssm:GetParameters
               Resource:
-                - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/cotl/prod/chzzk/companion/client-id
-                - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/cotl/prod/chzzk/mylamb/client-id
+                - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/cotl/${EnvironmentName}/chzzk/companion/client-id
+                - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/cotl/${EnvironmentName}/chzzk/mylamb/client-id
             - Effect: Allow
               Action:
                 - secretsmanager:GetSecretValue
               Resource:
-                - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:/cotl/prod/chzzk/companion-*
-                - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:/cotl/prod/chzzk/mylamb-*
+                - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:/cotl/${EnvironmentName}/chzzk/companion-*
+                - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:/cotl/${EnvironmentName}/chzzk/mylamb-*
       Environment:
         Variables:
           TABLE_NAME: !Ref AppearanceTable
           COTL_CONFIG_PROVIDER: aws
-          COTL_SSM_COMPANION_CLIENT_ID_PARAM: /cotl/prod/chzzk/companion/client-id
-          COTL_SSM_MYLAMB_CLIENT_ID_PARAM: /cotl/prod/chzzk/mylamb/client-id
-          COTL_SECRET_COMPANION_ID: /cotl/prod/chzzk/companion
-          COTL_SECRET_MYLAMB_ID: /cotl/prod/chzzk/mylamb
-          TOKEN_SIGNING_SECRET: !Ref TokenSigningSecret
+          COTL_SSM_COMPANION_CLIENT_ID_PARAM: !Sub /cotl/${EnvironmentName}/chzzk/companion/client-id
+          COTL_SSM_MYLAMB_CLIENT_ID_PARAM: !Sub /cotl/${EnvironmentName}/chzzk/mylamb/client-id
+          COTL_SECRET_COMPANION_ID: !Sub /cotl/${EnvironmentName}/chzzk/companion
+          COTL_SECRET_MYLAMB_ID: !Sub /cotl/${EnvironmentName}/chzzk/mylamb
+          TOKEN_SIGNING_SECRET: !If
+            - GenerateTokenSigningSecret
+            - !Sub '{{resolve:secretsmanager:${GeneratedTokenSigningSecret}:SecretString}}'
+            - !Ref TokenSigningSecret
+          COTL_ENVIRONMENT: !Ref EnvironmentName
           FRONTEND_URL: !Sub https://${FrontendDistribution.DomainName}
       Events:
         Proxy:
@@ -144,8 +155,14 @@ Resources:
                 AWS:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${FrontendDistribution}
 
 Outputs:
+  EnvironmentName:
+    Value: !Ref EnvironmentName
   ApiUrl:
     Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com
+  CompanionOAuthCallbackUrl:
+    Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com/auth/companion/callback
+  ViewerOAuthCallbackUrl:
+    Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com/auth/chzzk/callback
   FrontendBucketName:
     Value: !Ref FrontendBucket
   FrontendUrl:

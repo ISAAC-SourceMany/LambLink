@@ -25,6 +25,7 @@ public static class GameMessageTypes
     public const string AppearanceCatalog = "FOLLOWER_APPEARANCE_CATALOG";
     public const string RaffleRequested = "RAFFLE_REQUESTED";
     public const string FollowerRoster = "FOLLOWER_ROSTER";
+    public const string FollowerLifecycle = "FOLLOWER_LIFECYCLE";
     public const string DonationEffectResult = "DONATION_EFFECT_RESULT";
     public const string DonationRuntimeState = "DONATION_RUNTIME_STATE";
 }
@@ -77,6 +78,8 @@ public sealed class ApplyRecruitIdentityCommand
     public string Nickname { get; set; } = string.Empty;
     public string SaveId { get; set; } = string.Empty;
     public string? RaffleId { get; set; }
+    public int Generation { get; set; } = 1;
+    public string FollowerName { get; set; } = string.Empty;
     public FollowerAppearanceSelection? Appearance { get; set; }
 }
 
@@ -87,6 +90,10 @@ public sealed class RecruitIdentityResult
     public string ViewerId { get; set; } = string.Empty;
     public string Nickname { get; set; } = string.Empty;
     public string SaveId { get; set; } = string.Empty;
+    public int Generation { get; set; } = 1;
+    public string FollowerName { get; set; } = string.Empty;
+    public FollowerAppearanceSelection? AppliedAppearance { get; set; }
+    public string? RaffleId { get; set; }
     public string? Error { get; set; }
 }
 
@@ -127,6 +134,7 @@ public sealed class DonationEffectResult
 {
     public string RequestId { get; set; } = string.Empty;
     public bool Success { get; set; }
+    public bool Retryable { get; set; }
     public string Effect { get; set; } = string.Empty;
     public string EventName { get; set; } = string.Empty;
     public long Amount { get; set; }
@@ -208,6 +216,19 @@ public sealed class FollowerRosterEntry
 {
     public int FollowerId { get; set; }
     public string Name { get; set; } = string.Empty;
+    public bool IsDead { get; set; }
+    public string? DeathReason { get; set; }
+    public FollowerAppearanceSelection? Appearance { get; set; }
+}
+
+public sealed class FollowerLifecycleEvent
+{
+    public string EventId { get; set; } = Guid.NewGuid().ToString("N");
+    public string SaveId { get; set; } = "unknown";
+    public int FollowerId { get; set; }
+    public string EventType { get; set; } = string.Empty;
+    public string? Cause { get; set; }
+    public DateTimeOffset OccurredAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
 public sealed class FollowerRosterSnapshot

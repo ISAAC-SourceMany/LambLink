@@ -31,49 +31,70 @@ DynamoDB keys:
 - catalog: `PK=STREAMER#<streamerId>`, `SK=CATALOG`
 - viewer appearance: `PK=STREAMER#<streamerId>`, `SK=VIEWER#<viewerId>`
 
-## Deploy
+## Isolated staging deploy
 
-Requirements: AWS CLI + AWS SAM CLI, configured AWS account.
+Requirements: AWS CLI + AWS SAM CLI, configured AWS account. Do not deploy untested files over the production stack or production S3 keys.
 
 ```powershell
 cd aws
-sam build
-sam deploy --guided
+.\scripts\deploy-staging.ps1 -Profile <AWS_PROFILE>
 ```
 
-Provide:
+The staging stack creates separate API Gateway, Lambda, DynamoDB, S3, CloudFront, and token-signing secret resources. It reads CHZZK credentials only from:
 
-- `MyLambChzzkClientId`
-- `MyLambChzzkClientSecret`
-- a long random `TokenSigningSecret`
+- `/cotl/staging/chzzk/companion/client-id` (SSM)
+- `/cotl/staging/chzzk/mylamb/client-id` (SSM)
+- `/cotl/staging/chzzk/companion` (Secrets Manager)
+- `/cotl/staging/chzzk/mylamb` (Secrets Manager)
 
-After deployment, copy `ApiUrl`, `FrontendBucketName`, and `FrontendUrl` from stack outputs.
+After the first infrastructure deploy, register the emitted Companion and Viewer callback URLs in two staging CHZZK applications. Then store their credentials without writing Client Secrets to the repository:
 
 Upload the frontend:
 
 ```powershell
-.\scripts\deploy-frontend.ps1 -Bucket <FrontendBucketName> -ApiBaseUrl <ApiUrl>
+.\scripts\configure-staging-chzzk.ps1 `
+  -Profile <AWS_PROFILE> `
+  -CompanionClientId <STAGING_COMPANION_CLIENT_ID> `
+  -ViewerClientId <STAGING_VIEWER_CLIENT_ID>
 ```
 
-In CHZZK developer console, add the AWS OAuth callback URL exactly:
+Run `deploy-staging.ps1` again after storing the credentials. Frontend preview assets are uploaded under a content-derived immutable path, so production and browser caches are not overwritten.
+
+Upload the already-built installer components to a versioned staging-only path:
+
+```powershell
+.\scripts\deploy-release-staging.ps1 -Profile <AWS_PROFILE>
+```
+
+The script prints a `COTL_INSTALLER_MANIFEST_URL` value. Set it only in the test PowerShell process before running the local setup EXE. It does not overwrite production `/releases/` objects.
+
+The two CHZZK callback URLs must match the stack outputs exactly:
 
 ```text
+<ApiUrl>/auth/companion/callback
 <ApiUrl>/auth/chzzk/callback
 ```
 
-The existing local Companion OAuth callback is still used by the development Companion itself.
+Production uses `/cotl/prod/...` and remains isolated from the staging table, bucket, distribution, and CHZZK applications.
 
 ## Connect Companion to AWS
 
-For a one-run development test:
+The Release Companion is pinned to production by default. For an isolated staging run, use the
+repository script instead of launching the EXE directly:
 
 ```powershell
-$env:COTL_WEB_API_BASE="https://YOUR_API.execute-api.ap-northeast-2.amazonaws.com"
-$env:COTL_WEB_FRONTEND_URL="https://YOUR_DISTRIBUTION.cloudfront.net/"
-.\ChzzkOfTheLamb.Companion.exe
+cd aws
+.\scripts\run-staging-companion.ps1 -Profile <AWS_PROFILE>
 ```
 
-Or set `Cloud.Enabled`, `Cloud.ApiBaseUrl`, and `Cloud.FrontendUrl` in `%LOCALAPPDATA%\ChzzkOfTheLamb\settings.json`.
+The script enables the explicit `COTL_STAGING_MODE=1` gate, reads the API/frontend URLs from the
+staging CloudFormation stack, and stores all staging data under
+`%LOCALAPPDATA%\ChzzkOfTheLamb-Staging`. The staging desktop shortcut also has a distinct
+`(Staging)` name. Without the explicit gate, a Release Companion ignores endpoint overrides and
+continues to use production.
+
+Non-distribution development builds may still use `COTL_WEB_API_BASE`,
+`COTL_WEB_FRONTEND_URL`, or the `Cloud` section of `%LOCALAPPDATA%\ChzzkOfTheLamb\settings.json`.
 
 When Cloud is connected, Companion:
 
@@ -105,4 +126,4 @@ If a viewer has no saved web appearance, Companion falls back to the existing lo
 - CHZZK Client Secret stays in Lambda environment/CloudFormation parameter, not in the viewer website.
 - Viewer session and Companion session are HMAC-signed, short-lived tokens.
 - Companion backend session is issued only after the backend validates the CHZZK access token with `/open/v1/users/me`.
-- The prototype still uses the Client Secret locally for the streamer's direct Companion OAuth. Before public distribution, move streamer OAuth/token refresh completely behind AWS so the distributed executable does not contain or require the Client Secret.
+- The distributed Companion does not contain CHZZK Client Secrets and does not use local AWS CLI/SSO credentials. Streamer OAuth and refresh go through the selected AWS auth gateway.

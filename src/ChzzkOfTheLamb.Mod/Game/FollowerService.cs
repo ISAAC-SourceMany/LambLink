@@ -64,7 +64,28 @@ public sealed class FollowerService(
                     snapshot.Followers.Add(new FollowerRosterEntry
                     {
                         FollowerId = id,
-                        Name = info.Name ?? string.Empty
+                        Name = info.Name ?? string.Empty,
+                        IsDead = false,
+                        Appearance = ReadAppearance(info)
+                    });
+                }
+            }
+
+            // Dead followers remain authoritative save data and are resurrection candidates.
+            // Including them prevents a normal death from being mistaken for a deleted mapping.
+            var dead = DataManager.Instance?.Followers_Dead;
+            if (dead != null)
+            {
+                foreach (var info in dead)
+                {
+                    if (info == null || info.ID <= 0) continue;
+                    snapshot.Followers.Add(new FollowerRosterEntry
+                    {
+                        FollowerId = info.ID,
+                        Name = info.Name ?? string.Empty,
+                        IsDead = true,
+                        DeathReason = ReadPersistedDeathReason(info),
+                        Appearance = ReadAppearance(info)
                     });
                 }
             }
@@ -100,6 +121,25 @@ public sealed class FollowerService(
         }
 
         return snapshot;
+    }
+
+    private static FollowerAppearanceSelection ReadAppearance(object info) => new()
+    {
+        FormId = ReadFirstMemberValue(info, new[] { "SkinName" })?.ToString() ?? string.Empty,
+        VariantId = ReadFirstMemberValue(info, new[] { "SkinVariation", "SkinVariant" })?.ToString(),
+        ColorId = ReadFirstMemberValue(info, new[] { "SkinColour", "SkinColor" })?.ToString()
+    };
+
+    private static string ReadPersistedDeathReason(object info)
+    {
+        foreach (var name in new[]
+        {
+            "DiedOfIllness", "DiedOfInjury", "DiedOfOldAge", "DiedOfStarvation", "FrozeToDeath",
+            "DiedFromRot", "DiedFromTwitchChat", "DiedInPrison", "DiedFromMurder", "DiedFromDeadlyDish",
+            "DiedFromMissionary", "DiedFromLightning", "DiedFromOverheating", "BurntToDeath"
+        })
+            if (ReadFirstMemberValue(info, new[] { name }) is bool value && value) return name;
+        return "Unknown";
     }
 
     public FollowerSpawnResult SpawnFromJson(string payloadJson)
@@ -507,7 +547,11 @@ public sealed class FollowerService(
             RecruitFollowerId = command.RecruitFollowerId,
             ViewerId = command.ViewerId,
             Nickname = command.Nickname,
-            SaveId = saves.GetCurrentSaveId()
+            SaveId = saves.GetCurrentSaveId(),
+            Generation = Math.Max(1, command.Generation),
+            FollowerName = command.FollowerName,
+            AppliedAppearance = null,
+            RaffleId = command.RaffleId
         };
 
         try
@@ -524,18 +568,22 @@ public sealed class FollowerService(
                 throw new InvalidOperationException("Selected follower appearance is not valid in the current game catalog.");
 
             var previousName = ReadStringMember(target, "Name") ?? string.Empty;
-            var displayName = BuildFollowerName(command.Nickname);
+            var displayName = string.IsNullOrWhiteSpace(command.FollowerName)
+                ? BuildFollowerName(command.Nickname, command.Generation)
+                : command.FollowerName.Trim();
+            result.FollowerName = displayName;
 
             if (!FollowerAppearanceService.TryWrite(target, new[] { "Name" }, displayName))
                 throw new InvalidOperationException("FollowerInfo.Name could not be written on this game build.");
 
             if (!appearances.TryApply(target, command.Appearance))
                 throw new InvalidOperationException("Follower appearance could not be applied.");
+            result.AppliedAppearance = appearances.ReadAppliedSelection(target, command.Appearance?.FormId);
 
             // Register the marker only after the persistent name has changed. Registering it
             // first makes a visible UIFollowerName compare the new expected nickname with the
             // recruit's old vanilla name and incorrectly discard the marker as a reused ID.
-            RememberChzzkFollower(command.RecruitFollowerId, command.ViewerId, command.Nickname, result.SaveId);
+            RememberChzzkFollower(command.RecruitFollowerId, command.ViewerId, displayName, result.SaveId);
 
             log.LogInfo($"CHZZK identity data written: recruit={command.RecruitFollowerId}, form={command.Appearance?.FormId ?? "<game-default>"}, color={command.Appearance?.ColorId ?? "<game-default>"}, variant={command.Appearance?.VariantId ?? "<game-default>"}, skinName={ReadFirstMemberValue(target, new[] { "SkinName" }) ?? "<null>"}, skinCharacter={ReadFirstMemberValue(target, new[] { "SkinCharacter" }) ?? "<null>"}, skinColour={ReadFirstMemberValue(target, new[] { "SkinColour", "SkinColor" }) ?? "<null>"}, skinVariation={ReadFirstMemberValue(target, new[] { "SkinVariation", "SkinVariant" }) ?? "<null>"}");
 
@@ -661,15 +709,17 @@ public sealed class FollowerService(
             if (recruit == null) continue;
             try
             {
-                // The recruit object owns the character currently visible on the indoctrination
-                // pedestal. Current COTL builds rebuild that graphic from FollowerInfo during
-                // CharacterSetupCallback; invoking it mirrors the vanilla refresh path without
-                // completing/finalising the recruit.
-                var method = AccessTools.Method(recruit.GetType(), "CharacterSetupCallback", Type.EmptyTypes);
+                // CharacterSetupCallback is an IEnumerator and invoking it without starting the
+                // coroutine does not refresh anything; starting it may advance indoctrination.
+                // The menu controller's private UpdateFollower is the vanilla, side-effect-free
+                // preview rebuild for the already-mutated FollowerInfo.
+                var controllerType = AccessTools.TypeByName("Lamb.UI.UIFollowerIndoctrinationMenuController");
+                var controllers = controllerType == null ? Array.Empty<UnityEngine.Object>() : UnityEngine.Object.FindObjectsOfType(controllerType);
+                var method = controllerType == null ? null : AccessTools.Method(controllerType, "UpdateFollower", Type.EmptyTypes);
                 if (method != null)
                 {
-                    method.Invoke(recruit, null);
-                    log.LogDebug($"Indoctrination recruit preview callback invoked: recruit={followerId}, instance={recruit.GetInstanceID()}");
+                    foreach (var controller in controllers) method.Invoke(controller, null);
+                    log.LogDebug($"Indoctrination preview refreshed: recruit={followerId}, controllers={controllers.Length}");
                 }
             }
             catch (Exception ex)
@@ -745,12 +795,13 @@ public sealed class FollowerService(
         return normalized;
     }
 
-    private static string BuildFollowerName(string nickname)
+    private static string BuildFollowerName(string nickname, int generation = 1)
     {
         // Never persist TMP rich-text markup in FollowerInfo.Name. COTL reuses follower names in
         // many UI surfaces, and markup plus dynamic Korean glyph generation can unnecessarily
         // expand TMP atlases. The actual save data therefore contains only the viewer nickname.
-        return string.IsNullOrWhiteSpace(nickname) ? "CHZZK Viewer" : nickname.Trim();
+        var baseName = string.IsNullOrWhiteSpace(nickname) ? "CHZZK Viewer" : nickname.Trim();
+        return generation <= 1 ? baseName : $"{baseName} {generation}세";
     }
 
     private void RefreshOpenIndoctrinationUi(object followerInfo, string previousName, string displayName, int followerId)

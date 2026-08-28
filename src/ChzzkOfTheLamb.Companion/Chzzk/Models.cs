@@ -1,4 +1,4 @@
-using System.Text.Json;
+using System.Globalization;
 using System.Text.Json.Serialization;
 
 namespace ChzzkOfTheLamb.Companion.Chzzk;
@@ -37,18 +37,28 @@ public sealed record DonationEvent(
     [property: JsonPropertyName("channelId")] string ChannelId,
     [property: JsonPropertyName("donatorChannelId")] string DonatorChannelId,
     [property: JsonPropertyName("donatorNickname")] string DonatorNickname,
-    [property: JsonPropertyName("payAmount")] object PayAmount,
+    [property: JsonPropertyName("payAmount")] string PayAmount,
     [property: JsonPropertyName("donationText")] string? DonationText)
 {
-    public long ParsedAmount => PayAmount switch
+    public bool TryGetAmount(out long amount, out string error)
     {
-        JsonElement e when e.ValueKind == JsonValueKind.Number && e.TryGetInt64(out var n) => n,
-        JsonElement e when e.ValueKind == JsonValueKind.String && long.TryParse(e.GetString(), out var n) => n,
-        long n => n,
-        int n => n,
-        string s when long.TryParse(s, out var n) => n,
-        _ => 0
-    };
+        var value = PayAmount?.Trim();
+        if (string.IsNullOrWhiteSpace(value) ||
+            !long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out amount))
+        {
+            amount = 0;
+            error = "payAmount is not an invariant positive integer string";
+            return false;
+        }
+        if (amount <= 0)
+        {
+            error = "payAmount must be positive";
+            return false;
+        }
+
+        error = string.Empty;
+        return true;
+    }
 }
 
 public sealed record SubscriptionEvent(

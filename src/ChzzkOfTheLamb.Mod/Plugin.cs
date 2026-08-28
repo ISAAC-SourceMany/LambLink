@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.IO;
 using BepInEx;
 using HarmonyLib;
 using ChzzkOfTheLamb.Mod.Game;
@@ -23,7 +24,7 @@ public sealed class Plugin : BaseUnityPlugin
     public const string PluginName = "CHZZK Companion Integration";
     public const string PluginVersion = "1.0.0";
     public const string CotlApiGuid = "io.github.xhayper.COTL_API";
-    public const string BuildTag = "rc35-overlay-document-handshake";
+    public const string BuildTag = "rc35-durable-donation-delivery";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private readonly CancellationTokenSource _runtimeLifetime = new();
@@ -32,9 +33,12 @@ public sealed class Plugin : BaseUnityPlugin
     private FollowerService? _followers;
     private FollowerAppearanceService? _appearances;
     private DonationEffectService? _donations;
+    private DonationReceiptStore? _donationReceipts;
     private DonationGameplayGate? _donationGate;
     private DonationGameplayState? _donationRuntimeState;
     private readonly Queue<PendingDonation> _pendingDonations = new();
+    private readonly HashSet<string> _pendingDonationRequestIds = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, byte> _donationResultSends = new(StringComparer.Ordinal);
     private GameSaveService? _saves;
     private float _nextStatusAt;
     private readonly HashSet<int> _announcedRecruitIds = new();
@@ -79,6 +83,19 @@ public sealed class Plugin : BaseUnityPlugin
         _appearances = new FollowerAppearanceService(Logger, _saves, SetDiagnosticStage);
         _followers = new FollowerService(Logger, _saves, _appearances);
         _donations = new DonationEffectService(Logger);
+        try
+        {
+            _donationReceipts = new DonationReceiptStore(
+                Path.Combine(Paths.ConfigPath, "ChzzkOfTheLamb", "donation-receipts.json"),
+                Logger);
+        }
+        catch (Exception ex)
+        {
+            // The rest of the integration may continue, but donation commands will fail closed
+            // until receipt persistence is available; applying without it would permit duplicates.
+            _donationReceipts = null;
+            Logger.LogError($"[DONATION][RECEIPT][DISABLED] initialization failed; donation effects will be rejected: {ex.GetBaseException().Message}");
+        }
         _donationGate = new DonationGameplayGate(Logger);
         DungeonDonationBuffState.Reset();
         _bridge = new ModBridgeClient(_queue, Logger);
@@ -103,6 +120,7 @@ public sealed class Plugin : BaseUnityPlugin
         DonationStoryLifecycle.Install(harmony, Logger);
         IndoctrinationRafflePatch.VerifyInstallation(PluginGuid);
         FollowerNameplatePatch.VerifyInstallation(PluginGuid, Logger);
+        FollowerManager.OnFollowerDie += OnFollowerDied;
         Logger.LogInfo($"{PluginName} {PluginVersion} loaded [BUILD={BuildTag}]");
         Logger.LogInfo($"[DEPENDENCY] COTL_API={CotlApiGuid} hard dependency loaded before CHZZK integration");
         Logger.LogInfo($"[DIAG][BOOT] mainThread={_mainThreadId}, runtimeHost=persistent-game-object, watchdog=enabled, network-cache-fallback=enabled");
@@ -131,6 +149,19 @@ public sealed class Plugin : BaseUnityPlugin
         // though the integration must remain alive. The independent runtime host and bridge are
         // intentionally not cancelled here.
         Logger.LogWarning("[DIAG][PLUGIN-DESTROY] BepInEx plugin component destroyed; persistent runtime host and bridge remain active");
+    }
+
+    private void OnFollowerDied(int followerId, NotificationCentre.NotificationType notificationType)
+    {
+        if (_bridge == null || _saves == null || followerId <= 0) return;
+        _ = _bridge.SendAsync(GameMessageTypes.FollowerLifecycle, new FollowerLifecycleEvent
+        {
+            SaveId = _saves.GetCurrentSaveId(),
+            FollowerId = followerId,
+            EventType = "Died",
+            Cause = notificationType.ToString(),
+            OccurredAt = DateTimeOffset.UtcNow
+        });
     }
 
     private void RequestRuntimeShutdown()
@@ -435,13 +466,38 @@ public sealed class Plugin : BaseUnityPlugin
                       ?? throw new InvalidOperationException("Invalid DonationEffect command.");
             if (string.IsNullOrWhiteSpace(command.RequestId))
                 throw new InvalidOperationException("DonationEffect request ID is empty.");
+            command.RequestId = command.RequestId.Trim();
+            if (command.RequestId.Length > 128)
+                throw new InvalidOperationException("DonationEffect request ID is too long.");
+            if (command.Amount <= 0)
+                throw new InvalidOperationException("DonationEffect amount must be positive.");
+            if (string.IsNullOrWhiteSpace(command.Effect))
+                throw new InvalidOperationException("DonationEffect effect is empty.");
+
+            if (_donationReceipts == null)
+                throw new RetryableDonationException("Donation receipt persistence is unavailable; effect rejected to prevent unsafe duplicate application.");
+
+            if (_donationReceipts.TryGetTerminalResult(command.RequestId, out var cachedResult))
+            {
+                Logger.LogInfo($"[DONATION][QUEUE][DUPLICATE-COMPLETED] request={ShortDiagnosticId(command.RequestId)}, sequence={envelope.DiagnosticSequence}; cached result will be resent");
+                _ = SendDonationEffectResultAsync(cachedResult);
+                return;
+            }
+
+            if (_pendingDonationRequestIds.Contains(command.RequestId))
+            {
+                Logger.LogInfo($"[DONATION][QUEUE][DUPLICATE-PENDING] request={ShortDiagnosticId(command.RequestId)}, sequence={envelope.DiagnosticSequence}; duplicate command ignored");
+                return;
+            }
 
             const int maxPendingDonations = 256;
             if (_pendingDonations.Count >= maxPendingDonations)
-                throw new InvalidOperationException($"donation queue limit reached ({maxPendingDonations})");
+                throw new RetryableDonationException($"donation queue limit reached ({maxPendingDonations})");
 
+            _donationReceipts.MarkPending(command);
+            _pendingDonationRequestIds.Add(command.RequestId);
             _pendingDonations.Enqueue(new PendingDonation(
-                command.RequestId,
+                command,
                 envelope.PayloadJson,
                 envelope.DiagnosticSequence,
                 UnityEngine.Time.realtimeSinceStartup));
@@ -455,6 +511,7 @@ public sealed class Plugin : BaseUnityPlugin
             {
                 RequestId = command?.RequestId ?? string.Empty,
                 Success = false,
+                Retryable = root is RetryableDonationException or IOException or UnauthorizedAccessException,
                 Effect = command?.Effect ?? string.Empty,
                 EventName = command?.EventName ?? string.Empty,
                 Amount = command?.Amount ?? 0,
@@ -471,7 +528,43 @@ public sealed class Plugin : BaseUnityPlugin
         var pending = _pendingDonations.Dequeue();
         var waited = Math.Max(0f, UnityEngine.Time.realtimeSinceStartup - pending.QueuedAtRealtime);
         Logger.LogInfo($"[DONATION][QUEUE][DEQUEUED] request={ShortDiagnosticId(pending.RequestId)}, sequence={pending.DiagnosticSequence}, waitedSeconds={waited:0.00}, applyArea={state.Area}, remaining={_pendingDonations.Count}");
-        var result = _donations!.ApplyFromJson(pending.PayloadJson);
+        DonationEffectResult result;
+        var applyStarted = false;
+        try
+        {
+            // Persist APPLYING before touching game state. If the process ends after this point,
+            // startup recovery refuses automatic replay because the mutation may already exist.
+            _donationReceipts!.MarkApplying(pending.Command);
+            applyStarted = true;
+            result = _donations!.ApplyFromJson(pending.PayloadJson);
+        }
+        catch (Exception ex)
+        {
+            var root = ex.GetBaseException();
+            Logger.LogError($"[DONATION][RECEIPT][FAILED] request={ShortDiagnosticId(pending.RequestId)}, error={root.Message}");
+            result = new DonationEffectResult
+            {
+                RequestId = pending.Command.RequestId,
+                Success = false,
+                Retryable = !applyStarted && root is IOException or UnauthorizedAccessException,
+                Effect = pending.Command.Effect,
+                EventName = pending.Command.EventName,
+                Amount = pending.Command.Amount,
+                Nickname = pending.Command.Nickname,
+                Error = applyStarted
+                    ? $"Donation processing failed after application began; automatic replay was blocked: {root.Message}"
+                    : $"Donation receipt persistence failed before application began: {root.Message}"
+            };
+        }
+        finally
+        {
+            _pendingDonationRequestIds.Remove(pending.RequestId);
+        }
+        if (!result.Retryable)
+        {
+            try { _donationReceipts?.MarkCompleted(result); }
+            catch (Exception persistEx) { Logger.LogError($"[DONATION][RECEIPT][TERMINAL-SAVE-FAILED] request={ShortDiagnosticId(pending.RequestId)}, error={persistEx.GetBaseException().Message}"); }
+        }
         _ = SendDonationEffectResultAsync(result);
     }
 
@@ -715,14 +808,48 @@ public sealed class Plugin : BaseUnityPlugin
     private async System.Threading.Tasks.Task SendDonationEffectResultAsync(DonationEffectResult result)
     {
         var started = Stopwatch.GetTimestamp();
+        if (string.IsNullOrWhiteSpace(result.RequestId))
+        {
+            var oneShot = _bridge != null && await _bridge.TrySendAsync(GameMessageTypes.DonationEffectResult, result);
+            Logger.LogInfo($"[DONATION][RESULT-TX] request=-, success={result.Success}, sent={oneShot}, retry=false, elapsedMs={ElapsedMilliseconds(started):F1}");
+            return;
+        }
+        if (!_donationResultSends.TryAdd(result.RequestId, 0))
+        {
+            Logger.LogInfo($"[DONATION][RESULT-TX][COALESCED] request={ShortDiagnosticId(result.RequestId)}; result sender already active");
+            return;
+        }
+
         try
         {
-            var sent = await _bridge!.TrySendAsync(GameMessageTypes.DonationEffectResult, result);
-            Logger.LogInfo($"[DONATION][RESULT-TX] request={ShortDiagnosticId(result.RequestId)}, success={result.Success}, sent={sent}, elapsedMs={ElapsedMilliseconds(started):F1}");
+            const int maximumAttempts = 5;
+            for (var attempt = 1; attempt <= maximumAttempts && !_runtimeLifetime.IsCancellationRequested; attempt++)
+            {
+                var sent = _bridge != null && await _bridge.TrySendAsync(
+                    GameMessageTypes.DonationEffectResult,
+                    result,
+                    _runtimeLifetime.Token);
+                Logger.LogInfo($"[DONATION][RESULT-TX] request={ShortDiagnosticId(result.RequestId)}, success={result.Success}, sent={sent}, attempt={attempt}, elapsedMs={ElapsedMilliseconds(started):F1}");
+                if (sent) return;
+                if (attempt < maximumAttempts)
+                {
+                    var delaySeconds = Math.Min(8, 1 << (attempt - 1));
+                    await System.Threading.Tasks.Task.Delay(delaySeconds * 1000, _runtimeLifetime.Token);
+                }
+            }
+            Logger.LogWarning($"[DONATION][RESULT-TX][DEFERRED] request={ShortDiagnosticId(result.RequestId)}; cached result will be returned when Companion retries the request");
+        }
+        catch (OperationCanceledException) when (_runtimeLifetime.IsCancellationRequested)
+        {
+            // Normal game shutdown.
         }
         catch (Exception ex)
         {
             Logger.LogError($"[DONATION][RESULT-TX-FAILED] request={ShortDiagnosticId(result.RequestId)}, elapsedMs={ElapsedMilliseconds(started):F1}, error={ex}");
+        }
+        finally
+        {
+            _donationResultSends.TryRemove(result.RequestId, out _);
         }
     }
 
@@ -775,18 +902,24 @@ public sealed class Plugin : BaseUnityPlugin
 
     private sealed class PendingDonation
     {
-        public PendingDonation(string requestId, string payloadJson, long diagnosticSequence, float queuedAtRealtime)
+        public PendingDonation(DonationEffectCommand command, string payloadJson, long diagnosticSequence, float queuedAtRealtime)
         {
-            RequestId = requestId;
+            Command = command;
             PayloadJson = payloadJson;
             DiagnosticSequence = diagnosticSequence;
             QueuedAtRealtime = queuedAtRealtime;
         }
 
-        public string RequestId { get; }
+        public DonationEffectCommand Command { get; }
+        public string RequestId => Command.RequestId;
         public string PayloadJson { get; }
         public long DiagnosticSequence { get; }
         public float QueuedAtRealtime { get; }
+    }
+
+    private sealed class RetryableDonationException : Exception
+    {
+        public RetryableDonationException(string message) : base(message) { }
     }
 
     private static double ElapsedMilliseconds(long started) =>

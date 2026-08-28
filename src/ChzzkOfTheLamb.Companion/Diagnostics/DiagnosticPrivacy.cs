@@ -27,6 +27,13 @@ internal static class DiagnosticPrivacy
         return Convert.ToHexString(hash, 0, 4).ToLowerInvariant();
     }
 
+    public static string StableFileKey(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "none";
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(value));
+        return Convert.ToHexString(hash, 0, 16).ToLowerInvariant();
+    }
+
     public static string Redact(string input)
     {
         if (string.IsNullOrEmpty(input)) return input;

@@ -3,6 +3,9 @@
 현재 배포 후보의 검증 증빙을 보관합니다.
 
 - [RC35 검증 기록](VALIDATION-RC35.md)
+- [RC35 배포 전 테스트 체크리스트](PRE_RELEASE_TESTS_RC35_KO.md)
+- [RC35 AWS staging 환경](STAGING-RC35_KO.md)
+- [RC35 다른 PC 개발 인수인계](HANDOFF_2026-08-28_STAGING_RC35_KO.md)
 - [RC35 배포 안내](../../DISTRIBUTION-RC35.md)
 
 버전이 지난 자료는 [`history/releases`](../history/releases)로 이동해 보존합니다.

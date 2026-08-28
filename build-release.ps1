@@ -59,28 +59,35 @@ function Clear-CompilerOutputs {
 Write-Host '[0/9] Verifying RC35 source identity and removing stale compiler outputs...'
 $criticalSources = @{
   'src\ChzzkOfTheLamb.Mod\ChzzkOfTheLamb.Mod.csproj' = '5e2aac6c30559e9bc2fd2fddb131aeb1f95e60d46faec187b71ec612dd63a938'
-  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = '7cb119c9bf836c290632368d7c4030354c9fcf3253b161c1d032892adf881dd0'
+  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = 'f75b55926e481a0f4254ed5a28fd285d6272f1fe6a03f64344301fb3fde2d9d5'
   'src\ChzzkOfTheLamb.Mod\BridgeRuntimeHost.cs' = '9261721e2708f59debb6785e2eeec611063738bd36744a55dec94f529ae3bc6b'
   'src\ChzzkOfTheLamb.Mod\Network\ModBridgeClient.cs' = 'dbe786dbd6cfa0df9144c87820e696b5ec076a8ee9c3f5b018b358179ff15595'
   'src\ChzzkOfTheLamb.Mod\Game\IndoctrinationRafflePatch.cs' = '753830ca22dc89e571da9861fac0ab2a0306497de81c89482d6f7fbccfa026eb'
   'src\ChzzkOfTheLamb.Mod\Game\FollowerNameplatePatch.cs' = '51a4385cb3cb0a801b89ed7923e95133a920e80a9ed57446b8437abe0e79abdf'
-  'src\ChzzkOfTheLamb.Mod\Game\FollowerService.cs' = '39e2b9939254ffb233b2ea075c627683789241e0a037ec7c02c74d1ccb94746c'
-  'src\ChzzkOfTheLamb.Mod\Game\FollowerAppearanceService.cs' = 'e840ef802b18b8c52155c01f63bf0e1d3bc8d69e2f433407f7c2d7eb3e08ddc4'
+  'src\ChzzkOfTheLamb.Mod\Game\FollowerService.cs' = '9a711fb100173ecd93c69d48dd7abdba670b415bf09f151c0cb180c06fda0b4a'
+  'src\ChzzkOfTheLamb.Mod\Game\FollowerAppearanceService.cs' = '946c7c168c4ef9f20d33f9f9d0c711223440e1ecc91976fd61974028d06b7dd7'
+  'src\ChzzkOfTheLamb.Mod\Game\DonationReceiptStore.cs' = '073afded9f44a08ead330c27c9279038e36bb6ba7b36d4b8c75a9f4938ba57a5'
   'src\ChzzkOfTheLamb.Mod\Game\GameSaveService.cs' = '5b48b8ce1f0c50ae47a9e160ce4244ab9b3712c2cc96e8cc55678163ded72c5d'
   'src\ChzzkOfTheLamb.Mod\Game\DonationEffectService.cs' = '3f7cbcf93f6e3a6b00480ae14435afe7f38fafd4da752575907b7cecfea912ec'
   'src\ChzzkOfTheLamb.Mod\Game\DonationGameplayGate.cs' = '1120652d09990ac571106e105e8dc7f91a0d3f308f321405674a2132096e77bf'
   'src\ChzzkOfTheLamb.Mod\Game\DonationStoryLifecycle.cs' = 'ee98c5488b3e3bbdad64f9b2049af27f18003d0ce666ac8dbb189eea9808fa05'
   'src\ChzzkOfTheLamb.Mod\Game\DungeonDonationBuffs.cs' = '6036326733c961605ac99c2b7cf7e108c4cc89fac2c906d94919bca12a4153b5'
-  'src\ChzzkOfTheLamb.Protocol\GameMessages.cs' = '55312e81b19340d18188ad0cf6efbcb7a06f6bef0ccb243f1ae568172d401a64'
-  'src\ChzzkOfTheLamb.Companion\Program.cs' = '4d67cd57e26f9551bfea638c77a56a76558a6b52163be43353f15a9740ce6998'
-  'src\ChzzkOfTheLamb.Companion\Chzzk\ChzzkRealtimeClient.cs' = '09ce1e58e9308f7fecfb320635b3e5b32f6c2c0a9414d0200594226df18a7c8a'
-  'src\ChzzkOfTheLamb.Companion\ViewerPage\ViewerPageShare.cs' = '2e9041cf4209e76f258c7a0cdab0847431f4affef002bd03b1ee37efef36692a'
+  'src\ChzzkOfTheLamb.Protocol\GameMessages.cs' = 'ddfd468dad9ff1f660f33a62851b339a982a3529954e0619122e94566338089f'
+  'src\ChzzkOfTheLamb.Companion\Program.cs' = 'e936da8b5375373586bad16e23e7be4d551612a869e62803bff4e560d4172334'
+  'src\ChzzkOfTheLamb.Companion\Chzzk\ChzzkApiClient.cs' = '820de1d09bf0e76534eb8c926bdfc20a08222d1d3e6e502222b8acdcd214e07b'
+  'src\ChzzkOfTheLamb.Companion\Chzzk\ChzzkRealtimeClient.cs' = '4181819e877d69e139936653d6c993ae6bd9adaaaaced9615248f39bccc056dd'
+  'src\ChzzkOfTheLamb.Companion\Chzzk\Models.cs' = '4d17bcee5f2c63f3296793d42645058209186757da9b06454fc0accd49c13015'
+  'src\ChzzkOfTheLamb.Companion\Chzzk\ProductionOAuth.cs' = '4461b5fffd39b94f813557d85d9ba12f826c2a6e0f447e820c71530e6f9fc58c'
+  'src\ChzzkOfTheLamb.Companion\Cloud\AppearanceApiClient.cs' = '46297cd0e31e36ba0852f8bb5cecc886c54beb87e5f49da387049717608ae049'
+  'src\ChzzkOfTheLamb.Companion\ViewerPage\ViewerPageShare.cs' = '62b9e3021493967bb1491da35fdae55076659df3c9ff7e5976874fbd4bbbfb41'
   'src\ChzzkOfTheLamb.Companion\GameBridge\GameBridgeServer.cs' = '6199cf43fea8adbcb9b166f31370975f2ac954af3834bbdf3866142e55fe8da9'
   'src\ChzzkOfTheLamb.Companion\Diagnostics\TeeTextWriter.cs' = '3edd24b12f8aaac9a1de768be84d0d6711c1b30c28a8bff39507912ffffcd305'
   'src\ChzzkOfTheLamb.Companion\Diagnostics\RollingFileTextWriter.cs' = 'c44b021eda8285598fbfff015881f3406fef8c84545d08f78db757a70b81793a'
-  'src\ChzzkOfTheLamb.Companion\Diagnostics\DonationTraceRegistry.cs' = 'c56b6c0f3970917911b1ef21eae00c543b4783eaeb1d1f445ec2ccf9da9061e8'
-  'src\ChzzkOfTheLamb.Companion\Diagnostics\DiagnosticPrivacy.cs' = 'c9afc180f204d35c8175e1be3c37167686add4e8c43b8d737e0c7a00ce406f36'
-  'src\ChzzkOfTheLamb.Companion\Diagnostics\SupportBundleService.cs' = 'd17c653e9698dd32157ac88d28bf243aa8df45ff616dbb1df201412b33248ba3'
+  'src\ChzzkOfTheLamb.Companion\Diagnostics\DonationTraceRegistry.cs' = '8ad5aba462b7fedd1433e63cd9a210865542232eeffa8a8f898c2bccf5d2aaed'
+  'src\ChzzkOfTheLamb.Companion\Diagnostics\DiagnosticPrivacy.cs' = 'a776b9a14c347d9241d782393df5d183e5f349a724c748753efd1ad29ae52815'
+  'src\ChzzkOfTheLamb.Companion\Diagnostics\SupportBundleService.cs' = '75701472f60f8a8b06f37397dd17606ad6f0ff24dd72857a9bdecee47fb44567'
+  'src\ChzzkOfTheLamb.Companion\Storage\DonationDeliveryRepository.cs' = '7a7db4c649cbd5a5ba8e9909a80706c422a9bc96c12fa31d7067c5f12d413f8c'
+  'src\ChzzkOfTheLamb.Companion\Storage\ViewerFollowerRepository.cs' = '6fe1bc7596c45dbf4c4d593b9cc4e08c6ed7d7b47ad592495192d70d2c13ff92'
   'src\ChzzkOfTheLamb.Companion\Appearance\AppearanceStore.cs' = '6726689d6ffcef4c31d4064649fdc7be38c28d219fdf8eb7cb9db4afa75b893b'
   'src\ChzzkOfTheLamb.Companion\Overlay\RaffleOverlayServer.cs' = '7843039adc70f0e048c586e2316ee5cae141cba30c0c2ba56d67e6a6a9c5183e'
   'src\ChzzkOfTheLamb.Companion\ChzzkOfTheLamb.Companion.csproj' = '3c797c0f749810f8049688c05b9a6fdf2af5ebdfa80a810932002731d89866dc'
@@ -89,7 +96,7 @@ $criticalSources = @{
   'installer\installer-manifest.template.json' = '47166217008c309203e9d599e804ecacb1bd6891c71e9a6a76f5d42baeec5872'
   'prepare-installer-manifest.ps1' = '01f3a4b6e90a55502bc4c7a5e7714ae0deee6e6bc8b3865b9a6d7bc5136ce86b'
   'build-distribution.ps1' = '019c174ec9d9e4dcd136f244b917d9041652c49e9e1475a0c4f02eaee3796455'
-  'DISTRIBUTION-RC35.md' = 'f06717d06f489f6b34bf3404069b09b7b603cb43311fe8afa1e527de2aefe708'
+  'DISTRIBUTION-RC35.md' = 'ecc1cdca9305eb9e8c4440f59a7859d7abb611883fa35254629a83057ac8ee24'
 }
 foreach ($relativePath in $criticalSources.Keys) {
   $sourcePath = Join-Path $root $relativePath
@@ -159,7 +166,7 @@ function Test-ByteSequence([byte[]]$Haystack, [byte[]]$Needle) {
   }
   return $false
 }
-$buildTag = 'rc35-overlay-document-handshake'
+$buildTag = 'rc35-durable-donation-delivery'
 $hasBuildTag = (Test-ByteSequence $modBytes ([System.Text.Encoding]::UTF8.GetBytes($buildTag))) -or
                (Test-ByteSequence $modBytes ([System.Text.Encoding]::Unicode.GetBytes($buildTag)))
 if (-not $hasBuildTag) {
@@ -180,6 +187,11 @@ foreach ($marker in @('[DONATION][RX]', '[DONATION][APPLIED]', '[DONATION][RESUL
                (Test-ByteSequence $modBytes ([System.Text.Encoding]::Unicode.GetBytes($marker)))
   if (-not $hasMarker) { throw "Built mod DLL is missing RC35 donation diagnostic marker: $marker" }
 }
+foreach ($marker in @('[DONATION][RECEIPT][UNCERTAIN]', '[DONATION][RECEIPT][RECOVERY]', 'automatic replay blocked')) {
+  $hasMarker = (Test-ByteSequence $modBytes ([System.Text.Encoding]::UTF8.GetBytes($marker))) -or
+               (Test-ByteSequence $modBytes ([System.Text.Encoding]::Unicode.GetBytes($marker)))
+  if (-not $hasMarker) { throw "Built mod DLL is missing durable donation receipt marker: $marker" }
+}
 Write-Host "[VERIFY] RC35 mod build tag and donation diagnostics found; SHA-256=$((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"
 
 Write-Host '[5/9] Building and validating Companion diagnostics...'
@@ -194,7 +206,12 @@ foreach ($forbidden in @('[FOLLOWER-MIGRATION][RC26-RESTORED]', 'name drift reta
                   (Test-ByteSequence $companionValidationBytes ([System.Text.Encoding]::Unicode.GetBytes($forbidden)))
   if ($hasForbidden) { throw "Built Companion contains forbidden unsaved-result recovery marker: $forbidden" }
 }
-foreach ($marker in @('[DONATION][TERMINAL][ACK-TIMEOUT]', '[DONATION][GATE][RX]', 'pausedWhileModGateBlocked=true', '[OVERLAY][BUFF-TIMER][PAUSED]', '[OVERLAY][BUFF-GROUP]', '[OVERLAY][DOCUMENT] version=', '[OVERLAY][STALE-DOCUMENT]', '[OVERLAY][CLIENT-DOCUMENT]', '[OVERLAY][CLIENT-LAYOUT]', 'rc35-overlay-document-v1', '#donationWrap{position:fixed;left:18px;right:auto;top:18px;width:min(480px', '#donationWrap .panel{width:100%;box-sizing:border-box}', '<div id="donationWrap"><div class="panel" id="donationPanel"></div></div>', '#buffs{position:fixed;left:18px;right:auto;top:18px', 'direction:ltr', 'justify-content:flex-start', '/overlay/client-layout?', 'location.replace(', 'OVERLAY_DOC_CURRENT=', '[OVERLAY][DONATION-QUEUE][ENQUEUED]', '[OVERLAY][DONATION-QUEUE][DISPLAY]', '[OVERLAY][DONATION-QUEUE][COMPLETED]', 'DONATION_GATE=', '[SUPPORT][READY]', 'companion-rc35.log')) {
+foreach ($marker in @('COTL_STAGING_MODE', 'COTL_STAGING_DATA_DIR', 'ChzzkOfTheLamb-Staging', 'RELEASE / CHZZK LIVE / STAGING', '시청자 외형 설정 페이지 (Staging).url')) {
+  $hasMarker = (Test-ByteSequence $companionValidationBytes ([System.Text.Encoding]::UTF8.GetBytes($marker))) -or
+               (Test-ByteSequence $companionValidationBytes ([System.Text.Encoding]::Unicode.GetBytes($marker)))
+  if (-not $hasMarker) { throw "Built Companion validation assembly is missing staging isolation marker: $marker" }
+}
+foreach ($marker in @('[DONATION][TERMINAL][ACK-TIMEOUT]', '[DONATION][GATE][RX]', 'pausedWhileModGateBlocked=true', '[OVERLAY][BUFF-TIMER][PAUSED]', '[OVERLAY][BUFF-GROUP]', '[OVERLAY][DOCUMENT] version=', '[OVERLAY][STALE-DOCUMENT]', '[OVERLAY][CLIENT-DOCUMENT]', '[OVERLAY][CLIENT-LAYOUT]', 'rc35-overlay-document-v1', '#donationWrap{position:fixed;left:18px;right:auto;top:18px;width:min(480px', '#donationWrap .panel{width:100%;box-sizing:border-box}', '<div id="donationWrap"><div class="panel" id="donationPanel"></div></div>', '#buffs{position:fixed;left:18px;right:auto;top:18px', 'direction:ltr', 'justify-content:flex-start', '/overlay/client-layout?', 'location.replace(', 'OVERLAY_DOC_CURRENT=', '[OVERLAY][DONATION-QUEUE][ENQUEUED]', '[OVERLAY][DONATION-QUEUE][DISPLAY]', '[OVERLAY][DONATION-QUEUE][COMPLETED]', 'DONATION_GATE=', 'DONATION_OUTBOX=', '[DONATION][OUTBOX][RECOVERY]', 'donation outbox and Mod receipt contents', '[SUPPORT][READY]', 'companion-rc35.log')) {
   $hasMarker = (Test-ByteSequence $companionValidationBytes ([System.Text.Encoding]::UTF8.GetBytes($marker))) -or
                (Test-ByteSequence $companionValidationBytes ([System.Text.Encoding]::Unicode.GetBytes($marker)))
   if (-not $hasMarker) { throw "Built Companion validation assembly is missing RC35 diagnostic marker: $marker" }

@@ -22,5 +22,8 @@ local-server/data.json
 bin/
 obj/
 dist/
+release-hosting/
 publish/
 artifacts/
+.aws-sam/
+aws/*.local.json

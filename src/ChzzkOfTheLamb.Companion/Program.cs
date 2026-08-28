@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Diagnostics;
+using System.Collections.Concurrent;
 using ChzzkOfTheLamb.Companion.Appearance;
 using ChzzkOfTheLamb.Companion.Chzzk;
 using ChzzkOfTheLamb.Companion.Cloud;
@@ -18,7 +19,24 @@ const string ReleaseVersion = "1.0.0-rc35";
 const string ProductionApiBase = "https://y0eblkdmu5.execute-api.ap-northeast-2.amazonaws.com";
 const string ProductionFrontendUrl = "https://d1gvw9ccym1qvn.cloudfront.net";
 
-var dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ChzzkOfTheLamb");
+#if RELEASE_DISTRIBUTION
+bool IsReleaseDistribution = true;
+#else
+bool IsReleaseDistribution = false;
+#endif
+
+// Release builds stay pinned to production unless a developer explicitly opts into
+// staging.  Staging also gets its own data directory so OAuth/session, appearance,
+// donation outbox, and diagnostics never overwrite the live Companion state.
+var stagingMode = IsReleaseDistribution
+                  && IsTruthy(Environment.GetEnvironmentVariable("COTL_STAGING_MODE"));
+var defaultDataDirectoryName = stagingMode ? "ChzzkOfTheLamb-Staging" : "ChzzkOfTheLamb";
+var stagingDataDirOverride = stagingMode
+    ? Environment.GetEnvironmentVariable("COTL_STAGING_DATA_DIR")
+    : null;
+var dataDir = string.IsNullOrWhiteSpace(stagingDataDirOverride)
+    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), defaultDataDirectoryName)
+    : Path.GetFullPath(Environment.ExpandEnvironmentVariables(stagingDataDirOverride.Trim()));
 Directory.CreateDirectory(dataDir);
 var diagnosticLogPath = Path.Combine(dataDir, "companion-rc35.log");
 var originalConsoleOut = Console.Out;
@@ -39,11 +57,6 @@ TaskScheduler.UnobservedTaskException += (_, eventArgs) =>
 };
 Console.WriteLine($"[DIAG][SESSION-BEGIN] version={ReleaseVersion}, utc={DateTimeOffset.UtcNow:O}, pid={Environment.ProcessId}, log={diagnosticLogPath}, retention=5MiB+4archives, stdout=true, stderr=true");
 
-#if RELEASE_DISTRIBUTION
-bool IsReleaseDistribution = true;
-#else
-bool IsReleaseDistribution = false;
-#endif
 ChzzkCredentials? chzzkCredentials = null;
 #if !RELEASE_DISTRIBUTION
 try
@@ -65,7 +78,9 @@ var forceDevelopmentMode = !IsReleaseDistribution && IsTruthy(Environment.GetEnv
 var settings = CompanionSettings.LoadOrCreate(Path.Combine(dataDir, "settings.json"));
 var followers = new ViewerFollowerRepository(Path.Combine(dataDir, "viewer-followers.json"));
 var appearances = new AppearanceStore(Path.Combine(dataDir, "viewer-appearances.json"));
-var viewerPage = new ViewerPageShare(dataDir);
+var viewerPage = new ViewerPageShare(
+    dataDir,
+    stagingMode ? "CHZZK 시청자 외형 설정 페이지 (Staging).url" : null);
 var raffle = new RaffleManager();
 var rules = new DonationRuleEngine(settings.Donation);
 
@@ -81,7 +96,9 @@ var developmentMode = !IsReleaseDistribution && (forceDevelopmentMode || !hasChz
 Console.WriteLine($"CHZZK Companion for Cult of the Lamb - v{ReleaseVersion}");
 if (IsReleaseDistribution)
 {
-    Console.WriteLine("[MODE] RELEASE / CHZZK LIVE");
+    Console.WriteLine(stagingMode
+        ? "[MODE] RELEASE / CHZZK LIVE / STAGING"
+        : "[MODE] RELEASE / CHZZK LIVE");
     Console.WriteLine("[CONFIG] AWS CLI/SSO: not used by distribution build");
 #if RC_TEST_TOOLS
     Console.WriteLine("[TEST TOOLS] RC35_TEST_TOOLS enabled: dev donation command is available; do not distribute this Companion.");
@@ -105,7 +122,9 @@ else
 }
 
 var configuredWebApiBase = IsReleaseDistribution
-    ? ProductionApiBase
+    ? stagingMode
+        ? RequireHttpsEnvironmentVariable("COTL_WEB_API_BASE")
+        : ProductionApiBase
     : Environment.GetEnvironmentVariable("COTL_WEB_API_BASE");
 if (!string.IsNullOrWhiteSpace(configuredWebApiBase))
     Console.WriteLine($"[WEB] API configured: {configuredWebApiBase}");
@@ -115,6 +134,8 @@ if (developmentMode && !string.IsNullOrWhiteSpace(configuredWebApiBase))
 var streamerChannelId = settings.Development.LocalStreamerId;
 var streamerChannelName = settings.Development.LocalStreamerName;
 string? accessToken = null;
+string? refreshToken = null;
+DateTimeOffset accessTokenExpiresAt = DateTimeOffset.MinValue;
 ChzzkApiClient? api = null;
 HttpClient? http = null;
 AppearanceApiClient? cloud = null;
@@ -123,7 +144,9 @@ var cloudBaseUrl = configuredWebApiBase;
 if (string.IsNullOrWhiteSpace(cloudBaseUrl) && settings.Cloud.Enabled)
     cloudBaseUrl = settings.Cloud.ApiBaseUrl;
 var frontendUrl = IsReleaseDistribution
-    ? ProductionFrontendUrl
+    ? stagingMode
+        ? RequireHttpsEnvironmentVariable("COTL_WEB_FRONTEND_URL")
+        : ProductionFrontendUrl
     : Environment.GetEnvironmentVariable("COTL_WEB_FRONTEND_URL");
 if (string.IsNullOrWhiteSpace(frontendUrl)) frontendUrl = settings.Cloud.FrontendUrl;
 
@@ -140,6 +163,8 @@ if (!developmentMode)
         Console.WriteLine("[AUTH] CHZZK 로그인을 시작합니다...");
         var auth = await ProductionOAuth.AuthorizeAsync(http, cloudBaseUrl!, redirectUri, stop.Token);
         accessToken = auth.AccessToken;
+        refreshToken = auth.RefreshToken;
+        accessTokenExpiresAt = DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, auth.ExpiresIn));
         streamerChannelId = auth.StreamerChannelId;
         streamerChannelName = auth.StreamerChannelName;
     }
@@ -151,6 +176,8 @@ if (!developmentMode)
         var tokens = await api.ExchangeCodeAsync(code, state, stop.Token);
         var me = await api.GetMeAsync(tokens.AccessToken, stop.Token);
         accessToken = tokens.AccessToken;
+        refreshToken = tokens.RefreshToken;
+        accessTokenExpiresAt = tokens.AcquiredAt.AddSeconds(Math.Max(60, tokens.ExpiresIn));
         streamerChannelId = me.ChannelId;
         streamerChannelName = me.ChannelName;
         Console.WriteLine($"[CHZZK] connected: {streamerChannelName} ({streamerChannelId})");
@@ -174,6 +201,7 @@ var catalogRefreshInFlight = 0;
 var latestRosterSaveId = "unknown";
 var latestRosterFollowerIds = new HashSet<int>();
 var latestRosterFollowersById = new Dictionary<int, FollowerRosterEntry>();
+var reservationRecoveryInFlight = 0;
 DateTimeOffset latestRosterAt = DateTimeOffset.MinValue;
 string? lastRosterFingerprint = null;
 long bridgeDispatchSequence = 0;
@@ -182,6 +210,10 @@ long catalogSyncGeneration = 0;
 long lastRuntimePumpStatusUnixMs = 0;
 var gameSyncPhase = "DISCONNECTED";
 var donationTraces = new DonationTraceRegistry();
+var presentedDonationResults = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
+var donationDeliveries = new DonationDeliveryRepository(Path.Combine(
+    dataDir,
+    $"donation-outbox-{DiagnosticPrivacy.StableFileKey(streamerChannelId)}.json"));
 DonationRuntimeStateEvent lastDonationRuntimeState = new()
 {
     IsReady = false,
@@ -217,6 +249,7 @@ bridge.ConnectionChanged += connected =>
     }
     else
     {
+        var abandoned = donationTraces.AbandonAll();
         gameSyncPhase = "DISCONNECTED";
         lastDonationRuntimeState = new DonationRuntimeStateEvent
         {
@@ -226,6 +259,8 @@ bridge.ConnectionChanged += connected =>
             Area = "UNKNOWN"
         };
         overlay.SetDonationRuntimeState(true, "GAME_DISCONNECTED");
+        if (abandoned > 0)
+            Console.WriteLine($"[DONATION][OUTBOX][RETRY-ARMED] abandonedTraces={abandoned}, durablePending={donationDeliveries.PendingCount}");
     }
 };
 
@@ -419,13 +454,12 @@ bridge.MessageReceived += envelope =>
                 {
                     foreach (var record in followers.GetForSave(streamerChannelId, roster.SaveId))
                     {
-                        if (!latestRosterFollowersById.TryGetValue(record.FollowerId, out var actual))
-                        {
-                            stale.Add(record);
-                            continue;
-                        }
+                        // The vanilla alive roster intentionally omits dead, imprisoned and
+                        // expedition followers. Absence is not proof of death and must never
+                        // delete generation history or reopen creation rights.
+                        if (!latestRosterFollowersById.TryGetValue(record.FollowerId, out var actual)) continue;
 
-                        if (!FollowerRosterNameMatchesViewer(actual.Name, record.LastKnownNickname))
+                        if (!FollowerRosterNameMatchesViewer(actual.Name, record.FollowerName))
                         {
                             // Follower IDs are reusable and an unsaved raffle result legitimately
                             // disappears after the game is closed. ID-only ownership must never
@@ -433,12 +467,19 @@ bridge.MessageReceived += envelope =>
                             stale.Add(record);
                             Console.WriteLine($"[FOLLOWER-RECONCILE] stale/reused ID detected from roster: viewer={record.LastKnownNickname} ({record.ViewerChannelId}), followerId={record.FollowerId}, actualName='{actual.Name}', save={roster.SaveId}");
                         }
+                        else if (actual.IsDead && record.IsAlive)
+                        {
+                            followers.ApplyLifecycle(streamerChannelId, $"roster-died:{roster.SaveId}:{record.FollowerId}:{roster.GeneratedAt.ToUnixTimeSeconds()}", roster.SaveId, record.FollowerId, "Died", roster.GeneratedAt, actual.DeathReason ?? "Unknown");
+                            _ = SyncViewerFollowerStateAsync(record.ViewerChannelId, roster.SaveId);
+                        }
+                        else if (!actual.IsDead && !record.IsAlive && record.DiedAt.HasValue)
+                        {
+                            followers.ApplyLifecycle(streamerChannelId, $"roster-resurrected:{roster.SaveId}:{record.FollowerId}:{roster.GeneratedAt.ToUnixTimeSeconds()}", roster.SaveId, record.FollowerId, "Resurrected", roster.GeneratedAt, null);
+                            _ = SyncViewerFollowerStateAsync(record.ViewerChannelId, roster.SaveId);
+                        }
                     }
                     foreach (var record in stale)
-                    {
-                        if (followers.Remove(streamerChannelId, record.ViewerChannelId, roster.SaveId))
-                            Console.WriteLine($"[FOLLOWER-RECONCILE] removed stale mapping: viewer={record.LastKnownNickname} ({record.ViewerChannelId}), followerId={record.FollowerId}, save={roster.SaveId}; follower missing or identity no longer matches loaded save");
-                    }
+                        Console.WriteLine($"[FOLLOWER-RECONCILE] identity mismatch retained for manual recovery: viewer={record.LastKnownNickname} ({record.ViewerChannelId}), followerId={record.FollowerId}, save={roster.SaveId}");
                 }
 
                 var rosterFingerprint = roster.SaveId + ":" + string.Join(",", latestRosterFollowerIds.OrderBy(x => x));
@@ -446,8 +487,22 @@ bridge.MessageReceived += envelope =>
                 {
                     Console.WriteLine($"[FOLLOWER-ROSTER] save={roster.SaveId}, actual={latestRosterFollowerIds.Count}, staleRemoved={stale.Count}, ids=[{string.Join(",", latestRosterFollowerIds.OrderBy(x => x))}]");
                     lastRosterFingerprint = rosterFingerprint;
+                    foreach (var viewerId in followers.GetForSave(streamerChannelId, roster.SaveId).Select(x => x.ViewerChannelId).Distinct(StringComparer.Ordinal))
+                        _ = SyncViewerFollowerStateAsync(viewerId, roster.SaveId);
                 }
                 _ = SyncChzzkMarkersToGameAsync(roster.SaveId, validateAgainstRoster: true);
+                _ = RecoverPendingReservationsAsync(roster);
+                break;
+            }
+            case GameMessageTypes.FollowerLifecycle:
+            {
+                var lifecycle = JsonSerializer.Deserialize<FollowerLifecycleEvent>(envelope.PayloadJson)!;
+                var record = followers.GetForSave(streamerChannelId, lifecycle.SaveId).FirstOrDefault(x => x.FollowerId == lifecycle.FollowerId);
+                if (record is not null && followers.ApplyLifecycle(streamerChannelId, lifecycle.EventId, lifecycle.SaveId, lifecycle.FollowerId, lifecycle.EventType, lifecycle.OccurredAt, lifecycle.Cause))
+                {
+                    Console.WriteLine($"[FOLLOWER-LIFECYCLE] {lifecycle.EventType}: follower={record.FollowerName}, cause={lifecycle.Cause ?? "<none>"}");
+                    _ = SyncViewerFollowerStateAsync(record.ViewerChannelId, lifecycle.SaveId);
+                }
                 break;
             }
             case GameMessageTypes.FollowerSpawnResult:
@@ -466,6 +521,7 @@ bridge.MessageReceived += envelope =>
                     if (string.Equals(latestRosterSaveId, result.SaveId, StringComparison.Ordinal)) latestRosterFollowerIds.Add(result.FollowerId.Value);
                     Console.WriteLine($"[FOLLOWER] created {result.Nickname}, ID={result.FollowerId}");
                     _ = SyncChzzkMarkersToGameAsync(result.SaveId, validateAgainstRoster: false);
+                    _ = SyncViewerFollowerStateAsync(result.ViewerId, result.SaveId);
                 }
                 else Console.WriteLine($"[FOLLOWER] create failed: {result.Error}");
                 break;
@@ -480,14 +536,23 @@ bridge.MessageReceived += envelope =>
                         StreamerChannelId = streamerChannelId,
                         ViewerChannelId = result.ViewerId,
                         LastKnownNickname = result.Nickname,
+                        FollowerName = string.IsNullOrWhiteSpace(result.FollowerName) ? result.Nickname : result.FollowerName,
                         SaveId = result.SaveId,
-                        FollowerId = result.RecruitFollowerId
+                        FollowerId = result.RecruitFollowerId,
+                        Generation = result.Generation,
+                        Appearance = result.AppliedAppearance
                     });
                     if (string.Equals(latestRosterSaveId, result.SaveId, StringComparison.Ordinal)) latestRosterFollowerIds.Add(result.RecruitFollowerId);
                     Console.WriteLine($"[RAFFLE] identity applied: {result.Nickname} -> recruit {result.RecruitFollowerId}");
                     _ = SyncChzzkMarkersToGameAsync(result.SaveId, validateAgainstRoster: false);
+                    _ = SyncViewerFollowerStateAsync(result.ViewerId, result.SaveId);
+                    _ = UpdateReservationStatusSafeAsync(result.ViewerId, result.SaveId, result.Generation, result.RaffleId, "Created", result.AppliedAppearance);
                 }
-                else Console.WriteLine($"[RAFFLE] identity apply failed: {result.Error}");
+                else
+                {
+                    Console.WriteLine($"[RAFFLE] identity apply failed: {result.Error}");
+                    _ = UpdateReservationStatusSafeAsync(result.ViewerId, result.SaveId, result.Generation, result.RaffleId, "Draft", null);
+                }
 
                 lock (raffleQueueGate) currentRecruitFollowerId = null;
                 _ = NotifyRaffleRoundClosedAsync(
@@ -515,18 +580,29 @@ bridge.MessageReceived += envelope =>
             {
                 var result = JsonSerializer.Deserialize<DonationEffectResult>(envelope.PayloadJson)!;
                 var matched = donationTraces.TryComplete(result.RequestId, out var trace, out var elapsedMs);
+                var outboxMatched = result.Success || !result.Retryable
+                    ? donationDeliveries.TryComplete(result.RequestId, out _)
+                    : donationDeliveries.Contains(result.RequestId);
+                var accepted = matched || outboxMatched;
                 var correlation = matched
                     ? $"matched=true, elapsedMs={elapsedMs:F1}, source={trace!.Source}, area={trace.Area}"
-                    : "matched=false, elapsedMs=unknown";
+                    : $"matched=false, elapsedMs=unknown, outboxMatched={outboxMatched}";
                 if (result.Success)
                 {
                     Console.WriteLine($"[DONATION][ACK][SUCCESS] request={ShortId(result.RequestId)}, {correlation}, event='{result.EventName}', effect={result.Effect}; details={result.Details}");
-                    overlay.ShowDonation(result.Nickname, result.Amount, result.EventName, seconds: 5);
-                    overlay.RegisterDonationBuff(result.Effect, result.EventName);
+                    if (accepted && presentedDonationResults.TryAdd(result.RequestId, 0))
+                    {
+                        overlay.ShowDonation(result.Nickname, result.Amount, result.EventName, seconds: 5);
+                        overlay.RegisterDonationBuff(result.Effect, result.EventName);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[DONATION][ACK][DUPLICATE-IGNORED] request={ShortId(result.RequestId)}; terminal result was already consumed");
+                    }
                 }
                 else
                 {
-                    Console.WriteLine($"[DONATION][ACK][FAILED] request={ShortId(result.RequestId)}, {correlation}, event='{result.EventName}', effect={result.Effect}; error={result.Error}");
+                    Console.WriteLine($"[DONATION][ACK][FAILED] request={ShortId(result.RequestId)}, {correlation}, retryable={result.Retryable}, event='{result.EventName}', effect={result.Effect}; error={result.Error}");
                 }
                 break;
             }
@@ -625,42 +701,77 @@ async Task HandleRaffleWinnerAsync(RaffleEntry? winner)
         return;
     }
 
-    if (!currentRecruitFollowerId.HasValue)
+    int recruitFollowerId;
+    string raffleSaveId;
+    string? raffleId;
+    lock (raffleQueueGate)
     {
-        Console.WriteLine("[RAFFLE] winner selected, but no game recruit is bound to this raffle. No game data was changed.");
+        if (!currentRecruitFollowerId.HasValue)
+        {
+            Console.WriteLine("[RAFFLE] winner selected, but no game recruit is bound to this raffle. No game data was changed.");
+            return;
+        }
+        recruitFollowerId = currentRecruitFollowerId.Value;
+        raffleSaveId = currentSaveId;
+        raffleId = currentRaffleId;
+    }
+
+    if (!followers.CanCreate(streamerChannelId, winner.ViewerId, raffleSaveId))
+    {
+        Console.WriteLine($"[RAFFLE] winner rejected: {winner.Nickname} already has a living follower in save={raffleSaveId}.");
+        await CompleteRaffleWithoutIdentityAsync(recruitFollowerId, "winner-ineligible");
         return;
     }
 
-    Console.WriteLine($"[RAFFLE] winner: {winner.Nickname} -> recruit {currentRecruitFollowerId.Value}");
+    var generation = followers.NextGeneration(streamerChannelId, winner.ViewerId, raffleSaveId);
+    var followerName = ViewerFollowerRepository.BuildFollowerName(winner.Nickname, generation);
+    Console.WriteLine($"[RAFFLE] winner: {followerName} -> recruit {recruitFollowerId}");
 
     FollowerAppearanceSelection? selectedAppearance = null;
-    if (cloud is not null && settings.Cloud.PreferRemoteViewerAppearance)
+    var requireAuthoritativeCloudAppearance = IsReleaseDistribution || settings.Cloud.PreferRemoteViewerAppearance;
+    if (requireAuthoritativeCloudAppearance)
     {
         try
         {
-            selectedAppearance = await cloud.GetViewerAppearanceAsync(streamerChannelId, winner.ViewerId, stop.Token);
+            if (cloud?.IsAuthenticated != true && !await TryConnectCloudAsync(logFailure: false))
+                throw new InvalidOperationException("authoritative appearance service is unavailable");
+            selectedAppearance = await cloud!.FinalizeViewerAppearanceAsync(streamerChannelId, winner.ViewerId, winner.Nickname, raffleSaveId, generation, raffleId, recruitFollowerId, followerName, stop.Token);
             if (selectedAppearance is not null)
                 Console.WriteLine($"[CLOUD] viewer appearance loaded: {selectedAppearance.FormId}");
         }
-        catch (Exception ex) { Console.WriteLine($"[CLOUD] viewer appearance lookup failed: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[CLOUD] authoritative appearance finalization failed; raffle assignment aborted: {ex.Message}");
+            await CompleteRaffleWithoutIdentityAsync(recruitFollowerId, "appearance-finalization-failed");
+            return;
+        }
     }
 
-    selectedAppearance ??= appearances.Get(streamerChannelId, winner.ViewerId);
+    // Production uses the server value captured after the winner is known. A stale local
+    // cache must not override the viewer's final saved selection.
+    if (!requireAuthoritativeCloudAppearance)
+        selectedAppearance = appearances.Get(streamerChannelId, winner.ViewerId);
     if (selectedAppearance is not null && !appearances.Validate(selectedAppearance))
     {
         Console.WriteLine($"[APPEARANCE] saved viewer selection is unavailable in the current save; using the recruit's game/default appearance instead: {selectedAppearance.FormId}");
         selectedAppearance = null;
     }
 
-    await bridge.SendAsync(GameMessageTypes.ApplyRecruitIdentity, new ApplyRecruitIdentityCommand
+    var identitySent = await bridge.SendAsync(GameMessageTypes.ApplyRecruitIdentity, new ApplyRecruitIdentityCommand
     {
-        RecruitFollowerId = currentRecruitFollowerId.Value,
+        RecruitFollowerId = recruitFollowerId,
         ViewerId = winner.ViewerId,
         Nickname = winner.Nickname,
-        SaveId = currentSaveId,
-        RaffleId = currentRaffleId,
+        FollowerName = followerName,
+        Generation = generation,
+        SaveId = raffleSaveId,
+        RaffleId = raffleId,
         Appearance = selectedAppearance
     }, stop.Token);
+    if (identitySent)
+        await UpdateReservationStatusSafeAsync(winner.ViewerId, raffleSaveId, generation, raffleId, "AppliedUnconfirmed", null);
+    else if (!identitySent)
+        await CompleteRaffleWithoutIdentityAsync(recruitFollowerId, "identity-dispatch-failed");
 }
 
 void BeginRaffleFor(RaffleRequestedEvent request)
@@ -812,9 +923,56 @@ async Task UploadLatestCatalogAsync()
 }
 
 var bridgeTask = bridge.RunAsync(stop.Token);
+var donationDeliveryTask = Task.Run(MaintainDonationOutboxAsync, stop.Token);
 Task? realtimeTask = null;
 Task? cloudRetryTask = null;
 Task? catalogRefreshTask = null;
+Task? tokenMaintenanceTask = null;
+
+if (!developmentMode && api is not null && http is not null && !string.IsNullOrWhiteSpace(refreshToken))
+{
+    tokenMaintenanceTask = Task.Run(async () =>
+    {
+        while (!stop.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromMinutes(30), stop.Token);
+                if (DateTimeOffset.UtcNow >= accessTokenExpiresAt - TimeSpan.FromMinutes(90))
+                {
+                    ProductionOAuthResult refreshed;
+                    if (IsReleaseDistribution)
+                        refreshed = await ProductionOAuth.RefreshAsync(http, cloudBaseUrl!, refreshToken!, stop.Token);
+                    else
+                    {
+                        var tokenSet = await api.RefreshTokenAsync(refreshToken!, stop.Token);
+                        refreshed = new ProductionOAuthResult(tokenSet.AccessToken, tokenSet.RefreshToken, tokenSet.TokenType, tokenSet.ExpiresIn, streamerChannelId, streamerChannelName);
+                    }
+                    accessToken = refreshed.AccessToken;
+                    refreshToken = refreshed.RefreshToken;
+                    accessTokenExpiresAt = DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, refreshed.ExpiresIn));
+                    Console.WriteLine($"[AUTH] CHZZK access token refreshed; next expiry={accessTokenExpiresAt:O}");
+                }
+                if (cloud is not null && accessToken is not null)
+                    await cloud.AuthenticateCompanionAsync(accessToken, stop.Token);
+                else
+                    await TryConnectCloudAsync(logFailure: false);
+            }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested) { break; }
+            catch (Exception ex) { Console.WriteLine($"[AUTH] token/session maintenance failed; will retry: {ex.Message}"); }
+        }
+    }, stop.Token);
+}
+
+async Task CompleteRaffleWithoutIdentityAsync(int recruitFollowerId, string status)
+{
+    lock (raffleQueueGate)
+    {
+        if (currentRecruitFollowerId == recruitFollowerId) currentRecruitFollowerId = null;
+    }
+    await NotifyRaffleRoundClosedAsync(recruitFollowerId, status, allowRetry: true);
+    StartNextQueuedRaffle();
+}
 
 if (settings.Appearance.AutoRefreshCatalog)
 {
@@ -920,7 +1078,7 @@ if (!developmentMode && api is not null && accessToken is not null)
             if (settings.Raffle.PreventExistingFollowerInSameSave && currentSaveId != "unknown")
             {
                 var record = followers.Find(streamerChannelId, chat.SenderChannelId, currentSaveId);
-                if (record is not null)
+                if (record is not null && !followers.CanCreate(streamerChannelId, chat.SenderChannelId, currentSaveId))
                 {
                     var rosterIsCurrent = string.Equals(latestRosterSaveId, currentSaveId, StringComparison.Ordinal)
                                           && latestRosterAt != DateTimeOffset.MinValue;
@@ -928,13 +1086,13 @@ if (!developmentMode && api is not null && accessToken is not null)
                     {
                         if (!latestRosterFollowersById.TryGetValue(record.FollowerId, out var rosterEntry))
                         {
-                            followers.Remove(streamerChannelId, chat.SenderChannelId, currentSaveId);
-                            Console.WriteLine($"[FOLLOWER-RECONCILE] stale viewer mapping cleared on join: {nickname}, followerId={record.FollowerId}, save={currentSaveId}; follower ID no longer exists; re-entry allowed");
+                            Console.WriteLine($"[RAFFLE] rejected {nickname}: follower state is unresolved (not in current roster), followerId={record.FollowerId}");
+                            return;
                         }
-                        else if (!FollowerRosterNameMatchesViewer(rosterEntry.Name, record.LastKnownNickname))
+                        if (!FollowerRosterNameMatchesViewer(rosterEntry.Name, record.FollowerName))
                         {
-                            followers.Remove(streamerChannelId, chat.SenderChannelId, currentSaveId);
-                            Console.WriteLine($"[FOLLOWER-RECONCILE] stale/reused follower ID cleared on join: viewer={nickname}, mappedFollowerId={record.FollowerId}, expectedName='{record.LastKnownNickname}', actualName='{rosterEntry.Name}', save={currentSaveId}; re-entry allowed");
+                            Console.WriteLine($"[FOLLOWER-RECONCILE] follower identity mismatch; preserving mapping and rejecting until lifecycle is known: viewer={nickname}, mappedFollowerId={record.FollowerId}");
+                            return;
                         }
                         else
                         {
@@ -972,7 +1130,16 @@ if (!developmentMode && api is not null && accessToken is not null)
         var requestId = Guid.NewGuid().ToString("N");
         try
         {
-            var amount = donation.ParsedAmount;
+            if (!string.Equals(donation.ChannelId, streamerChannelId, StringComparison.Ordinal))
+            {
+                Console.Error.WriteLine($"[DONATION][TERMINAL][CHANNEL-MISMATCH] seq={eventSequence}, request={ShortId(requestId)}, expectedHash={DiagnosticPrivacy.ShortHash(streamerChannelId)}, actualHash={DiagnosticPrivacy.ShortHash(donation.ChannelId)}");
+                return;
+            }
+            if (!donation.TryGetAmount(out var amount, out var amountError))
+            {
+                Console.Error.WriteLine($"[DONATION][TERMINAL][INVALID-AMOUNT] seq={eventSequence}, request={ShortId(requestId)}, reason={amountError}");
+                return;
+            }
             var area = lastGameStatus?.Area ?? "UNKNOWN";
             var decision = rules.ResolveDecision(amount, area);
             var donorHash = DiagnosticPrivacy.ShortHash(donation.DonatorChannelId);
@@ -983,17 +1150,23 @@ if (!developmentMode && api is not null && accessToken is not null)
                 return;
             }
 
-            _ = SendDonationEffectSafeAsync(
-                requestId,
-                "CHZZK",
-                donorHash,
-                donation.DonatorChannelId,
-                donation.DonatorNickname,
-                amount,
-                donation.DonationText,
-                area,
-                decision,
-                stop.Token);
+            var delivery = new DonationDeliveryRecord
+            {
+                RequestId = requestId,
+                Source = "CHZZK",
+                DonorHash = donorHash,
+                ViewerId = donation.DonatorChannelId ?? string.Empty,
+                Nickname = string.IsNullOrWhiteSpace(donation.DonatorNickname) ? "후원자" : donation.DonatorNickname,
+                Amount = amount,
+                Area = area,
+                TierName = decision.TierName,
+                Effect = decision.Effect,
+                EventName = decision.EventName,
+                ReceivedAtUtc = DateTimeOffset.UtcNow
+            };
+            if (!donationDeliveries.TryAdd(delivery))
+                throw new InvalidOperationException("Duplicate donation request ID was generated.");
+            Console.WriteLine($"[DONATION][OUTBOX][ENQUEUED] request={ShortId(requestId)}, durablePending={donationDeliveries.PendingCount}; donor message is not persisted");
         }
         catch (Exception ex)
         {
@@ -1004,7 +1177,7 @@ if (!developmentMode && api is not null && accessToken is not null)
     realtime.Subscription += sub =>
         Console.WriteLine($"[SUBSCRIPTION] {sub.SubscriberNickname} tier={sub.TierNo} month={sub.Month}");
 
-    realtimeTask = realtime.RunAsync(accessToken, stop.Token);
+    realtimeTask = realtime.RunAsync(() => accessToken ?? throw new InvalidOperationException("CHZZK access token is unavailable."), stop.Token);
 }
 
 async Task SyncChzzkMarkersToGameAsync(string saveId, bool validateAgainstRoster)
@@ -1034,14 +1207,14 @@ async Task SyncChzzkMarkersToGameAsync(string saveId, bool validateAgainstRoster
         if (validateAgainstRoster && string.Equals(latestRosterSaveId, saveId, StringComparison.Ordinal))
         {
             if (!latestRosterFollowersById.TryGetValue(record.FollowerId, out var actual)) continue;
-            if (!FollowerRosterNameMatchesViewer(actual.Name, record.LastKnownNickname)) continue;
+            if (!FollowerRosterNameMatchesViewer(actual.Name, record.FollowerName)) continue;
         }
 
         markers.Add(new ChzzkFollowerMarker
         {
             FollowerId = record.FollowerId,
             ViewerId = record.ViewerChannelId,
-            Nickname = NormalizeFollowerIdentityName(record.LastKnownNickname)
+            Nickname = NormalizeFollowerIdentityName(record.FollowerName)
         });
     }
 
@@ -1064,6 +1237,102 @@ async Task SyncChzzkMarkersToGameAsync(string saveId, bool validateAgainstRoster
     }, stop.Token);
     lastNameplateSyncSignature = signature;
     Console.WriteLine($"[FOLLOWER-NAMEPLATE] synced CHZZK markers to game: save={saveId}, count={markers.Count}, ids=[{string.Join(",", markers.Select(x => x.FollowerId).OrderBy(x => x))}]");
+}
+
+async Task SyncViewerFollowerStateAsync(string viewerId, string saveId)
+{
+    if (cloud is null || !cloud.IsAuthenticated || string.IsNullOrWhiteSpace(viewerId) || saveId == "unknown") return;
+    try
+    {
+        var snapshot = followers.GetStateSnapshot(streamerChannelId, viewerId, saveId);
+        var history = snapshot.History
+            .Select(x => new
+            {
+                generation = x.Generation, followerId = x.FollowerId, followerName = x.FollowerName,
+                viewerNickname = x.LastKnownNickname, isAlive = x.IsAlive, createdAt = x.CreatedAt,
+                diedAt = x.DiedAt, deathReason = x.DeathReason, resurrectedAt = x.ResurrectedAt,
+                appearance = x.Appearance,
+                events = x.Events.Select(e => new { type = e.Type, at = e.At, cause = e.Cause }).ToArray()
+            }).ToArray();
+        await cloud.PutViewerStateAsync(streamerChannelId, viewerId, new
+        {
+            saveId,
+            revision = snapshot.Revision,
+            canCreate = snapshot.CanCreate,
+            nextGeneration = snapshot.NextGeneration,
+            history
+        }, stop.Token);
+    }
+    catch (Exception ex) { Console.WriteLine($"[CLOUD] viewer state sync failed: viewer={viewerId}, error={ex.Message}"); }
+}
+
+async Task UpdateReservationStatusSafeAsync(string viewerId, string saveId, int generation, string? raffleId, string status, FollowerAppearanceSelection? appearance)
+{
+    if (cloud is null || !cloud.IsAuthenticated) return;
+    try { await cloud.UpdateReservationStatusAsync(streamerChannelId, viewerId, saveId, generation, raffleId, status, appearance, stop.Token); }
+    catch (Exception ex) { Console.WriteLine($"[FOLLOWER-RESERVATION] status update failed: viewer={viewerId}, generation={generation}, status={status}, error={ex.Message}"); }
+}
+
+async Task RecoverPendingReservationsAsync(FollowerRosterSnapshot roster)
+{
+    if (cloud is null || !cloud.IsAuthenticated || roster.SaveId == "unknown" || Interlocked.Exchange(ref reservationRecoveryInFlight, 1) != 0) return;
+    try
+    {
+        var pending = await cloud.GetPendingReservationsAsync(streamerChannelId, roster.SaveId, stop.Token);
+        foreach (var reservation in pending)
+        {
+            var actual = roster.Followers.FirstOrDefault(x => x.FollowerId == reservation.RecruitFollowerId);
+            if (actual is null || !FollowerRosterNameMatchesViewer(actual.Name, reservation.FollowerName))
+            {
+                var lastStatusAt = Math.Max(reservation.StatusUpdatedAt, reservation.ReservedAt);
+                if (lastStatusAt > 0 && DateTimeOffset.UtcNow.ToUnixTimeSeconds() - lastStatusAt >= 600)
+                {
+                    await UpdateReservationStatusSafeAsync(reservation.ViewerChannelId, roster.SaveId, reservation.Generation, reservation.RaffleId, "Draft", null);
+                    Console.WriteLine($"[FOLLOWER-RECOVERY] released stale reservation after 10m: viewer={reservation.ViewerChannelId}, follower={reservation.FollowerName}, id={reservation.RecruitFollowerId}");
+                }
+                continue;
+            }
+            var recoveredAppearance = actual.Appearance is null ? reservation.AppliedAppearance ?? reservation.Appearance : new FollowerAppearanceSelection
+            {
+                FormId = reservation.Appearance?.FormId ?? actual.Appearance.FormId,
+                VariantId = actual.Appearance.VariantId,
+                ColorId = actual.Appearance.ColorId
+            };
+            var recoveredCreatedAt = reservation.ReservedAt > 0 ? DateTimeOffset.FromUnixTimeSeconds(reservation.ReservedAt) : roster.GeneratedAt;
+            var existingRecord = followers.GetForSave(streamerChannelId, roster.SaveId).FirstOrDefault(x => x.FollowerId == reservation.RecruitFollowerId);
+            if (existingRecord is not null)
+            {
+                existingRecord.Appearance = recoveredAppearance;
+                followers.Upsert(existingRecord);
+                await UpdateReservationStatusSafeAsync(reservation.ViewerChannelId, roster.SaveId, reservation.Generation, reservation.RaffleId, "Created", recoveredAppearance);
+                await SyncViewerFollowerStateAsync(reservation.ViewerChannelId, roster.SaveId);
+                continue;
+            }
+            followers.Upsert(new ViewerFollowerRecord
+            {
+                StreamerChannelId = streamerChannelId, ViewerChannelId = reservation.ViewerChannelId,
+                LastKnownNickname = reservation.ViewerNickname, FollowerName = reservation.FollowerName,
+                SaveId = roster.SaveId, FollowerId = reservation.RecruitFollowerId,
+                Generation = reservation.Generation, IsAlive = !actual.IsDead,
+                CreatedAt = recoveredCreatedAt,
+                DiedAt = actual.IsDead ? roster.GeneratedAt : null,
+                DeathReason = actual.IsDead ? actual.DeathReason ?? "Unknown" : null,
+                Appearance = recoveredAppearance,
+                Events = actual.IsDead
+                    ? new List<ViewerFollowerHistoryEvent>
+                    {
+                        new() { Type = "Created", At = recoveredCreatedAt },
+                        new() { Type = "Died", At = roster.GeneratedAt, Cause = actual.DeathReason ?? "Unknown" }
+                    }
+                    : new List<ViewerFollowerHistoryEvent> { new() { Type = "Created", At = recoveredCreatedAt } }
+            });
+            await UpdateReservationStatusSafeAsync(reservation.ViewerChannelId, roster.SaveId, reservation.Generation, reservation.RaffleId, "Created", recoveredAppearance);
+            await SyncViewerFollowerStateAsync(reservation.ViewerChannelId, roster.SaveId);
+            Console.WriteLine($"[FOLLOWER-RECOVERY] recovered unconfirmed generation: viewer={reservation.ViewerChannelId}, follower={reservation.FollowerName}, id={reservation.RecruitFollowerId}");
+        }
+    }
+    catch (Exception ex) { Console.WriteLine($"[FOLLOWER-RECOVERY] pending reservation scan failed: {ex.Message}"); }
+    finally { Interlocked.Exchange(ref reservationRecoveryInFlight, 0); }
 }
 
 static bool FollowerRosterNameMatchesViewer(string? actualName, string? expectedNickname)
@@ -1232,7 +1501,7 @@ async Task ConsoleLoopAsync()
                         latestCatalogSaveId,
                         raffle.IsOpen,
                         raffle.ParticipantCount,
-                        donationTraces.PendingCount);
+                        donationDeliveries.PendingCount);
                     var bundle = await Task.Run(() => supportBundles.Create(snapshot), stop.Token);
                     lastSupportBundlePath = bundle.ZipPath;
                     Console.WriteLine($"[SUPPORT][READY] report={bundle.ReportId}, bytes={bundle.Bytes}, file={bundle.ZipPath}");
@@ -1287,7 +1556,7 @@ async Task ConsoleLoopAsync()
                     ? "PUMP_STALE"
                     : gameSyncPhase;
                 var overlayPollAge = overlay.StatePollAgeSeconds;
-                Console.WriteLine($"MODE={(developmentMode ? "DEV" : "CHZZK")}, CHZZK={(developmentMode ? "disabled" : streamerChannelName)}, GAME={gameReady}, GAME_SOCKET={bridge.IsGameConnected}, GAME_READY={gameReady}, SYNC={displayedSyncPhase}, PUMP_AGE={(pumpAgeSeconds < 0 ? "none" : pumpAgeSeconds.ToString("F1") + "s")}, SAVE={currentSaveId}, AREA={lastDonationRuntimeState.Area}, DONATION_GATE={lastDonationRuntimeState.Reason}, DONATION_READY={lastDonationRuntimeState.IsReady}, DONATION_QUEUE={lastDonationRuntimeState.PendingDonations}, RECRUIT={currentRecruitFollowerId?.ToString() ?? "none"}, RAFFLE={raffle.IsOpen}, participants={raffle.ParticipantCount}, queue={pendingRaffleRequests.Count}, OVERLAY={(overlay.IsClientPolling ? "ready" : "not-polling")}, OVERLAY_DOC={overlay.ClientDocumentVersion}, OVERLAY_DOC_CURRENT={overlay.IsClientDocumentCurrent}, OVERLAY_POLL_AGE={(overlayPollAge < 0 ? "none" : overlayPollAge.ToString("F1") + "s")}, CLOUD={(cloud?.IsAuthenticated == true ? "connected" : "off")}, CATALOG={latestCatalogCount}, CATALOG_SAVE={latestCatalogSaveId}, DONATION_PENDING={donationTraces.PendingCount}");
+                Console.WriteLine($"MODE={(developmentMode ? "DEV" : "CHZZK")}, CHZZK={(developmentMode ? "disabled" : streamerChannelName)}, GAME={gameReady}, GAME_SOCKET={bridge.IsGameConnected}, GAME_READY={gameReady}, SYNC={displayedSyncPhase}, PUMP_AGE={(pumpAgeSeconds < 0 ? "none" : pumpAgeSeconds.ToString("F1") + "s")}, SAVE={currentSaveId}, AREA={lastDonationRuntimeState.Area}, DONATION_GATE={lastDonationRuntimeState.Reason}, DONATION_READY={lastDonationRuntimeState.IsReady}, DONATION_QUEUE={lastDonationRuntimeState.PendingDonations}, RECRUIT={currentRecruitFollowerId?.ToString() ?? "none"}, RAFFLE={raffle.IsOpen}, participants={raffle.ParticipantCount}, queue={pendingRaffleRequests.Count}, OVERLAY={(overlay.IsClientPolling ? "ready" : "not-polling")}, OVERLAY_DOC={overlay.ClientDocumentVersion}, OVERLAY_DOC_CURRENT={overlay.IsClientDocumentCurrent}, OVERLAY_POLL_AGE={(overlayPollAge < 0 ? "none" : overlayPollAge.ToString("F1") + "s")}, CLOUD={(cloud?.IsAuthenticated == true ? "connected" : "off")}, CATALOG={latestCatalogCount}, CATALOG_SAVE={latestCatalogSaveId}, DONATION_PENDING={donationTraces.PendingCount}, DONATION_OUTBOX={donationDeliveries.PendingCount}");
                 Console.WriteLine($"VIEWER_PAGE={viewerPage.Url ?? "not-ready"}");
                 break;
             }
@@ -1305,11 +1574,12 @@ async Task ConsoleLoopAsync()
     }
 }
 
-var tasks = new List<Task> { bridgeTask, ConsoleLoopAsync() };
+var tasks = new List<Task> { bridgeTask, donationDeliveryTask, ConsoleLoopAsync() };
 if (realtimeTask is not null) tasks.Add(realtimeTask);
 if (catalogRefreshTask is not null) tasks.Add(catalogRefreshTask);
 tasks.Add(rosterRefreshTask);
 if (cloudRetryTask is not null) tasks.Add(cloudRetryTask);
+if (tokenMaintenanceTask is not null) tasks.Add(tokenMaintenanceTask);
 
 try
 {
@@ -1321,9 +1591,69 @@ catch (OperationCanceledException) when (stop.IsCancellationRequested)
 }
 finally
 {
-    Console.WriteLine($"[DIAG][SESSION-END] version={ReleaseVersion}, utc={DateTimeOffset.UtcNow:O}, pendingDonations={donationTraces.PendingCount}, cancellationRequested={stop.IsCancellationRequested}");
+    Console.WriteLine($"[DIAG][SESSION-END] version={ReleaseVersion}, utc={DateTimeOffset.UtcNow:O}, pendingDonationTraces={donationTraces.PendingCount}, durableDonationOutbox={donationDeliveries.PendingCount}, cancellationRequested={stop.IsCancellationRequested}");
     cloud?.Dispose();
     http?.Dispose();
+}
+
+async Task MaintainDonationOutboxAsync()
+{
+    if (donationDeliveries.PendingCount > 0)
+        Console.WriteLine($"[DONATION][OUTBOX][RECOVERED] durablePending={donationDeliveries.PendingCount}; delivery resumes when the game bridge is available");
+
+    while (!stop.IsCancellationRequested)
+    {
+        try
+        {
+            if (!bridge.IsGameConnected)
+            {
+                await Task.Delay(500, stop.Token);
+                continue;
+            }
+            // Keep bounded backpressure in front of the Mod's 256-item queue. This also keeps
+            // acknowledgement monitoring and reconnect recovery lightweight during donation bursts.
+            if (donationTraces.PendingCount >= 32)
+            {
+                await Task.Delay(100, stop.Token);
+                continue;
+            }
+
+            var retryBefore = DateTimeOffset.UtcNow - TimeSpan.FromSeconds(2);
+            var delivery = donationDeliveries.Snapshot().FirstOrDefault(x =>
+                !donationTraces.Contains(x.RequestId) &&
+                (!x.LastAttemptAtUtc.HasValue || x.LastAttemptAtUtc.Value <= retryBefore));
+            if (delivery is null)
+            {
+                await Task.Delay(250, stop.Token);
+                continue;
+            }
+
+            if (!donationDeliveries.TryRecordAttempt(delivery.RequestId, DateTimeOffset.UtcNow))
+                continue;
+            Console.WriteLine($"[DONATION][OUTBOX][DISPATCH] request={ShortId(delivery.RequestId)}, attempt={delivery.AttemptCount + 1}, durablePending={donationDeliveries.PendingCount}");
+            await SendDonationEffectSafeAsync(
+                delivery.RequestId,
+                delivery.Source,
+                delivery.DonorHash,
+                delivery.ViewerId,
+                delivery.Nickname,
+                delivery.Amount,
+                message: null,
+                delivery.Area,
+                new DonationDecision(delivery.Effect, delivery.EventName, delivery.TierName),
+                stop.Token);
+        }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested)
+        {
+            break;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[DONATION][OUTBOX][WORKER-ERROR] type={ex.GetType().FullName}, error={ex.Message}");
+            try { await Task.Delay(1000, stop.Token); }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested) { break; }
+        }
+    }
 }
 
 async Task SendDonationEffectSafeAsync(
@@ -1465,14 +1795,28 @@ static string BuildCatalogFingerprint(FollowerAppearanceCatalog catalog)
     return catalog.SaveId + "\n" + string.Join("\n", parts);
 }
 
+static string RequireHttpsEnvironmentVariable(string name)
+{
+    var value = Environment.GetEnvironmentVariable(name)?.Trim();
+    if (string.IsNullOrWhiteSpace(value))
+        throw new InvalidOperationException($"Staging mode requires {name}.");
+    if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
+        || !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+        || !string.IsNullOrEmpty(uri.UserInfo))
+        throw new InvalidOperationException($"Staging mode requires {name} to be an absolute HTTPS URL without embedded credentials.");
+    return value.TrimEnd('/');
+}
+
 static bool IsTruthy(string? value) =>
     value is not null && (value.Equals("1", StringComparison.OrdinalIgnoreCase)
                           || value.Equals("true", StringComparison.OrdinalIgnoreCase)
                           || value.Equals("yes", StringComparison.OrdinalIgnoreCase)
                           || value.Equals("on", StringComparison.OrdinalIgnoreCase));
 
+#if RC_TEST_TOOLS
 static string Slug(string value)
 {
     var chars = value.Where(char.IsLetterOrDigit).Take(32).ToArray();
     return chars.Length == 0 ? Guid.NewGuid().ToString("N") : new string(chars).ToLowerInvariant();
 }
+#endif

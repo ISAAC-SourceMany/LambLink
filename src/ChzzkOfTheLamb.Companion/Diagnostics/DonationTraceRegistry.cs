@@ -43,6 +43,16 @@ internal sealed class DonationTraceRegistry
 
     public bool Contains(string requestId) => _pending.ContainsKey(requestId);
 
+    public int AbandonAll()
+    {
+        var abandoned = 0;
+        foreach (var requestId in _pending.Keys)
+        {
+            if (_pending.TryRemove(requestId, out _)) abandoned++;
+        }
+        return abandoned;
+    }
+
     private bool TryRemove(string requestId, out DonationTrace? trace, out double elapsedMs)
     {
         if (_pending.TryRemove(requestId, out var removed))

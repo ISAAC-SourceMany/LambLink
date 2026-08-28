@@ -10,20 +10,30 @@ import urllib.request
 from typing import Any
 
 import boto3
+from boto3.dynamodb.conditions import Key
+from botocore.exceptions import ClientError
 from configuration import load_chzzk_configuration
 
 TABLE = os.environ["TABLE_NAME"]
-CONFIG = load_chzzk_configuration()
-COMPANION_CHZZK_CLIENT_ID = CONFIG.companion.client_id
-COMPANION_CHZZK_CLIENT_SECRET = CONFIG.companion.client_secret
-MYLAMB_CHZZK_CLIENT_ID = CONFIG.mylamb.client_id
-MYLAMB_CHZZK_CLIENT_SECRET = CONFIG.mylamb.client_secret
 TOKEN_SECRET = os.environ["TOKEN_SIGNING_SECRET"].encode("utf-8")
 FRONTEND_URL = os.environ["FRONTEND_URL"].rstrip("/")
 CHZZK_BASE = "https://openapi.chzzk.naver.com"
 CHZZK_AUTH = "https://chzzk.naver.com/account-interlock"
+CONFIG = None
 
 ddb = boto3.resource("dynamodb").Table(TABLE)
+
+
+def chzzk_configuration():
+    """Load CHZZK secrets only for OAuth/session routes.
+
+    This keeps the health check and public catalog available while a new staging
+    stack is waiting for its CHZZK applications to be registered.
+    """
+    global CONFIG
+    if CONFIG is None:
+        CONFIG = load_chzzk_configuration()
+    return CONFIG
 
 
 def _json(status: int, body: Any, headers: dict[str, str] | None = None):
@@ -133,9 +143,21 @@ def exchange_code_with_credentials(code: str, state: str, client_id: str, client
 
 
 def exchange_code(code: str, state: str) -> str:
+    credentials = chzzk_configuration().mylamb
     return exchange_code_with_credentials(
-        code, state, MYLAMB_CHZZK_CLIENT_ID, MYLAMB_CHZZK_CLIENT_SECRET
+        code, state, credentials.client_id, credentials.client_secret
     )["accessToken"]
+
+
+def refresh_token(refresh_token_value: str) -> dict[str, Any]:
+    credentials = chzzk_configuration().companion
+    envelope = http_json("POST", CHZZK_BASE + "/auth/v1/token", {
+        "grantType": "refresh_token",
+        "refreshToken": refresh_token_value,
+        "clientId": credentials.client_id,
+        "clientSecret": credentials.client_secret,
+    })
+    return envelope.get("content") or {}
 
 
 def _validate_companion_callback(value: str) -> str:
@@ -187,7 +209,7 @@ def consume_companion_ticket(ticket: str, nonce: str) -> dict[str, Any]:
 
 
 def get_catalog(streamer: str):
-    item = ddb.get_item(Key={"PK": f"STREAMER#{streamer}", "SK": "CATALOG"}).get("Item")
+    item = ddb.get_item(Key={"PK": f"STREAMER#{streamer}", "SK": "CATALOG"}, ConsistentRead=True).get("Item")
     if not item:
         return None
     return json.loads(item["Payload"])
@@ -235,6 +257,7 @@ def handler(event, context):
             return _json(200, {"ok": True, "service": "cotl-companion-api"})
 
         if path == "/auth/companion/start" and method == "GET":
+            credentials = chzzk_configuration().companion
             callback = _validate_companion_callback(qs.get("callback", ""))
             nonce = qs.get("nonce", "")
             if len(nonce) < 16 or len(nonce) > 128:
@@ -242,18 +265,19 @@ def handler(event, context):
             state = sign_token({"role": "companion-oauth-state", "callback": callback, "nonce": nonce}, 600)
             redirect_uri = api_public_url(event) + "/auth/companion/callback"
             url = CHZZK_AUTH + "?" + urllib.parse.urlencode({
-                "clientId": COMPANION_CHZZK_CLIENT_ID,
+                "clientId": credentials.client_id,
                 "redirectUri": redirect_uri,
                 "state": state,
             })
             return _redirect(url)
 
         if path == "/auth/companion/callback" and method == "GET":
+            credentials = chzzk_configuration().companion
             code = qs.get("code", "")
             state = qs.get("state", "")
             oauth_state = verify_token(state, "companion-oauth-state")
             token_content = exchange_code_with_credentials(
-                code, state, COMPANION_CHZZK_CLIENT_ID, COMPANION_CHZZK_CLIENT_SECRET
+                code, state, credentials.client_id, credentials.client_secret
             )
             me = chzzk_me(token_content["accessToken"])
             ticket = create_companion_ticket(token_content, me, str(oauth_state["nonce"]))
@@ -271,14 +295,25 @@ def handler(event, context):
                 return _json(400, {"error": "ticket and nonce are required"})
             return _json(200, consume_companion_ticket(ticket, nonce))
 
+        if path == "/auth/companion/refresh" and method == "POST":
+            body = json.loads(event.get("body") or "{}")
+            old_refresh = str(body.get("refreshToken") or "")
+            if not old_refresh: return _json(400, {"error": "refreshToken is required"})
+            content = refresh_token(old_refresh)
+            if not content.get("accessToken") or not content.get("refreshToken"):
+                return _json(401, {"error": "CHZZK token refresh failed"})
+            me = chzzk_me(content["accessToken"])
+            return _json(200, {**content, "streamerChannelId": me.get("channelId", ""), "streamerChannelName": me.get("channelName", "")})
+
         if path == "/auth/chzzk/start" and method == "GET":
+            credentials = chzzk_configuration().mylamb
             streamer = qs.get("streamer", "")
             if not streamer:
                 return _json(400, {"error": "streamer is required"})
             state = sign_token({"role": "oauth-state", "streamer": streamer}, 600)
             redirect_uri = api_public_url(event) + "/auth/chzzk/callback"
             url = CHZZK_AUTH + "?" + urllib.parse.urlencode({
-                "clientId": MYLAMB_CHZZK_CLIENT_ID,
+                "clientId": credentials.client_id,
                 "redirectUri": redirect_uri,
                 "state": state,
             })
@@ -338,12 +373,15 @@ def handler(event, context):
 
             if len(parts) == 4 and parts[2] == "appearance" and parts[3] == "me":
                 session = verify_token(bearer(event), "viewer")
-                key = {"PK": f"STREAMER#{streamer}", "SK": f"VIEWER#{session['sub']}"}
+                save_id = (get_catalog(streamer) or {}).get("saveId") or "unknown"
+                key = {"PK": f"STREAMER#{streamer}", "SK": f"DRAFT#{save_id}#{session['sub']}"}
+                state_key = {"PK": f"STREAMER#{streamer}", "SK": f"STATE#{save_id}#{session['sub']}"}
                 if method == "GET":
-                    item = ddb.get_item(Key=key).get("Item")
-                    if not item:
-                        return _json(404, {"error": "appearance not set"})
-                    return _json(200, json.loads(item["Payload"]))
+                    item = ddb.get_item(Key=key, ConsistentRead=True).get("Item")
+                    state_item = ddb.get_item(Key=state_key, ConsistentRead=True).get("Item")
+                    state = json.loads(state_item["Payload"]) if state_item else {"canCreate": True, "nextGeneration": 1, "history": []}
+                    draft = json.loads(item["Payload"]) if item else {}
+                    return _json(200, {**state, **draft, "saveId": save_id})
                 if method == "PUT":
                     catalog = get_catalog(streamer)
                     if not catalog:
@@ -351,27 +389,136 @@ def handler(event, context):
                     body = json.loads(event.get("body") or "{}")
                     appearance = body.get("appearance") or body
                     validate_appearance(catalog, appearance)
+                    state_item = ddb.get_item(Key=state_key, ConsistentRead=True).get("Item")
+                    state = json.loads(state_item["Payload"]) if state_item else {"canCreate": True, "nextGeneration": 1}
+                    if not state.get("canCreate", True):
+                        return _json(409, {"error": "현재 생성 가능한 신도가 없습니다"})
+                    current = ddb.get_item(Key=key, ConsistentRead=True).get("Item")
+                    current_payload = json.loads(current["Payload"]) if current else {}
+                    next_generation = int(state.get("nextGeneration") or 1)
+                    if current_payload.get("status") in ("Reserved", "AppliedUnconfirmed", "Created") and int(current_payload.get("generation") or 1) == next_generation:
+                        return _json(409, {"error": "래플 당첨 외형이 확정되어 수정할 수 없습니다"})
                     payload = {
                         "viewerChannelId": session["sub"],
                         "viewerNickname": session.get("nickname", ""),
                         "appearance": appearance,
+                        "generation": next_generation,
+                        "revision": int(current_payload.get("revision") or 0) + 1,
+                        "status": "Draft",
                         "updatedAt": int(time.time()),
                     }
                     ddb.put_item(Item={"PK": key["PK"], "SK": key["SK"], "Payload": json.dumps(payload, ensure_ascii=False, separators=(",", ":")), "UpdatedAt": int(time.time())})
-                    return _json(200, payload)
+                    return _json(200, {**state, **payload, "saveId": save_id})
 
             if len(parts) == 6 and parts[2] == "viewers" and parts[4] == "appearance":
-                # /streamers/{streamer}/viewers/{viewer}/appearance
-                pass
+                # Atomically freeze the exact latest draft used by this raffle winner.
+                viewer = parts[3]
+                session = verify_token(bearer(event), "companion")
+                if session["sub"] != streamer: raise PermissionError("streamer mismatch")
+                if parts[5] == "finalize" and method == "POST":
+                    body = json.loads(event.get("body") or "{}")
+                    save_id = str(body.get("saveId") or "unknown")
+                    generation = int(body.get("generation") or 1)
+                    key = {"PK": f"STREAMER#{streamer}", "SK": f"DRAFT#{save_id}#{viewer}"}
+                    item = ddb.get_item(Key=key, ConsistentRead=True).get("Item")
+                    payload = json.loads(item["Payload"]) if item else {
+                        "viewerChannelId": viewer, "viewerNickname": str(body.get("viewerNickname") or ""),
+                        "appearance": None, "generation": generation, "revision": 0, "status": "Draft", "updatedAt": int(time.time())
+                    }
+                    if int(payload.get("generation") or 1) != generation:
+                        return _json(409, {"error": "appearance generation mismatch"})
+                    current_status = str(payload.get("status") or "Draft")
+                    if current_status == "Reserved":
+                        if payload.get("raffleId") != body.get("raffleId"):
+                            return _json(409, {"error": "appearance is reserved by another raffle"})
+                    elif current_status != "Draft":
+                        return _json(409, {"error": f"appearance cannot be finalized from {current_status}"})
+                    else:
+                        old_payload = item["Payload"] if item else None
+                        payload["status"] = "Reserved"
+                        payload["raffleId"] = body.get("raffleId")
+                        payload["recruitFollowerId"] = int(body.get("recruitFollowerId") or 0)
+                        payload["followerName"] = str(body.get("followerName") or "")
+                        payload["reservedAt"] = int(time.time())
+                        new_payload = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+                        try:
+                            if item:
+                                ddb.update_item(Key=key, UpdateExpression="SET Payload=:new, UpdatedAt=:now", ConditionExpression="Payload=:old", ExpressionAttributeValues={":new": new_payload, ":old": old_payload, ":now": int(time.time())})
+                            else:
+                                ddb.put_item(Item={**key, "Payload": new_payload, "UpdatedAt": int(time.time())}, ConditionExpression="attribute_not_exists(PK)")
+                        except ddb.meta.client.exceptions.ConditionalCheckFailedException:
+                            return _json(409, {"error": "appearance changed during finalization; retry"})
+                    return _json(200, payload)
+                if parts[5] == "status" and method == "POST":
+                    body = json.loads(event.get("body") or "{}")
+                    save_id = str(body.get("saveId") or "unknown")
+                    generation = int(body.get("generation") or 1)
+                    key = {"PK": f"STREAMER#{streamer}", "SK": f"DRAFT#{save_id}#{viewer}"}
+                    item = ddb.get_item(Key=key, ConsistentRead=True).get("Item")
+                    if not item: return _json(404, {"error": "reservation not found"})
+                    payload = json.loads(item["Payload"])
+                    if int(payload.get("generation") or 1) != generation or payload.get("raffleId") != body.get("raffleId"):
+                        return _json(409, {"error": "reservation identity mismatch"})
+                    requested_status = str(body.get("status") or "AppliedUnconfirmed")
+                    current_status = str(payload.get("status") or "Draft")
+                    if current_status == "Created" or (requested_status == "AppliedUnconfirmed" and current_status != "Reserved"):
+                        return _json(200, payload)
+                    old_payload = item["Payload"]
+                    payload["status"] = requested_status
+                    if body.get("appliedAppearance") is not None: payload["appliedAppearance"] = body["appliedAppearance"]
+                    payload["statusUpdatedAt"] = int(time.time())
+                    new_payload = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+                    ddb.update_item(Key=key, UpdateExpression="SET Payload=:new, UpdatedAt=:now", ConditionExpression="Payload=:old", ExpressionAttributeValues={":new": new_payload, ":old": old_payload, ":now": int(time.time())})
+                    return _json(200, payload)
             if len(parts) == 5 and parts[2] == "viewers" and parts[4] == "appearance" and method == "GET":
                 viewer = parts[3]
                 session = verify_token(bearer(event), "companion")
                 if session["sub"] != streamer:
                     raise PermissionError("streamer mismatch")
-                item = ddb.get_item(Key={"PK": f"STREAMER#{streamer}", "SK": f"VIEWER#{viewer}"}).get("Item")
+                catalog = get_catalog(streamer) or {}
+                save_id = catalog.get("saveId") or "unknown"
+                item = ddb.get_item(Key={"PK": f"STREAMER#{streamer}", "SK": f"DRAFT#{save_id}#{viewer}"}, ConsistentRead=True).get("Item")
                 if not item:
                     return _json(404, {"error": "appearance not set"})
                 return _json(200, json.loads(item["Payload"]))
+
+            if len(parts) == 5 and parts[2] == "viewers" and parts[4] == "state" and method == "PUT":
+                viewer = parts[3]
+                session = verify_token(bearer(event), "companion")
+                if session["sub"] != streamer:
+                    raise PermissionError("streamer mismatch")
+                body = json.loads(event.get("body") or "{}")
+                save_id = str(body.get("saveId") or "unknown")
+                if save_id == "unknown": return _json(400, {"error": "saveId is required"})
+                payload = {**body, "viewerChannelId": viewer, "updatedAt": int(time.time())}
+                key = {"PK": f"STREAMER#{streamer}", "SK": f"STATE#{save_id}#{viewer}"}
+                revision = int(payload.get("revision") or 0)
+                new_payload = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+                try:
+                    ddb.update_item(Key=key,
+                        UpdateExpression="SET Payload=:new, UpdatedAt=:now, Revision=:revision",
+                        ConditionExpression="attribute_not_exists(Revision) OR Revision < :revision",
+                        ExpressionAttributeValues={":new": new_payload, ":now": int(time.time()), ":revision": revision})
+                except ClientError as exc:
+                    if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+                        return _json(200, {"ok": True, "staleIgnored": True, "revision": revision})
+                    raise
+                return _json(200, {"ok": True, "revision": revision})
+
+            if parts[2] == "reservations" and len(parts) == 3 and method == "GET":
+                session = verify_token(bearer(event), "companion")
+                if session["sub"] != streamer: raise PermissionError("streamer mismatch")
+                save_id = str(qs.get("saveId") or "unknown")
+                pending = []
+                query_args = {"KeyConditionExpression": Key("PK").eq(f"STREAMER#{streamer}") & Key("SK").begins_with(f"DRAFT#{save_id}#"), "ConsistentRead": True}
+                while True:
+                    result = ddb.query(**query_args)
+                    for item in result.get("Items", []):
+                        reservation = json.loads(item["Payload"])
+                        if reservation.get("status") in ("Reserved", "AppliedUnconfirmed"): pending.append(reservation)
+                    if not result.get("LastEvaluatedKey"): break
+                    query_args["ExclusiveStartKey"] = result["LastEvaluatedKey"]
+                return _json(200, {"reservations": pending})
 
         return _json(404, {"error": "not found", "path": path})
 

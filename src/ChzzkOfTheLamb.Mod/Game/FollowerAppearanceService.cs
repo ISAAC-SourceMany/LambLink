@@ -214,38 +214,64 @@ public sealed class FollowerAppearanceService(ManualLogSource log, GameSaveServi
         var info = FindFollowerInfo(target, 3);
         if (info is null) return false;
 
-        var ok = TryWriteConvertibleValue(info, new[] { "SkinName", "Form", "FormId" }, selection.FormId);
-
-        // The indoctrination UI and live follower renderer use SkinCharacter (the index into
-        // WorshipperData.Characters) in addition to SkinName. Previously we only changed
-        // SkinName, so the winner's form did not become visible until the streamer manually
-        // selected a form and COTL updated SkinCharacter itself. Resolve and write the exact
-        // game index immediately.
         try
         {
             var worshipperType = AccessTools.TypeByName("WorshipperData");
             var instance = worshipperType == null ? null : ReadStaticFirst(worshipperType, "_Instance", "Instance", "instance");
-            var getIndex = worshipperType?.GetMethod(
+            if (instance is null || worshipperType is null) return false;
+            var getIndex = worshipperType.GetMethod(
                 "GetSkinIndexFromName",
                 BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance,
                 null, new[] { typeof(string) }, null);
-            var idxObj = instance == null || getIndex == null
-                ? null
-                : getIndex.Invoke(instance, new object[] { selection.FormId });
-            if (idxObj is int idx && idx >= 0)
-                TryWriteConvertibleValue(info, new[] { "SkinCharacter" }, idx.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            var idxObj = getIndex?.Invoke(instance, new object[] { selection.FormId });
+            if (idxObj is not int idx || idx < 0) return false;
+            var characters = ReadFirst(instance, worshipperType, "Characters") as IList;
+            if (characters is null || idx >= characters.Count || characters[idx] is null) return false;
+            var character = characters[idx]!;
+            var skins = ReadFirst(character, character.GetType(), "Skin") as IList;
+            var colours = ReadFirst(character, character.GetType(), "SlotAndColours") as IList;
+            var variant = ParseIndex(selection.VariantId, 0);
+            var colour = ParseIndex(selection.ColorId, 0);
+            if (skins is null || variant < 0 || variant >= skins.Count) return false;
+            if (selection.ColorId is not null && (colours is null || colour < 0 || colour >= colours.Count)) return false;
+
+            var skinEntry = skins[variant];
+            var actualSkinName = skinEntry is null ? null : ReadFirst(skinEntry, skinEntry.GetType(), "Skin")?.ToString();
+            if (string.IsNullOrWhiteSpace(actualSkinName)) return false;
+
+            var ok = TryWriteConvertibleValue(info, new[] { "SkinCharacter" }, idx.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            ok &= TryWriteConvertibleValue(info, new[] { "SkinVariation", "SkinVariant", "Variant", "VariantId" }, variant.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (selection.ColorId is not null)
+                ok &= TryWriteConvertibleValue(info, new[] { "SkinColour", "SkinColor", "Colour", "Color" }, colour.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            ok &= TryWriteConvertibleValue(info, new[] { "SkinName", "Form", "FormId" }, actualSkinName!);
+            return ok;
         }
         catch (Exception ex)
         {
             log.LogWarning($"Could not synchronize SkinCharacter for form {selection.FormId}: {ex.Message}");
         }
 
-        if (selection.ColorId is not null)
-            TryWriteConvertibleValue(info, new[] { "SkinColour", "SkinColor", "Colour", "Color" }, selection.ColorId);
-        if (selection.VariantId is not null)
-            TryWriteConvertibleValue(info, new[] { "SkinVariation", "SkinVariant", "Variant", "VariantId" }, selection.VariantId);
-        return ok;
+        return false;
     }
+
+    public FollowerAppearanceSelection? ReadAppliedSelection(object target, string? requestedFormId)
+    {
+        var info = FindFollowerInfo(target, 3);
+        if (info is null) return null;
+        var formId = string.IsNullOrWhiteSpace(requestedFormId)
+            ? ReadFirst(info, info.GetType(), "SkinName")?.ToString()
+            : requestedFormId;
+        if (string.IsNullOrWhiteSpace(formId)) return null;
+        return new FollowerAppearanceSelection
+        {
+            FormId = formId!,
+            VariantId = ReadFirst(info, info.GetType(), "SkinVariation", "SkinVariant")?.ToString(),
+            ColorId = ReadFirst(info, info.GetType(), "SkinColour", "SkinColor")?.ToString()
+        };
+    }
+
+    private static int ParseIndex(string? value, int fallback)
+        => int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed : fallback;
 
     private FollowerFormDescriptor DescribeKnownId(object item, string formId, IReadOnlyList<Color> globalPalette)
     {

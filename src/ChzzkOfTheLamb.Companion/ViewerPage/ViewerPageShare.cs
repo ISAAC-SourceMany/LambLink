@@ -10,12 +10,16 @@ namespace ChzzkOfTheLamb.Companion.ViewerPage;
 /// </summary>
 public sealed class ViewerPageShare
 {
-    private const string DesktopShortcutName = "CHZZK 시청자 외형 설정 페이지.url";
+    private const string DefaultDesktopShortcutName = "CHZZK 시청자 외형 설정 페이지.url";
     private readonly string _dataDirectory;
+    private readonly string _desktopShortcutName;
 
-    public ViewerPageShare(string dataDirectory)
+    public ViewerPageShare(string dataDirectory, string? desktopShortcutName = null)
     {
         _dataDirectory = dataDirectory;
+        _desktopShortcutName = string.IsNullOrWhiteSpace(desktopShortcutName)
+            ? DefaultDesktopShortcutName
+            : desktopShortcutName.Trim();
     }
 
     public string? Url { get; private set; }
@@ -62,7 +66,7 @@ public sealed class ViewerPageShare
             {
                 try
                 {
-                    var desktopShortcut = Path.Combine(desktop, DesktopShortcutName);
+                    var desktopShortcut = Path.Combine(desktop, _desktopShortcutName);
                     WriteInternetShortcut(desktopShortcut, Url);
                     DesktopShortcutPath = desktopShortcut;
                 }
