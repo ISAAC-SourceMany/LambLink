@@ -110,7 +110,7 @@ LambLink는 단순히 채팅을 화면에 띄우는 도구가 아니라, 방송 
 8. Companion의 `viewer copy` 명령으로 시청자 외형 설정 주소를 복사해 방송 공지나 채팅에 공유합니다.
 9. Cult of the Lamb을 실행한 뒤 Companion에서 `status`를 입력해 `GAME=True`, `SYNC=READY`, `OVERLAY=ready`인지 확인합니다.
 
-설치 화면, OBS 권장 설정, 시청자 안내문과 문제 해결 방법은 **[한글 사용자 설명서](docs/guides/USER_GUIDE_KO.md)**에서 자세히 확인할 수 있습니다.
+설치 화면, OBS 권장 설정과 문제 해결 방법은 **[한글 사용자 설명서](docs/guides/USER_GUIDE_KO.md)**에서 자세히 확인할 수 있습니다. 방송 공지에 바로 붙여 넣을 문구는 **[시청자 참여 안내문](docs/guides/VIEWER_NOTICE_KO.md)**을 사용하세요.
 
 ## 스트리머가 방송 전에 확인할 것
 
