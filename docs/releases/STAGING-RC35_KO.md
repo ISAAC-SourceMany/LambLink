@@ -40,7 +40,7 @@ Client Secret은 채팅이나 저장소에 붙여넣지 않는다.
 3. 두 애플리케이션이 승인·사용 중 상태가 되면 다음 명령을 사용자 PowerShell에서 실행한다. Client Secret은 화면에 표시되지 않는 보안 입력창에 입력한다.
 
 ```powershell
-cd E:\ChzzkOfTheLamb\aws
+cd E:\LambLink\aws
 .\scripts\configure-staging-chzzk.ps1 `
   -Profile cotl-staging `
   -CompanionClientId <STAGING_COMPANION_CLIENT_ID> `
@@ -52,10 +52,10 @@ cd E:\ChzzkOfTheLamb\aws
 ## staging Companion 실행
 
 OAuth 설정 후 전용 실행 스크립트를 사용한다. 스크립트는 CloudFormation 출력에서 주소를
-읽어 오며, 운영 Companion 데이터와 분리된 `%LOCALAPPDATA%\ChzzkOfTheLamb-Staging`을 사용한다.
+읽어 오며, 운영 Companion 데이터와 분리된 `%LOCALAPPDATA%\LambLink-Staging`을 사용한다.
 
 ```powershell
-cd E:\ChzzkOfTheLamb\aws
+cd E:\LambLink\aws
 .\scripts\run-staging-companion.ps1 -Profile cotl-staging
 ```
 
@@ -71,7 +71,7 @@ Companion 로그인, catalog 업로드, 시청자 웹 로그인, 외형 저장�
 
 ```powershell
 $env:COTL_INSTALLER_MANIFEST_URL='https://d2wu3w1rbasd2q.cloudfront.net/releases-staging/1.0.0-rc35-1d804f896a0c8d90/installer-manifest-1.0.0-rc35.json'
-& 'E:\ChzzkOfTheLamb\dist\ChzzkOfTheLamb-v1.0.0-rc35-distribution\USER-DOWNLOAD\ChzzkOfTheLamb-Setup-1.0.0-rc35.exe'
+& 'E:\LambLink\dist\LambLink-v1.0.0-rc35-distribution\USER-DOWNLOAD\LambLink-Setup-1.0.0-rc35.exe'
 ```
 
 ## 보안 및 종료

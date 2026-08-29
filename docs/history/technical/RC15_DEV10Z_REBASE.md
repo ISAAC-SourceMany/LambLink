@@ -6,8 +6,8 @@ RC15 restores the proven dev10z indoctrination raffle implementation directly in
 
 ## Source policy
 
-- `src/ChzzkOfTheLamb.Mod/Game/IndoctrinationRafflePatch.cs` is byte-for-byte identical to dev10z.
-- `src/ChzzkOfTheLamb.Mod/Plugin.cs` is copied from dev10z. Only `PluginVersion`, `BuildTag`, and the startup build-tag log differ.
+- `src/LambLink.Mod/Game/IndoctrinationRafflePatch.cs` is byte-for-byte identical to dev10z.
+- `src/LambLink.Mod/Plugin.cs` is copied from dev10z. Only `PluginVersion`, `BuildTag`, and the startup build-tag log differ.
 - Production Companion authentication, cloud API, installer, hosting, font-patch, donation, appearance, and protocol sources remain based on RC14.
 - No RC9-RC14 generic raffle trigger, in-flight state, or fallback hook is used by the game mod.
 
@@ -16,7 +16,7 @@ RC15 restores the proven dev10z indoctrination raffle implementation directly in
 When the indoctrination menu opens for a recruit while the Companion bridge is connected:
 
 ```text
-CHZZK Companion Integration 1.0.0 loaded [BUILD=rc15-dev10z-rebase]
+LambLink 1.0.0 loaded [BUILD=rc15-dev10z-rebase]
 CHZZK raffle requested at indoctrination start for game recruit <id> (source=<source>)
 ```
 

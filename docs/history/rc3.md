@@ -15,7 +15,7 @@ Add font patch asset verification and package the Korean font plugin and bundle 
 
 ## 복원 근거
 
-- 보존 소스: `ChzzkOfTheLamb-v1.0.0-rc3-source.zip`
+- 보존 소스: `LambLink-v1.0.0-rc3-source.zip`
 - 보존 시각 기준: `2026-08-23T11:19:02+00:00`
 - 이전 스냅샷과의 실제 파일 차이를 사용해 복원함
 

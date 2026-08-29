@@ -7,7 +7,7 @@ Correct the release layout, installer script, and external distribution document
 ## 실제 변경 파일
 
 - `M	DEPLOY-RELEASE.md`
-- `M	Install-ChzzkOfTheLamb.ps1`
+- `M	Install-LambLink.ps1`
 - `M	README.md`
 - `M	RELEASE-README.md`
 - `M	build-release.ps1`
@@ -15,7 +15,7 @@ Correct the release layout, installer script, and external distribution document
 
 ## 복원 근거
 
-- 보존 소스: `ChzzkOfTheLamb-v1.0.0-rc2-source.zip`
+- 보존 소스: `LambLink-v1.0.0-rc2-source.zip`
 - 보존 시각 기준: `2026-08-23T10:26:38+00:00`
 - 이전 스냅샷과의 실제 파일 차이를 사용해 복원함
 

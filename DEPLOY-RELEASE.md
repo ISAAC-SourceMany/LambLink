@@ -1,4 +1,4 @@
-# v1.0.0 RC35 진단 테스트·배포 체크리스트
+# v1.0.0 RC39 진단 테스트·배포 체크리스트
 
 ## 1. Korean Font Fix 4.2.1 실제 바이너리 준비
 
@@ -25,14 +25,14 @@
 
 성공하면:
 
-`dist\ChzzkOfTheLamb-v1.0.0-rc35-distribution.zip`
+`dist\LambLink-v1.0.0-rc39-distribution.zip`
 
 이 생성됩니다.
 
 ## 4. 클린 PC 검증
 
 - Steam판 Cult of the Lamb + BepInEx 5 + COTL_API 환경
-- 기존 ChzzkOfTheLamb/COTL_KoreanFontFix 폴더가 없는 상태
+- 기존 LambLink/COTL_KoreanFontFix 폴더가 없는 상태
 - 설치 스크립트 한 번으로 두 플러그인 폴더가 생성되는지 확인
 - 게임 로그에 `COTL Korean Font Fix 4.2.1 loaded`가 찍히는지 확인
 - `Loaded bundled Korean TMP font: KoreanRuntimeFont`가 찍히는지 확인

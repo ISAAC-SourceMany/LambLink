@@ -5,7 +5,7 @@ CHZZK Open API
   OAuth + CHAT / DONATION / SUBSCRIPTION
                  |
                  v
-ChzzkOfTheLamb.Companion
+LambLink.Companion
   - RaffleManager
   - DonationRuleEngine
   - ViewerFollowerRepository
@@ -16,7 +16,7 @@ ChzzkOfTheLamb.Companion
                  v
 Cult of the Lamb process
   BepInEx / Harmony
-  ChzzkOfTheLamb.Mod
+  LambLink.Mod
   - network receiver
   - ConcurrentQueue<GameCommand>
   - Unity main-thread Update()

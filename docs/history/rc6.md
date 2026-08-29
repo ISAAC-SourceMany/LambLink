@@ -10,11 +10,11 @@ Correct installer release handling, package generation, and deployment instructi
 - `M	README.md`
 - `M	RELEASE-README.md`
 - `M	build-release.ps1`
-- `M	src/ChzzkOfTheLamb.Installer/Program.cs`
+- `M	src/LambLink.Installer/Program.cs`
 
 ## 복원 근거
 
-- 보존 소스: `ChzzkOfTheLamb-v1.0.0-rc6-source.zip`
+- 보존 소스: `LambLink-v1.0.0-rc6-source.zip`
 - 보존 시각 기준: `2026-08-23T15:11:46+00:00`
 - 이전 스냅샷과의 실제 파일 차이를 사용해 복원함
 

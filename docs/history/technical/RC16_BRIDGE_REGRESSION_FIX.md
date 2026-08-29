@@ -7,7 +7,7 @@ RC16 keeps the dev10z raffle trigger and recruit-ID resolution while restoring t
 Expected game log order:
 
 ```text
-CHZZK Companion Integration 1.0.0 loaded [BUILD=rc16-dev10z-raffle-immediate-bridge]
+LambLink 1.0.0 loaded [BUILD=rc16-dev10z-raffle-immediate-bridge]
 [BRIDGE][START] reason=plugin-awake, endpoint=ws://127.0.0.1:17771/game
 [BRIDGE][CONNECT] attempting ws://127.0.0.1:17771/game
 [BRIDGE][CONNECTED] Connected to CHZZK Companion at ws://127.0.0.1:17771/game

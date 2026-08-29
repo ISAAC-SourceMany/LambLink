@@ -7,13 +7,13 @@ Refine donation dispatch and runtime effect application between the Companion an
 ## 실제 변경 파일
 
 - `M	README.md`
-- `M	src/ChzzkOfTheLamb.Companion/Program.cs`
-- `M	src/ChzzkOfTheLamb.Mod/Game/DonationEffectService.cs`
-- `M	src/ChzzkOfTheLamb.Mod/Plugin.cs`
+- `M	src/LambLink.Companion/Program.cs`
+- `M	src/LambLink.Mod/Game/DonationEffectService.cs`
+- `M	src/LambLink.Mod/Plugin.cs`
 
 ## 복원 근거
 
-- 보존 소스: `ChzzkOfTheLamb-v0.1-devbridge10t.zip`
+- 보존 소스: `LambLink-v0.1-devbridge10t.zip`
 - 보존 시각 기준: `2026-08-23T07:25:50+00:00`
 - 이전 스냅샷과의 실제 파일 차이를 사용해 복원함
 

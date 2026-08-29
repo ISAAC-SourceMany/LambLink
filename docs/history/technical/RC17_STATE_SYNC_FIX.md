@@ -2,11 +2,11 @@
 
 ## Confirmed RC14/RC16 Companion comparison
 
-The complete `ChzzkOfTheLamb.Companion` trees were compared before this change.
+The complete `LambLink.Companion` trees were compared before this change.
 RC14 and RC16 contained the same files. Every implementation file was byte-identical except:
 
 - `Program.cs`: displayed release label changed from `1.0.0-rc1` to `1.0.0-rc16`.
-- `ChzzkOfTheLamb.Companion.csproj`: package/file version metadata changed to RC16.
+- `LambLink.Companion.csproj`: package/file version metadata changed to RC16.
 
 The Protocol tree, WebSocket server, catalog logic, raffle logic, CHZZK client, cloud client,
 overlay, storage, and settings implementations were identical. Rebuilding the RC16 Companion
@@ -44,7 +44,7 @@ while the bridge was not connected, the request was returned/dropped and was nev
 Companion:
 
 ```text
-CHZZK Companion for Cult of the Lamb - v1.0.0-rc17
+LambLink for Cult of the Lamb - v1.0.0-rc17
 [GAME] connected
 [BRIDGE][STATE][TX] GET_GAME_STATUS
 [BRIDGE][STATE][RX] GAME_STATUS inGame=True, save=slot_0, ...

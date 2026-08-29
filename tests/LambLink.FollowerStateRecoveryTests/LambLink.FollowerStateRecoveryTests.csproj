@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\LambLink.Companion\Configuration\CompanionLaunchProfile.cs" Link="CompanionLaunchProfile.cs" />
+    <Compile Include="..\..\src\LambLink.Companion\Configuration\LegacyDataMigration.cs" Link="LegacyDataMigration.cs" />
+    <Compile Include="..\..\src\LambLink.Companion\Storage\ViewerFollowerRepository.cs" Link="ViewerFollowerRepository.cs" />
+    <ProjectReference Include="..\..\src\LambLink.Protocol\LambLink.Protocol.csproj" />
+  </ItemGroup>
+</Project>

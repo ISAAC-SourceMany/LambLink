@@ -1,4 +1,4 @@
-# ChzzkOfTheLamb RC35 개발 인수인계
+# LambLink RC35 개발 인수인계
 
 작성일: 2026-08-28
 
@@ -65,7 +65,7 @@ DONATION_OUTBOX=0
 - 운영과 별도인 CloudFormation 스택, API Gateway, Lambda, DynamoDB, S3, CloudFront, 토큰 Secret을 사용한다.
 - Release Companion은 기본적으로 운영 주소에 고정된다.
 - `COTL_STAGING_MODE=1`인 경우에만 staging endpoint override를 허용한다.
-- staging 데이터는 `%LOCALAPPDATA%\ChzzkOfTheLamb-Staging`에 저장한다.
+- staging 데이터는 `%LOCALAPPDATA%\LambLink-Staging`에 저장한다.
 - staging 바로가기는 `CHZZK 시청자 외형 설정 페이지 (Staging).url`을 사용한다.
 - 운영 스택과 운영 `/releases/` 경로는 이번 작업에서 변경하지 않았다.
 
@@ -114,11 +114,11 @@ C:\Users\user\Downloads\CultoftheLamb\Project\Assembly-CSharp
 ### Git과 빌드
 
 ```powershell
-git clone https://github.com/ISAAC-SourceMany/ChzzkOfTheLamb.git
-cd ChzzkOfTheLamb
+git clone https://github.com/ISAAC-SourceMany/LambLink.git
+cd LambLink
 git checkout main
 git pull --ff-only origin main
-dotnet build .\ChzzkOfTheLamb.sln -c Release
+dotnet build .\LambLink.sln -c Release
 .\build-distribution.ps1
 ```
 
@@ -231,7 +231,7 @@ Git에 없어야 하는 항목:
 
 - CHZZK Client Secret과 OAuth access/refresh token
 - AWS access key, 임시 로그인 쿠키/세션
-- `%LOCALAPPDATA%\ChzzkOfTheLamb*`의 설정·로그·outbox·이력
+- `%LOCALAPPDATA%\LambLink*`의 설정·로그·outbox·이력
 - `aws\staging-outputs.local.json`, `aws\staging-release.local.json`
 - `dist`, `release-hosting`, `.aws-sam`
 - 실제 Cult of the Lamb 역컴파일 소스

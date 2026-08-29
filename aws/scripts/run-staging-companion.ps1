@@ -1,4 +1,4 @@
-param(
+﻿param(
   [string]$StackName = 'cotl-chzzk-staging',
   [string]$Profile = 'cotl-staging',
   [string]$Region = 'ap-northeast-2',
@@ -9,7 +9,7 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 if ([string]::IsNullOrWhiteSpace($CompanionPath)) {
-  $CompanionPath = Join-Path $projectRoot 'dist\ChzzkOfTheLamb-v1.0.0-rc35\Companion\ChzzkOfTheLamb.Companion.exe'
+  $CompanionPath = Join-Path $projectRoot 'dist\LambLink-v1.0.0-rc39\Companion\LambLink.Companion.exe'
 }
 $resolvedCompanion = [IO.Path]::GetFullPath($CompanionPath)
 if (-not (Test-Path -LiteralPath $resolvedCompanion -PathType Leaf)) {
@@ -31,7 +31,7 @@ if (-not $apiUsesHttps -or -not $frontendUsesHttps) {
 }
 
 if ([string]::IsNullOrWhiteSpace($DataDirectory)) {
-  $DataDirectory = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)) 'ChzzkOfTheLamb-Staging'
+  $DataDirectory = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)) 'LambLink-Staging'
 }
 $resolvedDataDirectory = [IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($DataDirectory))
 

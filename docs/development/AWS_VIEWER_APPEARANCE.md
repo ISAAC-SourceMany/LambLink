@@ -29,7 +29,8 @@ Multiple pending recruits are queued in Companion. Only one raffle is active at 
 DynamoDB keys:
 
 - catalog: `PK=STREAMER#<streamerId>`, `SK=CATALOG`
-- viewer appearance: `PK=STREAMER#<streamerId>`, `SK=VIEWER#<viewerId>`
+- viewer draft/appearance: `PK=STREAMER#<streamerId>`, `SK=DRAFT#<saveId>#<viewerId>`
+- viewer follower state/history: `PK=STREAMER#<streamerId>`, `SK=STATE#<saveId>#<viewerId>`
 
 ## Isolated staging deploy
 
@@ -89,19 +90,35 @@ cd aws
 
 The script enables the explicit `COTL_STAGING_MODE=1` gate, reads the API/frontend URLs from the
 staging CloudFormation stack, and stores all staging data under
-`%LOCALAPPDATA%\ChzzkOfTheLamb-Staging`. The staging desktop shortcut also has a distinct
+`%LOCALAPPDATA%\LambLink-Staging`. The staging desktop shortcut also has a distinct
 `(Staging)` name. Without the explicit gate, a Release Companion ignores endpoint overrides and
 continues to use production.
 
 Non-distribution development builds may still use `COTL_WEB_API_BASE`,
-`COTL_WEB_FRONTEND_URL`, or the `Cloud` section of `%LOCALAPPDATA%\ChzzkOfTheLamb\settings.json`.
+`COTL_WEB_FRONTEND_URL`, or the `Cloud` section of `%LOCALAPPDATA%\LambLink\settings.json`.
 
 When Cloud is connected, Companion:
 
 - validates its CHZZK access token with the AWS backend,
 - uploads the current form catalog + streamer allow-list,
 - prints the viewer setup URL,
-- looks up the raffle winner's saved appearance before applying identity.
+- looks up the raffle winner's saved appearance before applying identity,
+- reads the authenticated, paged follower-state collection for the loaded save,
+- restores a missing local `viewer-followers.json` only from a newer cloud revision,
+- sends a `Chzzk` nameplate marker only after the restored follower ID and normalized name match
+  the live game roster.
+
+Follower-state recovery uses
+`GET /streamers/<streamerId>/follower-states?saveId=<saveId>`. The endpoint requires a Companion
+session whose streamer identity matches the URL. It never accepts viewer sessions. Results are
+paged and the server derives `viewerChannelId` from the DynamoDB sort key instead of trusting the
+stored JSON payload.
+
+If the local mapping is empty and cloud recovery is unavailable or returns unusable state,
+Companion suppresses the destructive empty marker synchronization and retries on a later roster.
+A successful authoritative empty response is distinct: it confirms that the save has no cloud
+follower mappings, so an empty marker sync is then allowed. Existing non-empty local mappings remain
+available as an offline fallback and are still validated by follower ID plus normalized name.
 
 ## Viewer URL
 
@@ -117,7 +134,19 @@ Viewer flow:
 2. Sign in with CHZZK.
 3. Select Form / Variant / Color.
 4. Save.
-5. During a raffle type `!신도`.
+5. Use the always-visible `신도 히스토리 보기` button to inspect generations, death/resurrection events, and copy an older appearance.
+6. During a raffle type `!신도`.
+
+The deployed page uses `Follower.preview.json` plus a deployment-generated 4096px
+`Follower.preview.png`. The browser no longer downloads the 8192px, roughly 25 MB source atlas.
+Preview metadata groups every top-level Spine skin by its real numbered resources instead of
+assuming three variants. This preserves single-variant and special forms and includes the known
+two-, four-, and five-variant groups. The viewer still treats the runtime catalog's `variantIds`
+as authoritative, so unused preview resources are never offered as selectable options.
+Form and variant thumbnails are rendered only when they approach the viewport, and a color or
+variant click updates only the selected buttons and the main preview instead of rebuilding every
+picker. `deploy-frontend.ps1` validates that all RC39 catalog additions have preview metadata and
+uploads immutable assets before publishing the HTML that references them.
 
 If a viewer has no saved web appearance, Companion falls back to the existing local appearance store; if neither exists, the game's current/random appearance is kept.
 

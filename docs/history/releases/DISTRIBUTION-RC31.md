@@ -1,4 +1,4 @@
-# ChzzkOfTheLamb 1.0.0-rc31 진단 테스트·배포 안내
+# LambLink 1.0.0-rc31 진단 테스트·배포 안내
 
 ## 빌드
 
@@ -13,10 +13,10 @@ powershell -ExecutionPolicy Bypass -File .\build-distribution.ps1
 
 ## 배포 파일
 
-완료 후 `dist\ChzzkOfTheLamb-v1.0.0-rc31-distribution\` 아래에 두 폴더가 생성됩니다.
+완료 후 `dist\LambLink-v1.0.0-rc31-distribution\` 아래에 두 폴더가 생성됩니다.
 
 - `CDN-UPLOAD\`: 이 안의 네 파일을 CloudFront 원본의 `/releases/` 경로에 같은 이름으로 업로드합니다.
-- `USER-DOWNLOAD\`: `ChzzkOfTheLamb-Setup-1.0.0-rc31.exe` 하나를 사용자에게 배포합니다.
+- `USER-DOWNLOAD\`: `LambLink-Setup-1.0.0-rc31.exe` 하나를 사용자에게 배포합니다.
 
 설치기는 rc31 전용 매니페스트만 허용합니다. rc31 후원 대기열 검증 전에는 CDN에 업로드하거나
 rc29 파일을 교체하지 않습니다. 검증 후 rc31 설치기는 `installer-manifest-1.0.0-rc31.json`과
@@ -27,7 +27,7 @@ rc31 구성요소만 참조합니다.
 Companion은 표준 출력과 표준 오류를 모두 다음 로그에 저장합니다.
 
 ```text
-%LOCALAPPDATA%\ChzzkOfTheLamb\companion-rc31.log
+%LOCALAPPDATA%\LambLink\companion-rc31.log
 ```
 
 로그는 5 MiB마다 순환하며 `.1`부터 `.4`까지 최근 기록을 보존합니다. `support` 명령은
@@ -68,7 +68,7 @@ viewer copy  주소를 클립보드에 복사
 viewer open  기본 브라우저로 열기
 ```
 
-Companion은 `%LOCALAPPDATA%\ChzzkOfTheLamb\viewer-page-url.txt`와
+Companion은 `%LOCALAPPDATA%\LambLink\viewer-page-url.txt`와
 `viewer-page.url`을 갱신하고, Windows 바탕화면에
 `CHZZK 시청자 외형 설정 페이지.url` 바로가기를 생성합니다. 로그인한 CHZZK 계정이
 바뀌면 다음 실행에서 해당 계정의 채널 ID로 파일과 바로가기를 덮어씁니다.
@@ -89,6 +89,6 @@ Companion은 `%LOCALAPPDATA%\ChzzkOfTheLamb\viewer-page-url.txt`와
 
 ## 로그
 
-- 설치기: `%LOCALAPPDATA%\ChzzkOfTheLamb\installer.log`
-- Companion: `%LOCALAPPDATA%\ChzzkOfTheLamb\companion-rc31.log` 및 `.1`~`.4`
+- 설치기: `%LOCALAPPDATA%\LambLink\installer.log`
+- Companion: `%LOCALAPPDATA%\LambLink\companion-rc31.log` 및 `.1`~`.4`
 - 게임 Mod: `Cult of the Lamb\BepInEx\LogOutput.log`

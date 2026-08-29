@@ -9,13 +9,13 @@ Fix installer behavior and improve follower nameplate and follower service integ
 - `M	DEPLOY-INSTALLER.md`
 - `M	README.md`
 - `M	RELEASE-README.md`
-- `M	src/ChzzkOfTheLamb.Installer/Program.cs`
-- `M	src/ChzzkOfTheLamb.Mod/Game/FollowerNameplatePatch.cs`
-- `M	src/ChzzkOfTheLamb.Mod/Game/FollowerService.cs`
+- `M	src/LambLink.Installer/Program.cs`
+- `M	src/LambLink.Mod/Game/FollowerNameplatePatch.cs`
+- `M	src/LambLink.Mod/Game/FollowerService.cs`
 
 ## 복원 근거
 
-- 보존 소스: `ChzzkOfTheLamb-v1.0.0-rc5-source.zip`
+- 보존 소스: `LambLink-v1.0.0-rc5-source.zip`
 - 보존 시각 기준: `2026-08-23T14:49:44+00:00`
 - 이전 스냅샷과의 실제 파일 차이를 사용해 복원함
 

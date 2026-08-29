@@ -9,12 +9,12 @@ Harden the mod bridge client and plugin lifecycle for reliable raffle communicat
 - `M	DEPLOY-INSTALLER.md`
 - `M	README.md`
 - `M	RELEASE-README.md`
-- `M	src/ChzzkOfTheLamb.Mod/Network/ModBridgeClient.cs`
-- `M	src/ChzzkOfTheLamb.Mod/Plugin.cs`
+- `M	src/LambLink.Mod/Network/ModBridgeClient.cs`
+- `M	src/LambLink.Mod/Plugin.cs`
 
 ## 복원 근거
 
-- 보존 소스: `ChzzkOfTheLamb-v1.0.0-rc7-source.zip`
+- 보존 소스: `LambLink-v1.0.0-rc7-source.zip`
 - 보존 시각 기준: `2026-08-23T15:50:24+00:00`
 - 이전 스냅샷과의 실제 파일 차이를 사용해 복원함
 

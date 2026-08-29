@@ -11,9 +11,9 @@ powershell -ExecutionPolicy Bypass -File .\build-test-pair.ps1
 
 결과:
 
-- `dist\rc31-plugin\ChzzkOfTheLamb.Mod.dll`
-- `dist\rc31-plugin\ChzzkOfTheLamb.Protocol.dll`
-- `dist\rc31-companion\ChzzkOfTheLamb.Companion.exe`
+- `dist\rc31-plugin\LambLink.Mod.dll`
+- `dist\rc31-plugin\LambLink.Protocol.dll`
+- `dist\rc31-companion\LambLink.Companion.exe`
 
 Companion 첫 화면은 `v1.0.0-rc31`, BepInEx 로그는
 `[BUILD=rc31-donation-safe-runtime-paused-buffs]`여야 한다.

@@ -7,7 +7,7 @@ Add production CHZZK OAuth, release packaging, installation scripts, and deploya
 ## 실제 변경 파일
 
 - `A	DEPLOY-RELEASE.md`
-- `A	Install-ChzzkOfTheLamb.ps1`
+- `A	Install-LambLink.ps1`
 - `M	README.md`
 - `A	RELEASE-README.md`
 - `M	aws/backend/app.py`
@@ -23,17 +23,17 @@ Add production CHZZK OAuth, release packaging, installation scripts, and deploya
 - `D	local-server/server.py`
 - `D	local-server/test-config-aws.ps1`
 - `D	local-server/test-config-local.ps1`
-- `M	src/ChzzkOfTheLamb.Companion/Chzzk/ChzzkApiClient.cs`
-- `A	src/ChzzkOfTheLamb.Companion/Chzzk/ProductionOAuth.cs`
-- `M	src/ChzzkOfTheLamb.Companion/ChzzkOfTheLamb.Companion.csproj`
-- `M	src/ChzzkOfTheLamb.Companion/Configuration/ChzzkCredentialProvider.cs`
-- `M	src/ChzzkOfTheLamb.Companion/Program.cs`
-- `M	src/ChzzkOfTheLamb.Mod/ChzzkOfTheLamb.Mod.csproj`
-- `M	src/ChzzkOfTheLamb.Mod/Plugin.cs`
+- `M	src/LambLink.Companion/Chzzk/ChzzkApiClient.cs`
+- `A	src/LambLink.Companion/Chzzk/ProductionOAuth.cs`
+- `M	src/LambLink.Companion/LambLink.Companion.csproj`
+- `M	src/LambLink.Companion/Configuration/ChzzkCredentialProvider.cs`
+- `M	src/LambLink.Companion/Program.cs`
+- `M	src/LambLink.Mod/LambLink.Mod.csproj`
+- `M	src/LambLink.Mod/Plugin.cs`
 
 ## 복원 근거
 
-- 보존 소스: `ChzzkOfTheLamb-v1.0.0-rc1-source.zip`
+- 보존 소스: `LambLink-v1.0.0-rc1-source.zip`
 - 보존 시각 기준: `2026-08-23T10:23:00+00:00`
 - 이전 스냅샷과의 실제 파일 차이를 사용해 복원함
 

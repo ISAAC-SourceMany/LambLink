@@ -21,7 +21,7 @@ Do not commit these values.
 
 ## 3. Mod references
 
-Create `src/ChzzkOfTheLamb.Mod/lib` and place the game-specific compile references there. At minimum the project expects:
+Create `src/LambLink.Mod/lib` and place the game-specific compile references there. At minimum the project expects:
 
 - `Assembly-CSharp.dll` (or a publicized compile-only equivalent)
 - `BepInEx.dll` / BepInEx core assemblies matching the installed pack
@@ -32,7 +32,7 @@ The exact list should be aligned to the current Cult of the Lamb mod template/Be
 
 ## 4. Run order (development)
 
-1. Start `ChzzkOfTheLamb.Companion`.
+1. Start `LambLink.Companion`.
 2. Complete browser OAuth.
 3. Launch Cult of the Lamb with BepInEx and the mod installed.
 4. Companion should report the game bridge connected.
@@ -48,7 +48,7 @@ You can also force this mode even when credentials exist:
 
 ```powershell
 $env:CHZZK_DEV_MODE="1"
-.\ChzzkOfTheLamb.Companion.exe
+.\LambLink.Companion.exe
 ```
 
 Useful development commands:

@@ -1,4 +1,4 @@
-# ChzzkOfTheLamb 한글 사용자 설명서
+# LambLink 한글 사용자 설명서
 
 이 문서는 스트리머가 설치 파일을 내려받은 뒤 **설치 → 치지직 로그인 → OBS 설정 → 시청자 링크 공유 → 방송 전 점검**까지 순서대로 진행할 수 있도록 작성되었습니다.
 
@@ -10,12 +10,12 @@
 - OBS Studio
 - 인터넷 연결
 
-설치 전에 Cult of the Lamb과 기존 ChzzkOfTheLamb Companion을 모두 종료하세요. 게임을 실행한 상태에서 설치하면 일부 Mod 파일이 정상적으로 교체되지 않을 수 있습니다.
+설치 전에 Cult of the Lamb과 기존 LambLink Companion을 모두 종료하세요. 게임을 실행한 상태에서 설치하면 일부 Mod 파일이 정상적으로 교체되지 않을 수 있습니다.
 
 ## 2. 릴리스 파일 내려받기
 
 1. GitHub 저장소의 **Releases**를 엽니다.
-2. 가장 최신 릴리스에서 `ChzzkOfTheLamb-Setup-버전.exe` 파일을 내려받습니다.
+2. 가장 최신 릴리스에서 `LambLink-Setup-버전.exe` 파일을 내려받습니다.
 3. `source code.zip`이나 `source code.tar.gz`는 개발자용 소스이므로 일반 사용자는 받을 필요가 없습니다.
 
 Windows SmartScreen이 게시자를 확인할 수 없다는 경고를 표시할 수 있습니다. 반드시 이 저장소의 공식 Releases에서 받은 파일인지 확인하고, 릴리스에 SHA-256 값이 제공된 경우 내려받은 파일과 대조한 뒤 실행하세요.
@@ -34,8 +34,8 @@ Windows SmartScreen이 게시자를 확인할 수 없다는 경고를 표시할 
 ### 설치 위치
 
 - 게임 Mod: Steam의 `Cult of the Lamb\BepInEx` 아래
-- Companion: `%LOCALAPPDATA%\Programs\ChzzkOfTheLamb`
-- 사용자 설정과 로그: `%LOCALAPPDATA%\ChzzkOfTheLamb`
+- Companion: `%LOCALAPPDATA%\Programs\LambLink`
+- 사용자 설정과 로그: `%LOCALAPPDATA%\LambLink`
 - 바탕화면/시작 메뉴: Companion 바로가기
 
 ## 4. 치지직 로그인
@@ -64,7 +64,7 @@ http://127.0.0.1:17883/overlay?v=...
 
 1. OBS의 **소스 목록**에서 `+`를 누릅니다.
 2. **브라우저**를 선택합니다.
-3. 새 소스 이름을 `ChzzkOfTheLamb 오버레이`로 지정합니다.
+3. 새 소스 이름을 `LambLink 오버레이`로 지정합니다.
 4. URL에 Companion이 표시한 오버레이 주소를 붙여넣습니다.
 5. 너비와 높이를 현재 방송 캔버스와 동일하게 설정합니다.
 
@@ -196,12 +196,12 @@ Companion이 치지직 후원을 이미 수신했다면 게임이 꺼져 있거�
 
 > 1,000원 이상 후원은 Cult of the Lamb에 무작위 이벤트를 발생시킵니다. 도움뿐 아니라 신앙·포만도·체력·이동속도·공격력에 불리한 효과도 포함됩니다. 로딩이나 대화 중 들어온 이벤트는 게임 진행이 가능해진 뒤 순서대로 적용됩니다.
 
-현재 rc35는 개발 후원을 통한 게임 적용과 표시를 검증한 배포 후보입니다. 실제 치지직 후원 수신은 수익 창출 승인 후 추가 검증이 필요합니다.
+현재 rc39는 개발 후원을 통한 게임 적용과 표시를 검증한 배포 후보입니다. 실제 치지직 후원 수신은 수익 창출 승인 후 추가 검증이 필요합니다.
 
 ## 10. 방송 시작 전 체크리스트
 
 - [ ] 최신 Setup EXE로 설치 또는 업데이트했다.
-- [ ] Companion 창에 `v1.0.0-rc35`와 `RELEASE / CHZZK LIVE`가 표시된다.
+- [ ] Companion 창에 `v1.0.0-rc39`와 `RELEASE / CHZZK LIVE`가 표시된다.
 - [ ] 방송용 치지직 계정으로 로그인했다.
 - [ ] Cult of the Lamb 저장 파일을 불러왔다.
 - [ ] `status`에서 `GAME=True`, `SYNC=READY`를 확인했다.
@@ -222,7 +222,7 @@ Companion이 치지직 후원을 이미 수신했다면 게임이 꺼져 있거�
 5. OBS에서 오버레이 브라우저 소스를 새로고침합니다.
 6. `overlay`와 `status`로 문서 버전과 연결 상태를 확인합니다.
 
-재설치는 `%LOCALAPPDATA%\ChzzkOfTheLamb`의 사용자 설정과 시청자 매핑·외형 데이터를 삭제하지 않습니다.
+재설치는 `%LOCALAPPDATA%\LambLink`의 사용자 설정과 시청자 매핑·외형 데이터를 삭제하지 않습니다.
 
 ## 12. 문제 해결과 지원 파일
 
@@ -231,7 +231,7 @@ Companion이 치지직 후원을 이미 수신했다면 게임이 꺼져 있거�
 - 게임과 Companion을 종료한 뒤 다시 시도합니다.
 - 게임 경로에 `Cult Of The Lamb.exe`가 있는지 확인합니다.
 - 인터넷 연결과 보안 프로그램의 차단 기록을 확인합니다.
-- `%LOCALAPPDATA%\ChzzkOfTheLamb\installer.log`를 확인합니다.
+- `%LOCALAPPDATA%\LambLink\installer.log`를 확인합니다.
 
 ### 게임과 연결되지 않을 때
 
@@ -256,8 +256,8 @@ Companion에서 `support`를 입력하면 바탕화면에 진단 ZIP이 생성�
 ### 로그 위치
 
 ```text
-Companion: %LOCALAPPDATA%\ChzzkOfTheLamb\companion-rc35.log
-설치기:    %LOCALAPPDATA%\ChzzkOfTheLamb\installer.log
+Companion: %LOCALAPPDATA%\LambLink\companion-rc39.log
+설치기:    %LOCALAPPDATA%\LambLink\installer.log
 게임 Mod:  Cult of the Lamb\BepInEx\LogOutput.log
 ```
 

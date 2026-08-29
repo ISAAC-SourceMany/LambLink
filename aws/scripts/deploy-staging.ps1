@@ -39,7 +39,7 @@ $deployArgs = @(
   '--resolve-s3',
   '--capabilities', 'CAPABILITY_IAM',
   '--parameter-overrides', 'EnvironmentName=staging',
-  '--tags', 'Environment=staging', 'Application=ChzzkOfTheLamb',
+  '--tags', 'Environment=staging', 'Application=LambLink',
   '--no-confirm-changeset',
   '--no-fail-on-empty-changeset'
 )

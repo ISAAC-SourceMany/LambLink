@@ -7,16 +7,16 @@ Persist viewer-follower state and introduce explicit dungeon context detection f
 ## 실제 변경 파일
 
 - `M	README.md`
-- `M	src/ChzzkOfTheLamb.Companion/Program.cs`
-- `M	src/ChzzkOfTheLamb.Companion/Storage/ViewerFollowerRepository.cs`
-- `M	src/ChzzkOfTheLamb.Mod/Game/DonationEffectService.cs`
-- `A	src/ChzzkOfTheLamb.Mod/Game/DungeonContext.cs`
-- `M	src/ChzzkOfTheLamb.Mod/Game/DungeonDonationBuffs.cs`
-- `M	src/ChzzkOfTheLamb.Mod/Plugin.cs`
+- `M	src/LambLink.Companion/Program.cs`
+- `M	src/LambLink.Companion/Storage/ViewerFollowerRepository.cs`
+- `M	src/LambLink.Mod/Game/DonationEffectService.cs`
+- `A	src/LambLink.Mod/Game/DungeonContext.cs`
+- `M	src/LambLink.Mod/Game/DungeonDonationBuffs.cs`
+- `M	src/LambLink.Mod/Plugin.cs`
 
 ## 복원 근거
 
-- 보존 소스: `ChzzkOfTheLamb-v0.1-devbridge10u.zip`
+- 보존 소스: `LambLink-v0.1-devbridge10u.zip`
 - 보존 시각 기준: `2026-08-23T07:54:30+00:00`
 - 이전 스냅샷과의 실제 파일 차이를 사용해 복원함
 

@@ -14,9 +14,9 @@ powershell -ExecutionPolicy Bypass -File .\build-test-pair.ps1
 
 결과:
 
-- `dist\rc35-plugin\ChzzkOfTheLamb.Mod.dll`
-- `dist\rc35-plugin\ChzzkOfTheLamb.Protocol.dll`
-- `dist\rc35-companion\ChzzkOfTheLamb.Companion.exe`
+- `dist\rc35-plugin\LambLink.Mod.dll`
+- `dist\rc35-plugin\LambLink.Protocol.dll`
+- `dist\rc35-companion\LambLink.Companion.exe`
 
 Companion 첫 화면은 `v1.0.0-rc35`, BepInEx 로그는
 `[BUILD=rc35-overlay-document-handshake]`여야 한다.

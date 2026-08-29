@@ -1,7 +1,7 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$project = Join-Path $root 'src\ChzzkOfTheLamb.Mod\ChzzkOfTheLamb.Mod.csproj'
-$dist = Join-Path $root 'dist\rc35-plugin'
+$project = Join-Path $root 'src\LambLink.Mod\LambLink.Mod.csproj'
+$dist = Join-Path $root 'dist\rc39-plugin'
 
 function Assert-NativeSuccess([string]$Step) {
   if ($LASTEXITCODE -ne 0) { throw "$Step failed with exit code $LASTEXITCODE." }
@@ -52,28 +52,39 @@ function Clear-CompilerOutputs {
 }
 
 $criticalSources = @{
-  'src\ChzzkOfTheLamb.Mod\ChzzkOfTheLamb.Mod.csproj' = '5e2aac6c30559e9bc2fd2fddb131aeb1f95e60d46faec187b71ec612dd63a938'
-  'src\ChzzkOfTheLamb.Mod\Plugin.cs' = '7cb119c9bf836c290632368d7c4030354c9fcf3253b161c1d032892adf881dd0'
-  'src\ChzzkOfTheLamb.Mod\BridgeRuntimeHost.cs' = '9261721e2708f59debb6785e2eeec611063738bd36744a55dec94f529ae3bc6b'
-  'src\ChzzkOfTheLamb.Mod\Network\ModBridgeClient.cs' = 'dbe786dbd6cfa0df9144c87820e696b5ec076a8ee9c3f5b018b358179ff15595'
-  'src\ChzzkOfTheLamb.Mod\Game\IndoctrinationRafflePatch.cs' = '753830ca22dc89e571da9861fac0ab2a0306497de81c89482d6f7fbccfa026eb'
-  'src\ChzzkOfTheLamb.Mod\Game\FollowerNameplatePatch.cs' = '51a4385cb3cb0a801b89ed7923e95133a920e80a9ed57446b8437abe0e79abdf'
-  'src\ChzzkOfTheLamb.Mod\Game\FollowerService.cs' = '39e2b9939254ffb233b2ea075c627683789241e0a037ec7c02c74d1ccb94746c'
-  'src\ChzzkOfTheLamb.Mod\Game\FollowerAppearanceService.cs' = 'e840ef802b18b8c52155c01f63bf0e1d3bc8d69e2f433407f7c2d7eb3e08ddc4'
-  'src\ChzzkOfTheLamb.Mod\Game\GameSaveService.cs' = '5b48b8ce1f0c50ae47a9e160ce4244ab9b3712c2cc96e8cc55678163ded72c5d'
-  'src\ChzzkOfTheLamb.Mod\Game\DonationEffectService.cs' = '3f7cbcf93f6e3a6b00480ae14435afe7f38fafd4da752575907b7cecfea912ec'
-  'src\ChzzkOfTheLamb.Mod\Game\DonationGameplayGate.cs' = '1120652d09990ac571106e105e8dc7f91a0d3f308f321405674a2132096e77bf'
-  'src\ChzzkOfTheLamb.Mod\Game\DonationStoryLifecycle.cs' = 'ee98c5488b3e3bbdad64f9b2049af27f18003d0ce666ac8dbb189eea9808fa05'
-  'src\ChzzkOfTheLamb.Mod\Game\DungeonDonationBuffs.cs' = '6036326733c961605ac99c2b7cf7e108c4cc89fac2c906d94919bca12a4153b5'
-  'src\ChzzkOfTheLamb.Protocol\GameMessages.cs' = '55312e81b19340d18188ad0cf6efbcb7a06f6bef0ccb243f1ae568172d401a64'
+  'src\LambLink.Mod\LambLink.Mod.csproj' = '4e4912f4e62e273a3a4175b3d000ead95874193f29e545ea4c373805bc77ccf6'
+  'src\LambLink.Mod\Plugin.cs' = '74dde50a7c2c617bcce6825085c4359a64abbf0dc01780fe643db95b279b789e'
+  'src\LambLink.Mod\BridgeRuntimeHost.cs' = '499b5a9b14ff2fab6bdb84a9304550dd2d19c079ca50e5a6edbdf08894a66279'
+  'src\LambLink.Mod\Network\ModBridgeClient.cs' = 'a355fecbbabe76fa69d5bf089f48a28d9bc60da5ad4233d794c68f18c346b63c'
+  'src\LambLink.Mod\Game\IndoctrinationRafflePatch.cs' = '9804b3e1d156bab2981f85ff90a52733b83b6f8719ee48309b7f84a88788fee8'
+  'src\LambLink.Mod\Game\FollowerNameplatePatch.cs' = 'fe7d7a9503b982316e3f94d0f02caa939d9876fccc9c5b543e8d54a11e341a39'
+  'src\LambLink.Mod\Game\FollowerService.cs' = '4b9313e13d5bd398f633018ee9830ae1731cbdd03d8b63dcff7c6f4268fe9b09'
+  'src\LambLink.Mod\Game\FollowerAppearanceService.cs' = '7da41f06f7e22cb0beefaab61c0ec346a8cb533246e1ceb94c21c61df1c45856'
+  'src\LambLink.Mod\Game\GameSaveService.cs' = '9114554d1a1d84692e84470708766ee0fb52a1587c04cae1312d1b984a7a6b28'
+  'src\LambLink.Mod\Game\DonationEffectService.cs' = 'ea8776182850a7c5598d7e7d059ff85963b50f4d3c10316ce58aa3cbdc43ed60'
+  'src\LambLink.Mod\Game\DonationGameplayGate.cs' = '9b1f8cb026b98f4852cab761ab39075d5cce8167debb35a2e9deb69d1a2c17ca'
+  'src\LambLink.Mod\Game\DonationStoryLifecycle.cs' = '4304de3eb5e27937992929253549798e5dd0d26ec3d72629af00808dda108da6'
+  'src\LambLink.Mod\Game\DungeonDonationBuffs.cs' = '0945d15961880bcaa9c3d0dfec0cae2302a278f54b49ce41a0db2372b119f905'
+  'src\LambLink.Protocol\GameMessages.cs' = '826b2d7429942cfdaaa910f415a54fa0083bb755a3fe5ad7dae83a4217db3e8b'
+  'src\LambLink.Protocol\ChzzkFollowerMarkerDiff.cs' = 'a3b5b986b5d932e3f92d8dba8d01934d4b9c39ae9f081fe0d61a1a0560b5d764'
 }
 
 foreach ($relativePath in $criticalSources.Keys) {
   $sourcePath = Join-Path $root $relativePath
-  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC35 source: $relativePath" }
+  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC39 source: $relativePath" }
   $actualHash = (Get-FileHash $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actualHash -ne $criticalSources[$relativePath]) {
-    throw "Critical RC35 source does not match the reviewed version: $relativePath"
+    $sourceText = [System.IO.File]::ReadAllText($sourcePath).Replace("`r`n", "`n")
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+      $actualHash = ([System.BitConverter]::ToString($sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($sourceText)))).Replace('-', '').ToLowerInvariant()
+    }
+    finally {
+      $sha256.Dispose()
+    }
+  }
+  if ($actualHash -ne $criticalSources[$relativePath]) {
+    throw "Critical RC39 source does not match the reviewed version: $relativePath"
   }
 }
 
@@ -86,9 +97,9 @@ Assert-NativeSuccess 'Plugin restore'
 dotnet build $project -c Release --no-restore
 Assert-NativeSuccess 'Plugin build'
 
-$bin = Join-Path $root 'src\ChzzkOfTheLamb.Mod\bin\Release'
-$modSource = Join-Path $bin 'ChzzkOfTheLamb.Mod.dll'
-$protocolSource = Join-Path $bin 'ChzzkOfTheLamb.Protocol.dll'
+$bin = Join-Path $root 'src\LambLink.Mod\bin\Release'
+$modSource = Join-Path $bin 'LambLink.Mod.dll'
+$protocolSource = Join-Path $bin 'LambLink.Protocol.dll'
 if (-not (Test-Path $modSource)) { throw "Plugin build reported success but output is missing: $modSource" }
 if (-not (Test-Path $protocolSource)) { throw "Plugin build reported success but output is missing: $protocolSource" }
 Copy-Item $modSource $dist -Force
@@ -106,31 +117,31 @@ function Test-ByteSequence([byte[]]$Haystack, [byte[]]$Needle) {
   return $false
 }
 
-$modDll = Join-Path $dist 'ChzzkOfTheLamb.Mod.dll'
+$modDll = Join-Path $dist 'LambLink.Mod.dll'
 $bytes = [System.IO.File]::ReadAllBytes($modDll)
-$tag = 'rc35-overlay-document-handshake'
+$tag = 'rc39-staging-isolation'
 $tagFound = (Test-ByteSequence $bytes ([System.Text.Encoding]::UTF8.GetBytes($tag))) -or
             (Test-ByteSequence $bytes ([System.Text.Encoding]::Unicode.GetBytes($tag)))
-if (-not $tagFound) { throw 'RC35 build tag missing from compiled DLL; stale build rejected.' }
+if (-not $tagFound) { throw 'RC39 build tag missing from compiled DLL; stale build rejected.' }
 
-foreach ($marker in @('io.github.xhayper.COTL_API', 'RAFFLE_ROUND_CLOSED', '[NAMEPLATE][PATCH-VERIFY]', '[NAMEPLATE][INLINE-APPLIED]', '[IDENTITY-COMMIT]', 'CHZZK nameplate marker dropped', '<color=#00C471>Chzzk</color> ')) {
+foreach ($marker in @('io.github.xhayper.COTL_API', 'RAFFLE_ROUND_CLOSED', '[NAMEPLATE][PATCH-VERIFY]', '[NAMEPLATE][INLINE-APPLIED]', '[NAMEPLATE][TARGETED-REFRESH]', 'CACHE-HIT', '[IDENTITY-COMMIT]', 'CHZZK nameplate marker dropped', '<color=#00C471>Chzzk</color> ')) {
   $found = (Test-ByteSequence $bytes ([System.Text.Encoding]::UTF8.GetBytes($marker))) -or
            (Test-ByteSequence $bytes ([System.Text.Encoding]::Unicode.GetBytes($marker)))
-  if (-not $found) { throw "RC35 compiled Mod is missing required marker: $marker" }
+  if (-not $found) { throw "RC39 compiled Mod is missing required marker: $marker" }
 }
 
 foreach ($forbidden in @('[NAMEPLATE][IDENTITY-REPAIRED]', '[FOLLOWER-MARKER][IDENTITY-REPAIRED]')) {
   $found = (Test-ByteSequence $bytes ([System.Text.Encoding]::UTF8.GetBytes($forbidden))) -or
            (Test-ByteSequence $bytes ([System.Text.Encoding]::Unicode.GetBytes($forbidden)))
-  if ($found) { throw "RC35 compiled Mod contains forbidden ID-only identity repair marker: $forbidden" }
+  if ($found) { throw "RC39 compiled Mod contains forbidden ID-only identity repair marker: $forbidden" }
 }
 
 foreach ($marker in @('[DONATION][RX]', '[DONATION][APPLIED]', '[DONATION][RESULT-TX]', '[DONATION][QUEUE][ENQUEUED]', '[DONATION][GATE][STATE]', '[DONATION][STORY-HOOK][CAPABILITY]', '[DONATION][BUFF-GROUP]', 'sharedStartIn=', 'DONATION_RUNTIME_STATE', 'stage=')) {
   $found = (Test-ByteSequence $bytes ([System.Text.Encoding]::UTF8.GetBytes($marker))) -or
            (Test-ByteSequence $bytes ([System.Text.Encoding]::Unicode.GetBytes($marker)))
-  if (-not $found) { throw "RC35 compiled Mod is missing donation diagnostic marker: $marker" }
+  if (-not $found) { throw "RC39 compiled Mod is missing donation diagnostic marker: $marker" }
 }
 
-Write-Host '[OK] RC35 live-donation diagnostic Mod built and verified.'
+Write-Host '[OK] RC39 live-donation diagnostic Mod built and verified.'
 Write-Host "Output: $dist"
 Write-Host "Mod SHA-256: $((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"

@@ -7,12 +7,12 @@ Update the local raffle overlay server and Companion orchestration for clearer O
 ## 실제 변경 파일
 
 - `M	README.md`
-- `M	src/ChzzkOfTheLamb.Companion/Overlay/RaffleOverlayServer.cs`
-- `M	src/ChzzkOfTheLamb.Companion/Program.cs`
+- `M	src/LambLink.Companion/Overlay/RaffleOverlayServer.cs`
+- `M	src/LambLink.Companion/Program.cs`
 
 ## 복원 근거
 
-- 보존 소스: `ChzzkOfTheLamb-v0.1-devbridge10w.zip`
+- 보존 소스: `LambLink-v0.1-devbridge10w.zip`
 - 보존 시각 기준: `2026-08-23T09:43:14+00:00`
 - 이전 스냅샷과의 실제 파일 차이를 사용해 복원함
 

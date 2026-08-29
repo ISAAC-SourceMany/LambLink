@@ -17,16 +17,16 @@ powershell -ExecutionPolicy Bypass -File .\build-test-pair.ps1
 결과:
 
 ```text
-dist\rc30-plugin\ChzzkOfTheLamb.Mod.dll
-dist\rc30-plugin\ChzzkOfTheLamb.Protocol.dll
-dist\rc30-companion\ChzzkOfTheLamb.Companion.exe
+dist\rc30-plugin\LambLink.Mod.dll
+dist\rc30-plugin\LambLink.Protocol.dll
+dist\rc30-companion\LambLink.Companion.exe
 ```
 
 설치된 Companion을 완전히 종료한 뒤 rc30 Companion EXE를 직접 실행하고, 게임 플러그인 두 DLL도
 rc30 결과물로 교체합니다. 다음 두 식별자가 모두 있어야 합니다.
 
 ```text
-CHZZK Companion for Cult of the Lamb - v1.0.0-rc30
+LambLink for Cult of the Lamb - v1.0.0-rc30
 [BUILD=rc30-support-diagnostics-live-donation]
 ```
 
@@ -94,6 +94,6 @@ BepInEx: [DONATION][FAILED] ... stage=...
 support
 ```
 
-바탕화면에 `ChzzkOfTheLamb-Support-...zip`이 만들어집니다. 자동 업로드는 없으며 압축 내부를
+바탕화면에 `LambLink-Support-...zip`이 만들어집니다. 자동 업로드는 없으며 압축 내부를
 확인한 다음 전달합니다. ZIP에는 최근 Companion 순환 로그, 설치 로그, BepInEx 로그, 버전·파일
 해시 및 연결 상태가 들어갑니다. 토큰, 게임 세이브, 시청자 매핑·외형 저장 파일은 포함하지 않습니다.

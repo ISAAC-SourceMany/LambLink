@@ -7,7 +7,7 @@ Establish the three-project bridge foundation, local viewer service, appearance 
 ## 실제 변경 파일
 
 - `A	.gitignore`
-- `A	ChzzkOfTheLamb.sln`
+- `A	LambLink.sln`
 - `A	HISTORY_RECONSTRUCTION.md`
 - `A	NuGet.Config`
 - `A	README.md`
@@ -36,36 +36,36 @@ Establish the three-project bridge foundation, local viewer service, appearance 
 - `A	local-server/server.py`
 - `A	local-server/test-config-aws.ps1`
 - `A	local-server/test-config-local.ps1`
-- `A	src/ChzzkOfTheLamb.Companion/Appearance/AppearanceStore.cs`
-- `A	src/ChzzkOfTheLamb.Companion/Chzzk/ChzzkApiClient.cs`
-- `A	src/ChzzkOfTheLamb.Companion/Chzzk/ChzzkRealtimeClient.cs`
-- `A	src/ChzzkOfTheLamb.Companion/Chzzk/LoopbackOAuth.cs`
-- `A	src/ChzzkOfTheLamb.Companion/Chzzk/Models.cs`
-- `A	src/ChzzkOfTheLamb.Companion/ChzzkOfTheLamb.Companion.csproj`
-- `A	src/ChzzkOfTheLamb.Companion/Cloud/AppearanceApiClient.cs`
-- `A	src/ChzzkOfTheLamb.Companion/Configuration/ChzzkCredentialProvider.cs`
-- `A	src/ChzzkOfTheLamb.Companion/Configuration/CompanionSettings.cs`
-- `A	src/ChzzkOfTheLamb.Companion/GameBridge/GameBridgeServer.cs`
-- `A	src/ChzzkOfTheLamb.Companion/Overlay/RaffleOverlayServer.cs`
-- `A	src/ChzzkOfTheLamb.Companion/Program.cs`
-- `A	src/ChzzkOfTheLamb.Companion/Raffle/RaffleManager.cs`
-- `A	src/ChzzkOfTheLamb.Companion/Rules/DonationRuleEngine.cs`
-- `A	src/ChzzkOfTheLamb.Companion/Storage/ViewerFollowerRepository.cs`
-- `A	src/ChzzkOfTheLamb.Mod/ChzzkOfTheLamb.Mod.csproj`
-- `A	src/ChzzkOfTheLamb.Mod/Game/DonationEffectService.cs`
-- `A	src/ChzzkOfTheLamb.Mod/Game/FollowerAppearanceService.cs`
-- `A	src/ChzzkOfTheLamb.Mod/Game/FollowerNameplatePatch.cs`
-- `A	src/ChzzkOfTheLamb.Mod/Game/FollowerService.cs`
-- `A	src/ChzzkOfTheLamb.Mod/Game/GameSaveService.cs`
-- `A	src/ChzzkOfTheLamb.Mod/Game/IndoctrinationRafflePatch.cs`
-- `A	src/ChzzkOfTheLamb.Mod/Network/ModBridgeClient.cs`
-- `A	src/ChzzkOfTheLamb.Mod/Plugin.cs`
-- `A	src/ChzzkOfTheLamb.Protocol/ChzzkOfTheLamb.Protocol.csproj`
-- `A	src/ChzzkOfTheLamb.Protocol/GameMessages.cs`
+- `A	src/LambLink.Companion/Appearance/AppearanceStore.cs`
+- `A	src/LambLink.Companion/Chzzk/ChzzkApiClient.cs`
+- `A	src/LambLink.Companion/Chzzk/ChzzkRealtimeClient.cs`
+- `A	src/LambLink.Companion/Chzzk/LoopbackOAuth.cs`
+- `A	src/LambLink.Companion/Chzzk/Models.cs`
+- `A	src/LambLink.Companion/LambLink.Companion.csproj`
+- `A	src/LambLink.Companion/Cloud/AppearanceApiClient.cs`
+- `A	src/LambLink.Companion/Configuration/ChzzkCredentialProvider.cs`
+- `A	src/LambLink.Companion/Configuration/CompanionSettings.cs`
+- `A	src/LambLink.Companion/GameBridge/GameBridgeServer.cs`
+- `A	src/LambLink.Companion/Overlay/RaffleOverlayServer.cs`
+- `A	src/LambLink.Companion/Program.cs`
+- `A	src/LambLink.Companion/Raffle/RaffleManager.cs`
+- `A	src/LambLink.Companion/Rules/DonationRuleEngine.cs`
+- `A	src/LambLink.Companion/Storage/ViewerFollowerRepository.cs`
+- `A	src/LambLink.Mod/LambLink.Mod.csproj`
+- `A	src/LambLink.Mod/Game/DonationEffectService.cs`
+- `A	src/LambLink.Mod/Game/FollowerAppearanceService.cs`
+- `A	src/LambLink.Mod/Game/FollowerNameplatePatch.cs`
+- `A	src/LambLink.Mod/Game/FollowerService.cs`
+- `A	src/LambLink.Mod/Game/GameSaveService.cs`
+- `A	src/LambLink.Mod/Game/IndoctrinationRafflePatch.cs`
+- `A	src/LambLink.Mod/Network/ModBridgeClient.cs`
+- `A	src/LambLink.Mod/Plugin.cs`
+- `A	src/LambLink.Protocol/LambLink.Protocol.csproj`
+- `A	src/LambLink.Protocol/GameMessages.cs`
 
 ## 복원 근거
 
-- 보존 소스: `ChzzkOfTheLamb-v0.1-devbridge10r.zip`
+- 보존 소스: `LambLink-v0.1-devbridge10r.zip`
 - 보존 시각 기준: `2026-08-22T17:30:58+00:00`
 - 이전 스냅샷과의 실제 파일 차이를 사용해 복원함
 

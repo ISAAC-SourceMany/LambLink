@@ -1,4 +1,4 @@
-param(
+﻿param(
   [string]$StackName = 'cotl-chzzk-staging',
   [string]$Profile = '',
   [string]$Region = 'ap-northeast-2'
@@ -6,9 +6,9 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-$release = '1.0.0-rc35'
-$distributionZip = Join-Path $projectRoot "dist\ChzzkOfTheLamb-v$release-distribution.zip"
-$sourceDir = Join-Path $projectRoot "dist\ChzzkOfTheLamb-v$release-distribution\CDN-UPLOAD"
+$release = '1.0.0-rc39'
+$distributionZip = Join-Path $projectRoot "dist\LambLink-v$release-distribution.zip"
+$sourceDir = Join-Path $projectRoot "dist\LambLink-v$release-distribution\CDN-UPLOAD"
 $outputFile = Join-Path $projectRoot 'aws\staging-release.local.json'
 if (-not (Test-Path -LiteralPath $distributionZip)) { throw "Missing distribution ZIP: $distributionZip" }
 if (-not (Test-Path -LiteralPath $sourceDir)) { throw "Missing CDN-UPLOAD directory: $sourceDir" }
@@ -23,8 +23,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Failed to read staging stack outputs.' }
 $outputs = @{}
 foreach ($item in ($outputsJson | ConvertFrom-Json)) { $outputs[$item.OutputKey] = $item.OutputValue }
 $bucket = [string]$outputs['FrontendBucketName']
+$apiUrl = ([string]$outputs['ApiUrl']).TrimEnd('/')
 $frontendUrl = ([string]$outputs['FrontendUrl']).TrimEnd('/')
-if ([string]::IsNullOrWhiteSpace($bucket) -or [string]::IsNullOrWhiteSpace($frontendUrl)) {
+if ([string]::IsNullOrWhiteSpace($bucket) -or [string]::IsNullOrWhiteSpace($apiUrl) -or [string]::IsNullOrWhiteSpace($frontendUrl)) {
   throw 'Staging stack is missing frontend outputs.'
 }
 
@@ -34,14 +35,17 @@ $manifestName = "installer-manifest-$release.json"
 $sourceManifest = Join-Path $sourceDir $manifestName
 $tempManifest = Join-Path ([IO.Path]::GetTempPath()) ("cotl-staging-manifest-" + [guid]::NewGuid().ToString('N') + '.json')
 $componentFiles = @{
-  'korean-font-fix' = 'COTL-KoreanFontFix-4.2.1-rc35.zip'
-  'chzzk-mod' = "ChzzkOfTheLamb-Mod-$release.zip"
-  'companion' = "ChzzkOfTheLamb-Companion-$release-win-x64.zip"
+  'korean-font-fix' = 'COTL-KoreanFontFix-4.2.1-rc39.zip'
+  'lamblink-mod' = "LambLink-Mod-$release.zip"
+  'companion' = "LambLink-Companion-$release-win-x64.zip"
 }
 
 try {
   $manifest = Get-Content -LiteralPath $sourceManifest -Raw | ConvertFrom-Json
   if ($manifest.release -ne $release) { throw "Unexpected manifest release: $($manifest.release)" }
+  $manifest | Add-Member -NotePropertyName environment -NotePropertyValue 'staging' -Force
+  $manifest | Add-Member -NotePropertyName apiBaseUrl -NotePropertyValue $apiUrl -Force
+  $manifest | Add-Member -NotePropertyName frontendUrl -NotePropertyValue $frontendUrl -Force
   foreach ($component in $manifest.components) {
     if ($componentFiles.ContainsKey([string]$component.id)) {
       $fileName = $componentFiles[[string]$component.id]
@@ -65,11 +69,12 @@ try {
     Release = $release
     BuildHash = $buildHash
     ManifestUrl = "$frontendUrl/$prefix/$manifestName"
-    InstallerPath = (Join-Path $projectRoot "dist\ChzzkOfTheLamb-v$release-distribution\USER-DOWNLOAD\ChzzkOfTheLamb-Setup-$release.exe")
+    InstallerPath = (Join-Path $projectRoot "dist\LambLink-v$release-distribution\USER-DOWNLOAD\LambLink-Setup-$release.exe")
   }
   [IO.File]::WriteAllText($outputFile, ($result | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
   Write-Host "[OK] Staging installer manifest: $($result.ManifestUrl)"
   Write-Host "[TEST] `$env:COTL_INSTALLER_MANIFEST_URL='$($result.ManifestUrl)'"
+  Write-Host "[NEXT] powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\aws\scripts\install-release-staging.ps1"
 }
 finally {
   if (Test-Path -LiteralPath $tempManifest) { Remove-Item -LiteralPath $tempManifest -Force }

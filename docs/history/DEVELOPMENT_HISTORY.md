@@ -1,8 +1,8 @@
-# ChzzkOfTheLamb devbridge10a
+# LambLink devbridge10a
 
 This revision is based on direct inspection of the user-provided COTL 1.5.25.1049 `Assembly-CSharp.dll`. It replaces heuristic appearance option discovery with the actual vanilla data flow and adds local rendering of the game's own follower-form UI template for web thumbnails. See [`../research/COTL_1_5_25_APPEARANCE_REVERSE_ENGINEERING.md`](../research/COTL_1_5_25_APPEARANCE_REVERSE_ENGINEERING.md).
 
-# ChzzkOfTheLamb devbridge7
+# LambLink devbridge7
 
 Prototype CHZZK integration for Cult of the Lamb.
 
@@ -51,13 +51,13 @@ The local My Lamb server and future AWS Lambda backend never read the desktop Co
 - `aws` provider reads Client IDs from SSM and Client Secrets from Secrets Manager.
 - Added `local-server/test-config-local.ps1` and `local-server/test-config-aws.ps1` so production-style AWS configuration can be tested from the developer PC before Lambda deployment.
 - See `docs/CONFIGURATION_AND_IAM.md`.
-\n\n## devbridge9c local integration test\n\nUse two PowerShell windows.\n\n1. Viewer web/API server:\n```powershell\n$env:AWS_PROFILE="cotl-dev"\n$env:AWS_DEFAULT_REGION="ap-northeast-2"\n.\\local-server\\run-local-live-aws.ps1\n```\n\n2. Companion (same window for configuration + EXE):\n```powershell\n.\\local-server\\configure-companion-local-aws.ps1\ncd .\\src\\ChzzkOfTheLamb.Companion\\bin\\Debug\\net8.0\n.\\ChzzkOfTheLamb.Companion.exe\n```\n\nExpected Companion status after loading a save:\n`MODE=CHZZK ... SAVE=slot_0 ... CLOUD=connected, CATALOG=27, CATALOG_SAVE=slot_0`\n\n`aws-cli` is a local-development credential provider only. The final distributed Companion must authenticate through the AWS auth gateway and must not receive the CHZZK client secret.\n
+\n\n## devbridge9c local integration test\n\nUse two PowerShell windows.\n\n1. Viewer web/API server:\n```powershell\n$env:AWS_PROFILE="cotl-dev"\n$env:AWS_DEFAULT_REGION="ap-northeast-2"\n.\\local-server\\run-local-live-aws.ps1\n```\n\n2. Companion (same window for configuration + EXE):\n```powershell\n.\\local-server\\configure-companion-local-aws.ps1\ncd .\\src\\LambLink.Companion\\bin\\Debug\\net8.0\n.\\LambLink.Companion.exe\n```\n\nExpected Companion status after loading a save:\n`MODE=CHZZK ... SAVE=slot_0 ... CLOUD=connected, CATALOG=27, CATALOG_SAVE=slot_0`\n\n`aws-cli` is a local-development credential provider only. The final distributed Companion must authenticate through the AWS auth gateway and must not receive the CHZZK client secret.\n
 
 ## devbridge9f
 - Automatically re-queries the running save's follower appearance catalog every 30 seconds by default.
 - Only uploads to My Lamb when the catalog fingerprint actually changes.
 - Change detection includes form IDs, unlock state, variants, colors, special/modded flags, and display name.
-- Configure with `Appearance.AutoRefreshCatalog` and `Appearance.RefreshIntervalSeconds` in `%LOCALAPPDATA%\ChzzkOfTheLamb\settings.json` (minimum effective interval: 10 seconds).
+- Configure with `Appearance.AutoRefreshCatalog` and `Appearance.RefreshIntervalSeconds` in `%LOCALAPPDATA%\LambLink\settings.json` (minimum effective interval: 10 seconds).
 
 
 ## devbridge9f: live viewer catalog refresh
@@ -224,7 +224,7 @@ Removed the remaining dead preview-render/diagnostic methods after the preview f
 
 - 기존 게임 세이브의 신도/교화대기 신도 이름이 `<color=#00C471>Chzzk</color> 닉네임` 형식이면 로드된 실제 FollowerInfo.Name을 `닉네임`만 남도록 자동 정리합니다.
 - 이 변경은 게임 메모리의 실제 세이브 상태에 적용되며 다음 COTL 기본 저장/자동저장 때 `slot_*.mp`에 영구 반영됩니다.
-- Companion의 `%LOCALAPPDATA%\ChzzkOfTheLamb\viewer-followers.json` 안 `LastKnownNickname`도 시작 시 즉시 정리하고 파일을 다시 저장합니다.
+- Companion의 `%LOCALAPPDATA%\LambLink\viewer-followers.json` 안 `LastKnownNickname`도 시작 시 즉시 정리하고 파일을 다시 저장합니다.
 - 마이그레이션은 세이브 슬롯별 1회 수행하며 실패하면 다음 roster poll에서 재시도합니다.
 - 새 신도 이름에는 앞으로도 rich-text 태그를 저장하지 않습니다.
 

@@ -1,12 +1,12 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$release = '1.0.0-rc35'
+$release = '1.0.0-rc39'
 $hosting = Join-Path $root 'release-hosting'
 $distRoot = Join-Path $root 'dist'
-$bundleRoot = Join-Path $distRoot "ChzzkOfTheLamb-v$release-distribution"
+$bundleRoot = Join-Path $distRoot "LambLink-v$release-distribution"
 $userDir = Join-Path $bundleRoot 'USER-DOWNLOAD'
 $cdnDir = Join-Path $bundleRoot 'CDN-UPLOAD'
-$bundleZip = Join-Path $distRoot "ChzzkOfTheLamb-v$release-distribution.zip"
+$bundleZip = Join-Path $distRoot "LambLink-v$release-distribution.zip"
 
 function Get-LowerSha256([string]$Path) {
     return (Get-FileHash $Path -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -52,11 +52,11 @@ Write-Host "[1/5] Building $release runtime pair and GUI installer..."
 Write-Host '[2/5] Fetching official dependency hashes and creating the pinned manifest...'
 & (Join-Path $root 'prepare-installer-manifest.ps1')
 
-$setupName = "ChzzkOfTheLamb-Setup-$release.exe"
+$setupName = "LambLink-Setup-$release.exe"
 $manifestName = "installer-manifest-$release.json"
-$fontName = 'COTL-KoreanFontFix-4.2.1-rc35.zip'
-$modName = "ChzzkOfTheLamb-Mod-$release.zip"
-$companionName = "ChzzkOfTheLamb-Companion-$release-win-x64.zip"
+$fontName = 'COTL-KoreanFontFix-4.2.1-rc39.zip'
+$modName = "LambLink-Mod-$release.zip"
+$companionName = "LambLink-Companion-$release-win-x64.zip"
 $requiredHostingFiles = @($setupName, $manifestName, $fontName, $modName, $companionName)
 
 Write-Host '[3/5] Validating release identity, manifest URLs, and component SHA-256 values...'
@@ -70,19 +70,27 @@ $manifestText = Get-Content $manifestPath -Raw
 if ($manifestText -match '__[A-Z0-9_]+__') { throw 'Pinned manifest contains an unresolved placeholder.' }
 $manifest = $manifestText | ConvertFrom-Json
 if ($manifest.release -ne $release) { throw "Unexpected manifest release: $($manifest.release)" }
+if ($manifest.environment -ne 'production') { throw "Release manifest must declare environment=production: $($manifest.environment)" }
+foreach ($environmentUrl in @($manifest.apiBaseUrl, $manifest.frontendUrl)) {
+    $parsedEnvironmentUrl = $null
+    $environmentUrlIsValid = [Uri]::TryCreate([string]$environmentUrl, [UriKind]::Absolute, [ref]$parsedEnvironmentUrl)
+    if (-not $environmentUrlIsValid -or $parsedEnvironmentUrl.Scheme -ne 'https') {
+        throw "Release manifest environment URL must be absolute HTTPS: $environmentUrl"
+    }
+}
 
 $localComponents = @{
     'bepinex' = 'BepInEx_x64_5.4.21.0.zip'
     'cotl-api' = 'xhayper-COTL_API-0.3.4.zip'
     'korean-font-fix' = $fontName
-    'chzzk-mod' = $modName
+    'lamblink-mod' = $modName
     'companion' = $companionName
 }
 foreach ($componentId in $localComponents.Keys) {
     $component = @($manifest.components | Where-Object { $_.id -eq $componentId })
     if ($component.Count -ne 1) { throw "Manifest component count is not one: $componentId" }
     $fileName = $localComponents[$componentId]
-    if ($componentId -in @('korean-font-fix', 'chzzk-mod', 'companion')) {
+    if ($componentId -in @('korean-font-fix', 'lamblink-mod', 'companion')) {
         $expectedUrlSuffix = "/releases/$fileName"
         if (-not $component[0].url.EndsWith($expectedUrlSuffix, [System.StringComparison]::Ordinal)) {
             throw "Manifest URL is not pinned to $fileName : $($component[0].url)"
@@ -103,7 +111,7 @@ Copy-Item (Join-Path $hosting $setupName) $userDir -Force
 foreach ($name in @($manifestName, $fontName, $modName, $companionName)) {
     Copy-Item (Join-Path $hosting $name) $cdnDir -Force
 }
-Copy-Item (Join-Path $root 'DISTRIBUTION-RC35.md') $bundleRoot -Force
+Copy-Item (Join-Path $root 'DISTRIBUTION-RC39.md') $bundleRoot -Force
 
 $checksumLines = New-Object System.Collections.Generic.List[string]
 foreach ($name in @($setupName)) {
@@ -119,6 +127,6 @@ Set-Content (Join-Path $bundleRoot 'SHA256SUMS.txt') $checksumLines -Encoding AS
 Write-Host '[5/5] Creating final distribution archive...'
 Compress-Archive -Path (Join-Path $bundleRoot '*') -DestinationPath $bundleZip -CompressionLevel Optimal
 if (-not (Test-Path $bundleZip)) { throw "Distribution ZIP was not produced: $bundleZip" }
-Write-Host "[OK] RC35 distribution bundle: $bundleZip"
+Write-Host "[OK] RC39 distribution bundle: $bundleZip"
 Write-Host "[UPLOAD] Upload every file in $cdnDir to CloudFront origin /releases/."
 Write-Host "[DISTRIBUTE] Give users only $(Join-Path $userDir $setupName)."

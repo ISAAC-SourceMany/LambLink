@@ -8,16 +8,16 @@ Add dungeon-aware donation rules and in-game buff execution across Companion, pr
 
 - `M	README.md`
 - `A	docs/DEVBRIDGE10S_DUNGEON_DONATION.md`
-- `M	src/ChzzkOfTheLamb.Companion/Program.cs`
-- `M	src/ChzzkOfTheLamb.Companion/Rules/DonationRuleEngine.cs`
-- `M	src/ChzzkOfTheLamb.Mod/Game/DonationEffectService.cs`
-- `A	src/ChzzkOfTheLamb.Mod/Game/DungeonDonationBuffs.cs`
-- `M	src/ChzzkOfTheLamb.Mod/Plugin.cs`
-- `M	src/ChzzkOfTheLamb.Protocol/GameMessages.cs`
+- `M	src/LambLink.Companion/Program.cs`
+- `M	src/LambLink.Companion/Rules/DonationRuleEngine.cs`
+- `M	src/LambLink.Mod/Game/DonationEffectService.cs`
+- `A	src/LambLink.Mod/Game/DungeonDonationBuffs.cs`
+- `M	src/LambLink.Mod/Plugin.cs`
+- `M	src/LambLink.Protocol/GameMessages.cs`
 
 ## 복원 근거
 
-- 보존 소스: `ChzzkOfTheLamb-v0.1-devbridge10s.zip`
+- 보존 소스: `LambLink-v0.1-devbridge10s.zip`
 - 보존 시각 기준: `2026-08-23T06:38:40+00:00`
 - 이전 스냅샷과의 실제 파일 차이를 사용해 복원함
 

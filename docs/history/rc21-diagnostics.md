@@ -14,19 +14,19 @@ Add one-run diagnostics, watchdog fallback behavior, and delivery tracing across
 - `M	build-release.ps1`
 - `M	build-test-pair.ps1`
 - `A	docs/RC21_DIAGNOSTIC_WATCHDOG_FALLBACK.md`
-- `M	src/ChzzkOfTheLamb.Companion/ChzzkOfTheLamb.Companion.csproj`
-- `A	src/ChzzkOfTheLamb.Companion/Diagnostics/TeeTextWriter.cs`
-- `M	src/ChzzkOfTheLamb.Companion/GameBridge/GameBridgeServer.cs`
-- `M	src/ChzzkOfTheLamb.Companion/Program.cs`
-- `M	src/ChzzkOfTheLamb.Mod/Game/FollowerAppearanceService.cs`
-- `M	src/ChzzkOfTheLamb.Mod/Game/GameSaveService.cs`
-- `M	src/ChzzkOfTheLamb.Mod/Network/ModBridgeClient.cs`
-- `M	src/ChzzkOfTheLamb.Mod/Plugin.cs`
-- `M	src/ChzzkOfTheLamb.Protocol/GameMessages.cs`
+- `M	src/LambLink.Companion/LambLink.Companion.csproj`
+- `A	src/LambLink.Companion/Diagnostics/TeeTextWriter.cs`
+- `M	src/LambLink.Companion/GameBridge/GameBridgeServer.cs`
+- `M	src/LambLink.Companion/Program.cs`
+- `M	src/LambLink.Mod/Game/FollowerAppearanceService.cs`
+- `M	src/LambLink.Mod/Game/GameSaveService.cs`
+- `M	src/LambLink.Mod/Network/ModBridgeClient.cs`
+- `M	src/LambLink.Mod/Plugin.cs`
+- `M	src/LambLink.Protocol/GameMessages.cs`
 
 ## 복원 근거
 
-- 보존 소스: `ChzzkOfTheLamb-v1.0.0-rc21-diagnostic-watchdog-fallback-source.zip`
+- 보존 소스: `LambLink-v1.0.0-rc21-diagnostic-watchdog-fallback-source.zip`
 - 보존 시각 기준: `2026-08-24T12:36:48+00:00`
 - 이전 스냅샷과의 실제 파일 차이를 사용해 복원함
 

@@ -44,4 +44,4 @@ numbered transport evidence must exist on both ends.
 After one test, collect these two complete files:
 
 - `Cult of the Lamb\BepInEx\LogOutput.log`
-- `%LOCALAPPDATA%\ChzzkOfTheLamb\companion-rc21.log`
+- `%LOCALAPPDATA%\LambLink\companion-rc21.log`

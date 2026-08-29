@@ -224,6 +224,48 @@ def put_catalog(streamer: str, payload: dict[str, Any]):
     })
 
 
+def get_follower_states(streamer: str, save_id: str, cursor: str | None = None):
+    prefix = f"STATE#{save_id}#"
+    query_args: dict[str, Any] = {
+        "KeyConditionExpression": Key("PK").eq(f"STREAMER#{streamer}") & Key("SK").begins_with(prefix),
+        "ConsistentRead": True,
+        "Limit": 50,
+    }
+    if cursor:
+        try:
+            cursor_sk = _unb64u(cursor).decode("utf-8")
+        except Exception as exc:
+            raise ValueError("invalid follower-state cursor") from exc
+        if not cursor_sk.startswith(prefix):
+            raise ValueError("follower-state cursor does not match saveId")
+        query_args["ExclusiveStartKey"] = {"PK": f"STREAMER#{streamer}", "SK": cursor_sk}
+
+    result = ddb.query(**query_args)
+    states = []
+    skipped = 0
+    for item in result.get("Items", []):
+        item_sk = str(item.get("SK") or "")
+        if not item_sk.startswith(prefix):
+            continue
+        try:
+            payload = json.loads(item.get("Payload") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            skipped += 1
+            continue
+        if not isinstance(payload, dict):
+            skipped += 1
+            continue
+        payload["saveId"] = save_id
+        payload["viewerChannelId"] = item_sk[len(prefix):]
+        states.append(payload)
+
+    if skipped:
+        print(f"follower state query skipped corrupt records count={skipped} save={save_id}")
+    last_key = result.get("LastEvaluatedKey")
+    next_token = _b64u(str(last_key["SK"]).encode("utf-8")) if last_key else None
+    return states, next_token
+
+
 def validate_appearance(catalog: dict[str, Any], appearance: dict[str, Any]):
     form_id = appearance.get("formId")
     allowed = set(catalog.get("allowedFormIds") or [])
@@ -370,6 +412,16 @@ def handler(event, context):
                         "forms": len(forms),
                         "allowed": len(allowed),
                     })
+
+            if parts[2] == "follower-states" and len(parts) == 3 and method == "GET":
+                session = verify_token(bearer(event), "companion")
+                if session["sub"] != streamer:
+                    raise PermissionError("streamer mismatch")
+                save_id = str(qs.get("saveId") or "unknown")
+                if save_id == "unknown":
+                    return _json(400, {"error": "saveId is required"})
+                states, next_token = get_follower_states(streamer, save_id, qs.get("cursor"))
+                return _json(200, {"saveId": save_id, "states": states, "nextToken": next_token})
 
             if len(parts) == 4 and parts[2] == "appearance" and parts[3] == "me":
                 session = verify_token(bearer(event), "viewer")
