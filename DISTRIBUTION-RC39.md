@@ -30,7 +30,7 @@ pwsh -NoProfile -File .\build-distribution.ps1
 1. `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\aws\scripts\install-release-staging.ps1`을 실행합니다.
 2. 설치기 상단에 `STAGING TEST · 운영과 분리된 테스트 환경`이 표시되는지 확인합니다.
 3. 설치 후 `LambLink Companion (STAGING TEST)` 바로가기를 실행합니다.
-4. 시청자 웹에서 122개 원본 형상 미리보기가 표시되고 `신도 히스토리 보기` 버튼이 항상 보이는지 확인합니다.
+4. 시청자 웹에서 188개 형상 미리보기가 표시되고, 실제 데이터에 따라 형상별 종류가 1~5개로 표시되는지 확인합니다. 이 중 종류가 3개인 형상은 122개입니다.
 5. 형상·색·종류를 연속해서 선택할 때 목록 전체가 다시 로딩되지 않고 즉시 선택 상태와 큰 미리보기만 갱신되는지 확인합니다.
 6. Companion에서 `[MODE] RELEASE / CHZZK LIVE / STAGING`을 확인합니다.
 7. 로그 경로가 `%LOCALAPPDATA%\LambLink-Staging\companion-rc39.log`인지 확인합니다.

@@ -102,7 +102,7 @@ $criticalSources = @{
   'aws\scripts\deploy-release-staging.ps1' = '2aa6dc40decb1a702cbd017909e2aaab88756baa78c4290498dfce1599473e8f'
   'aws\scripts\install-release-staging.ps1' = '71041761bf6aeefed8f312c4368e9b64397768d18e60e54cfcfefe4d081d1d45'
   'aws\scripts\run-staging-companion.ps1' = 'a8939a383fd1abed31fa4662e7c09adee63a19807c71cd1eff0e45af0eda7644'
-  'DISTRIBUTION-RC39.md' = '5318727f82f8b4572aaf32baac03f559e0229185185ba79a0d9d288c3f77d649'
+  'DISTRIBUTION-RC39.md' = '1c8a7e2ebf13df7616bcba8fed8b57fe62e84a1790a217dc5e1032cf336e6296'
 }
 foreach ($relativePath in $criticalSources.Keys) {
   $sourcePath = Join-Path $root $relativePath
