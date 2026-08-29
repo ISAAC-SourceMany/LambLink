@@ -1,4 +1,4 @@
-# v1.0.0 RC39 진단 테스트·배포 체크리스트
+# LambLink v1.0.0 진단 테스트·배포 체크리스트
 
 ## 1. Korean Font Fix 4.2.1 실제 바이너리 준비
 
@@ -25,7 +25,7 @@
 
 성공하면:
 
-`dist\LambLink-v1.0.0-rc39-distribution.zip`
+`dist\LambLink-v1.0.0-distribution.zip`
 
 이 생성됩니다.
 
@@ -42,6 +42,6 @@
   CHZZK 후원에서 동일 요청 ID의 RX/RULE/TX/APPLIED/ACK를 추가 확인
 - 실패 시 `support` 명령으로 개인정보 제거 지원 ZIP 생성 확인
 
-## 5. 정식 1.0.0 전 남은 권장 작업
+## 5. 정식 1.0.0 구성
 
-BepInEx 5와 COTL_API까지 설치기에 포함하거나 안전한 자동 다운로드/검증 방식으로 처리하면, 사용자가 사전 모드 설치 없이 사용할 수 있습니다.
+BepInEx 5와 COTL_API는 설치기가 공식 배포처에서 다운로드하고 SHA-256으로 검증하므로 사용자는 사전 모드 설치 없이 사용할 수 있습니다.

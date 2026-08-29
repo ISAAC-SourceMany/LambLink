@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: COTL CHZZK Companion viewer appearance service
+Description: LambLink viewer appearance service
 
 Parameters:
   EnvironmentName:
@@ -28,7 +28,7 @@ Resources:
     Type: AWS::SecretsManager::Secret
     Condition: GenerateTokenSigningSecret
     Properties:
-      Description: !Sub COTL ${EnvironmentName} session token signing secret
+      Description: !Sub LambLink ${EnvironmentName} session token signing secret
       GenerateSecretString:
         PasswordLength: 64
         ExcludePunctuation: true

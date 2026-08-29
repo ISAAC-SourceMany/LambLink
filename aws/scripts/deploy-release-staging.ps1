@@ -6,7 +6,7 @@
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-$release = '1.0.0-rc39'
+$release = '1.0.0'
 $distributionZip = Join-Path $projectRoot "dist\LambLink-v$release-distribution.zip"
 $sourceDir = Join-Path $projectRoot "dist\LambLink-v$release-distribution\CDN-UPLOAD"
 $outputFile = Join-Path $projectRoot 'aws\staging-release.local.json'
@@ -35,7 +35,7 @@ $manifestName = "installer-manifest-$release.json"
 $sourceManifest = Join-Path $sourceDir $manifestName
 $tempManifest = Join-Path ([IO.Path]::GetTempPath()) ("cotl-staging-manifest-" + [guid]::NewGuid().ToString('N') + '.json')
 $componentFiles = @{
-  'korean-font-fix' = 'COTL-KoreanFontFix-4.2.1-rc39.zip'
+  'korean-font-fix' = 'COTL-KoreanFontFix-4.2.1-v1.0.0.zip'
   'lamblink-mod' = "LambLink-Mod-$release.zip"
   'companion' = "LambLink-Companion-$release-win-x64.zip"
 }

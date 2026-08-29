@@ -15,9 +15,14 @@ if (-not (Test-Path -LiteralPath $resolvedInfoPath -PathType Leaf)) {
 
 $deployment = Get-Content -LiteralPath $resolvedInfoPath -Raw | ConvertFrom-Json
 $manifestUrl = [string]$deployment.ManifestUrl
+if ([string]$deployment.Release -ne '1.0.0') {
+  throw "Expected v1.0.0 staging deployment information, actual=$($deployment.Release)"
+}
 $installerPath = [IO.Path]::GetFullPath([string]$deployment.InstallerPath)
-if ([string]$deployment.Release -ne '1.0.0-rc39') {
-  throw "Expected RC39 staging deployment information, actual=$($deployment.Release)"
+$currentInstallerPath = Join-Path $projectRoot "dist\LambLink-v$($deployment.Release)-distribution\USER-DOWNLOAD\LambLink-Setup-$($deployment.Release).exe"
+if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf) -and (Test-Path -LiteralPath $currentInstallerPath -PathType Leaf)) {
+  Write-Host "[PATH-MIGRATION] 저장소 이동 전 설치기 경로를 현재 프로젝트 경로로 교체합니다: $currentInstallerPath" -ForegroundColor Yellow
+  $installerPath = [IO.Path]::GetFullPath($currentInstallerPath)
 }
 $manifestUsesHttps = $manifestUrl.StartsWith('https://', [StringComparison]::OrdinalIgnoreCase)
 $manifestUsesStagingPath = $manifestUrl.IndexOf('/releases-staging/', [StringComparison]::Ordinal) -ge 0
@@ -25,7 +30,7 @@ if (-not $manifestUsesHttps -or -not $manifestUsesStagingPath) {
   throw "Refusing to launch the installer with a non-staging manifest URL: $manifestUrl"
 }
 if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf)) {
-  throw "RC39 installer not found: $installerPath"
+  throw "v1.0.0 installer not found: $installerPath"
 }
 
 $runningCompanions = @(Get-Process -Name 'LambLink.Companion' -ErrorAction SilentlyContinue)
@@ -39,7 +44,7 @@ $previousManifestUrl = [Environment]::GetEnvironmentVariable('COTL_INSTALLER_MAN
 try {
   $env:COTL_INSTALLER_MANIFEST_URL = $manifestUrl
   Write-Host '============================================================'
-  Write-Host '[STAGING TEST] RC39 스테이징 설치기를 실행합니다.' -ForegroundColor Yellow
+  Write-Host '[STAGING TEST] v1.0.0 스테이징 설치기를 실행합니다.' -ForegroundColor Yellow
   Write-Host "Manifest: $manifestUrl"
   Write-Host "Installer: $installerPath"
   Write-Host '============================================================'

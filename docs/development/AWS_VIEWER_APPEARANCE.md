@@ -145,7 +145,7 @@ two-, four-, and five-variant groups. The viewer still treats the runtime catalo
 as authoritative, so unused preview resources are never offered as selectable options.
 Form and variant thumbnails are rendered only when they approach the viewport, and a color or
 variant click updates only the selected buttons and the main preview instead of rebuilding every
-picker. `deploy-frontend.ps1` validates that all RC39 catalog additions have preview metadata and
+picker. `deploy-frontend.ps1` validates that all v1.0.0 catalog additions have preview metadata and
 uploads immutable assets before publishing the HTML that references them.
 
 If a viewer has no saved web appearance, Companion falls back to the existing local appearance store; if neither exists, the game's current/random appearance is kept.

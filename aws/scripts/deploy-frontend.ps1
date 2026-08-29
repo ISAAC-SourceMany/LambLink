@@ -41,7 +41,7 @@ $assetPaths = @($assets.Values)
 $assetFingerprint = (($assetPaths | ForEach-Object {
   (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.Substring(0, 8).ToLowerInvariant()
 }) -join '')
-$assetBase = "assets/rc39-web2-$assetFingerprint"
+$assetBase = "assets/v1.0.0-$assetFingerprint"
 $awsCommon = @()
 if (-not [string]::IsNullOrWhiteSpace($Profile)) { $awsCommon += @('--profile', $Profile) }
 if (-not [string]::IsNullOrWhiteSpace($Region)) { $awsCommon += @('--region', $Region) }

@@ -9,7 +9,7 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 if ([string]::IsNullOrWhiteSpace($CompanionPath)) {
-  $CompanionPath = Join-Path $projectRoot 'dist\LambLink-v1.0.0-rc39\Companion\LambLink.Companion.exe'
+  $CompanionPath = Join-Path $projectRoot 'dist\LambLink-v1.0.0\Companion\LambLink.Companion.exe'
 }
 $resolvedCompanion = [IO.Path]::GetFullPath($CompanionPath)
 if (-not (Test-Path -LiteralPath $resolvedCompanion -PathType Leaf)) {

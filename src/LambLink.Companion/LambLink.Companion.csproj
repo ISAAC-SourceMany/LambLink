@@ -4,15 +4,15 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>1.0.0-rc39</Version>
+    <Version>1.0.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.39</FileVersion>
+    <FileVersion>1.0.0.40</FileVersion>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <DefineConstants>$(DefineConstants);RELEASE_DISTRIBUTION</DefineConstants>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(EnableRcTestTools)' == 'true'">
-    <DefineConstants>$(DefineConstants);RC_TEST_TOOLS</DefineConstants>
+  <PropertyGroup Condition="'$(EnableReleaseTestTools)' == 'true'">
+    <DefineConstants>$(DefineConstants);RELEASE_TEST_TOOLS</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\LambLink.Protocol\LambLink.Protocol.csproj" />

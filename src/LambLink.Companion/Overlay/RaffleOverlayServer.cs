@@ -7,7 +7,7 @@ namespace LambLink.Companion.Overlay;
 
 public sealed class RaffleOverlayServer : IAsyncDisposable
 {
-    private const string OverlayDocumentVersion = "rc39-overlay-document-v1";
+    private const string OverlayDocumentVersion = "v1.0.0-overlay-document-v1";
     private readonly object _gate = new();
     private readonly int _port;
     private TcpListener? _listener;
@@ -658,7 +658,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>My Lamb Raffle Overlay</title>
+<title>LambLink Raffle Overlay</title>
 <style>
   :root { color-scheme: dark; }
   html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;font-family:"Malgun Gothic","Noto Sans KR",sans-serif}
@@ -699,7 +699,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
 <div id="donationWrap"><div class="panel" id="donationPanel"></div></div>
 <div id="buffs"></div>
 <script>
-const overlayDocumentVersion='rc39-overlay-document-v1';
+const overlayDocumentVersion='v1.0.0-overlay-document-v1';
 const wrap=document.getElementById('wrap');
 const panel=document.getElementById('panel');
 const donationWrap=document.getElementById('donationWrap');

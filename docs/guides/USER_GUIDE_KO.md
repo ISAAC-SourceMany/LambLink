@@ -196,12 +196,12 @@ Companion이 치지직 후원을 이미 수신했다면 게임이 꺼져 있거�
 
 > 1,000원 이상 후원은 Cult of the Lamb에 무작위 이벤트를 발생시킵니다. 도움뿐 아니라 신앙·포만도·체력·이동속도·공격력에 불리한 효과도 포함됩니다. 로딩이나 대화 중 들어온 이벤트는 게임 진행이 가능해진 뒤 순서대로 적용됩니다.
 
-현재 rc39는 개발 후원을 통한 게임 적용과 표시를 검증한 배포 후보입니다. 실제 치지직 후원 수신은 수익 창출 승인 후 추가 검증이 필요합니다.
+현재 1.0.0은 개발 후원을 통한 게임 적용과 표시를 검증한 정식 버전입니다. 실제 치지직 후원 수신은 채널의 후원 사용 조건이 충족된 환경에서 추가 확인할 수 있습니다.
 
 ## 10. 방송 시작 전 체크리스트
 
 - [ ] 최신 Setup EXE로 설치 또는 업데이트했다.
-- [ ] Companion 창에 `v1.0.0-rc39`와 `RELEASE / CHZZK LIVE`가 표시된다.
+- [ ] Companion 창에 `v1.0.0`과 `RELEASE / CHZZK LIVE`가 표시된다.
 - [ ] 방송용 치지직 계정으로 로그인했다.
 - [ ] Cult of the Lamb 저장 파일을 불러왔다.
 - [ ] `status`에서 `GAME=True`, `SYNC=READY`를 확인했다.
@@ -256,7 +256,7 @@ Companion에서 `support`를 입력하면 바탕화면에 진단 ZIP이 생성�
 ### 로그 위치
 
 ```text
-Companion: %LOCALAPPDATA%\LambLink\companion-rc39.log
+Companion: %LOCALAPPDATA%\LambLink\companion-1.0.0.log
 설치기:    %LOCALAPPDATA%\LambLink\installer.log
 게임 Mod:  Cult of the Lamb\BepInEx\LogOutput.log
 ```

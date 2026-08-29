@@ -15,7 +15,7 @@ using LambLink.Companion.Storage;
 using LambLink.Companion.ViewerPage;
 using LambLink.Protocol;
 
-const string ReleaseVersion = "1.0.0-rc39";
+const string ReleaseVersion = "1.0.0";
 const string ProductionApiBase = "https://y0eblkdmu5.execute-api.ap-northeast-2.amazonaws.com";
 const string ProductionFrontendUrl = "https://d1gvw9ccym1qvn.cloudfront.net";
 
@@ -57,7 +57,7 @@ catch (Exception ex)
     legacyMigrationWarning = ex.Message;
 }
 Directory.CreateDirectory(dataDir);
-var diagnosticLogPath = Path.Combine(dataDir, "companion-rc39.log");
+var diagnosticLogPath = Path.Combine(dataDir, "companion-1.0.0.log");
 var originalConsoleOut = Console.Out;
 var originalConsoleError = Console.Error;
 using var diagnosticLogWriter = new RollingFileTextWriter(
@@ -140,8 +140,8 @@ if (IsReleaseDistribution)
         ? "[MODE] RELEASE / CHZZK LIVE / STAGING"
         : "[MODE] RELEASE / CHZZK LIVE");
     Console.WriteLine("[CONFIG] AWS CLI/SSO: not used by distribution build");
-#if RC_TEST_TOOLS
-    Console.WriteLine("[TEST TOOLS] RC39_TEST_TOOLS enabled: dev donation command is available; do not distribute this Companion.");
+#if RELEASE_TEST_TOOLS
+    Console.WriteLine("[TEST TOOLS] RELEASE_TEST_TOOLS enabled: dev donation command is available; do not distribute this Companion.");
 #endif
 }
 else
@@ -169,7 +169,7 @@ var configuredWebApiBase = IsReleaseDistribution
 if (!string.IsNullOrWhiteSpace(configuredWebApiBase))
     Console.WriteLine($"[WEB] API configured: {configuredWebApiBase}");
 if (developmentMode && !string.IsNullOrWhiteSpace(configuredWebApiBase))
-    Console.WriteLine("[WEB] My Lamb API is configured, but Companion authentication/catalog upload requires CHZZK LIVE mode.");
+    Console.WriteLine("[WEB] LambLink viewer API is configured, but Companion authentication/catalog upload requires CHZZK LIVE mode.");
 
 var streamerChannelId = settings.Development.LocalStreamerId;
 var streamerChannelName = settings.Development.LocalStreamerName;
@@ -1569,7 +1569,7 @@ async Task ConsoleLoopAsync()
             _ = UploadLatestCatalogAsync();
             continue;
         }
-#if RC_TEST_TOOLS
+#if RELEASE_TEST_TOOLS
         if (normalized.StartsWith("dev spawn "))
         {
             var nickname = rawCommand.Substring("dev spawn ".Length).Trim();
@@ -1940,7 +1940,7 @@ void PrintCommands()
     Console.WriteLine("  support | support open       (개인정보 제거 로그 ZIP 생성/열기)");
     Console.WriteLine("  raffle start | raffle cancel | raffle draw");
     Console.WriteLine("  forms | form allow <id> | form deny <id> | refresh-forms");
-#if RC_TEST_TOOLS
+#if RELEASE_TEST_TOOLS
     Console.WriteLine("  dev spawn <nickname>       (개발 전용)");
     Console.WriteLine("  dev join <nickname>        (개발 전용)");
     Console.WriteLine("  dev donation <amount>      (개발 전용)");
@@ -1983,7 +1983,7 @@ static bool IsTruthy(string? value) =>
                           || value.Equals("yes", StringComparison.OrdinalIgnoreCase)
                           || value.Equals("on", StringComparison.OrdinalIgnoreCase));
 
-#if RC_TEST_TOOLS
+#if RELEASE_TEST_TOOLS
 static string Slug(string value)
 {
     var chars = value.Where(char.IsLetterOrDigit).Take(32).ToArray();

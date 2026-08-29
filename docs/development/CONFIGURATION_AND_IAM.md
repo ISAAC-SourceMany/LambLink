@@ -2,7 +2,7 @@
 
 ## Configuration providers
 
-The My Lamb backend now has one configuration abstraction in `aws/backend/configuration.py`.
+The LambLink viewer backend now has one configuration abstraction in `aws/backend/configuration.py`.
 
 - `COTL_CONFIG_PROVIDER=local`: reads `CHZZK_CLIENT_ID`, `CHZZK_CLIENT_SECRET`, `MYLAMB_CHZZK_CLIENT_ID`, `MYLAMB_CHZZK_CLIENT_SECRET` from environment variables.
 - `COTL_CONFIG_PROVIDER=aws`: reads Client IDs from SSM Parameter Store and Client Secrets from Secrets Manager.
@@ -43,7 +43,7 @@ $env:AWS_DEFAULT_REGION='ap-northeast-2'
 
 Expected output ends with `[CONFIG] OK`. Secret values are never printed.
 
-Then the local My Lamb web server can use the AWS provider directly:
+Then the local LambLink viewer web server can use the AWS provider directly:
 
 ```powershell
 $env:COTL_CONFIG_PROVIDER='aws'

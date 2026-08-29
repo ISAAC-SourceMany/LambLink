@@ -4,7 +4,7 @@
 
 스트리머가 게임에서 새 신도를 영입할 때 시청자가 채팅으로 추첨에 참여하고, 당첨자의 치지직 닉네임과 미리 선택한 외형을 신도에게 적용합니다. 치지직 후원은 마을 또는 던전 상황에 맞는 무작위 게임 효과로 변환되며, 진행 상황은 OBS 오버레이에 표시됩니다.
 
-> 현재 배포 후보 버전: **v1.0.0-rc39**<br>
+> 현재 정식 버전: **v1.0.0** (Windows 파일 버전 `1.0.0.40`)<br>
 > 대상 환경: Windows 10/11, Steam판 Cult of the Lamb<br>
 > 비공식 팬 프로젝트이며 Massive Monster, Devolver Digital, NAVER CHZZK와 제휴하거나 공식 지원을 받는 프로그램이 아닙니다.
 
@@ -68,7 +68,7 @@ LambLink는 단순히 채팅을 화면에 띄우는 도구가 아니라, 방송 
 - NFC 정규화와 `TMP_InputField` 한글 IME 입력 지원
 - 폰트 번들 생성, 플러그인 빌드, 배포 ZIP 패키징 스크립트 제공
 
-현재 LambLink **RC39 설치기는 실제 배포 검증을 마친 4.2.1 자산을 SHA-256으로 확인해 설치**합니다. `tools/COTL_KoreanFontFix`에는 이후 진단 추적 코드를 제거해 정리한 **4.3.0 소스와 독립 배포 도구**가 보존되어 있습니다. 두 버전을 혼동하지 않도록 RC39 배포 자산과 독립 패치 소스를 구분해 관리합니다.
+현재 LambLink **1.0.0 설치기는 실제 배포 검증을 마친 4.2.1 자산을 SHA-256으로 확인해 설치**합니다. `tools/COTL_KoreanFontFix`에는 이후 진단 추적 코드를 제거해 정리한 **4.3.0 소스와 독립 배포 도구**가 보존되어 있습니다. 두 버전을 혼동하지 않도록 1.0.0 배포 자산과 독립 패치 소스를 구분해 관리합니다.
 
 - [한글 폰트 패치 빌드·사용 문서](tools/COTL_KoreanFontFix/README.md)
 - [한글 폰트 패치 4.3.0 변경 사항](tools/COTL_KoreanFontFix/RELEASE_NOTES.md)
@@ -98,7 +98,7 @@ LambLink는 단순히 채팅을 화면에 띄우는 도구가 아니라, 방송 
 
 ## 빠른 시작
 
-1. GitHub의 **Releases**에서 최신 `LambLink-Setup-...exe`를 내려받습니다.
+1. GitHub의 **Releases**에서 이름이 `LambLink-Setup-...exe`인 최신 공개 후보를 내려받습니다. 개명 전 `ChzzkOfTheLamb-Setup-1.0.0-rc35.exe`는 사용하지 않습니다.
 2. Cult of the Lamb과 실행 중인 기존 Companion을 종료합니다.
 3. 설치 파일을 실행하고 자동으로 찾은 게임 경로를 확인한 뒤 **설치**를 누릅니다.
 4. 설치 완료 후 **Companion 실행**을 누릅니다.
@@ -163,7 +163,7 @@ Companion ─────→ OBS 브라우저 오버레이
 |---|---|
 | Companion 프로그램 | `%LOCALAPPDATA%\Programs\LambLink` |
 | 사용자 설정·매핑 | `%LOCALAPPDATA%\LambLink` |
-| Companion 로그 | 운영: `%LOCALAPPDATA%\LambLink\companion-rc39.log` · 스테이징: `%LOCALAPPDATA%\LambLink-Staging\companion-rc39.log` |
+| Companion 로그 | 운영: `%LOCALAPPDATA%\LambLink\companion-1.0.0.log` · 스테이징: `%LOCALAPPDATA%\LambLink-Staging\companion-1.0.0.log` |
 | 설치 로그 | `%LOCALAPPDATA%\LambLink\installer.log` |
 | 게임 Mod 로그 | `Cult of the Lamb\BepInEx\LogOutput.log` |
 
@@ -175,7 +175,7 @@ Companion ─────→ OBS 브라우저 오버레이
 - [개발 환경 설정](docs/development/SETUP.md)
 - [구조 설명](docs/development/ARCHITECTURE.md)
 - [개발 이력](docs/history/README.md)
-- [rc39 환경 분리 배포 및 검증](DISTRIBUTION-RC39.md)
+- [1.0.0 환경 분리 배포 및 검증](DISTRIBUTION-1.0.0.md)
 - [히스토리 복원 기록](HISTORY_RECONSTRUCTION.md)
 
 ## 라이선스와 주의사항

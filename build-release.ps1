@@ -1,6 +1,8 @@
 ﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$release = '1.0.0-rc39'
+$release = '1.0.0'
+$fileVersion = '1.0.0.40'
+$fontPackageName = 'COTL-KoreanFontFix-4.2.1-v1.0.0.zip'
 $distRoot = Join-Path $root 'dist'
 $dist = Join-Path $distRoot "LambLink-v$release"
 $companionOut = Join-Path $dist 'Companion'
@@ -56,10 +58,11 @@ function Clear-CompilerOutputs {
   }
 }
 
-Write-Host '[0/9] Verifying RC39 source identity and removing stale compiler outputs...'
+Write-Host '[0/9] Verifying v1.0.0 source identity and removing stale compiler outputs...'
+& (Join-Path $root 'tests\brand\test-brand-migration.ps1')
 $criticalSources = @{
   'src\LambLink.Mod\LambLink.Mod.csproj' = '4e4912f4e62e273a3a4175b3d000ead95874193f29e545ea4c373805bc77ccf6'
-  'src\LambLink.Mod\Plugin.cs' = '74dde50a7c2c617bcce6825085c4359a64abbf0dc01780fe643db95b279b789e'
+  'src\LambLink.Mod\Plugin.cs' = '594f7159efbcb2cef29615329fc49f47960ba4f0f0e24b6916be5a7d06fe4d41'
   'src\LambLink.Mod\BridgeRuntimeHost.cs' = '499b5a9b14ff2fab6bdb84a9304550dd2d19c079ca50e5a6edbdf08894a66279'
   'src\LambLink.Mod\Network\ModBridgeClient.cs' = 'a355fecbbabe76fa69d5bf089f48a28d9bc60da5ad4233d794c68f18c346b63c'
   'src\LambLink.Mod\Game\IndoctrinationRafflePatch.cs' = '9804b3e1d156bab2981f85ff90a52733b83b6f8719ee48309b7f84a88788fee8'
@@ -74,7 +77,7 @@ $criticalSources = @{
   'src\LambLink.Mod\Game\DungeonDonationBuffs.cs' = '0945d15961880bcaa9c3d0dfec0cae2302a278f54b49ce41a0db2372b119f905'
   'src\LambLink.Protocol\GameMessages.cs' = '826b2d7429942cfdaaa910f415a54fa0083bb755a3fe5ad7dae83a4217db3e8b'
   'src\LambLink.Protocol\ChzzkFollowerMarkerDiff.cs' = 'a3b5b986b5d932e3f92d8dba8d01934d4b9c39ae9f081fe0d61a1a0560b5d764'
-  'src\LambLink.Companion\Program.cs' = 'd803dee00d01575a5dca7bcf078fd3cd37cdf38cae05cfcb12b4002727489b6f'
+  'src\LambLink.Companion\Program.cs' = 'ad1b316b99e43b80c5cf9dee9bcde4c134483edf4065031b6e627dcad13e0407'
   'src\LambLink.Companion\Chzzk\ChzzkApiClient.cs' = 'de54d18319d45922b606533db02803dddbebe6c0a710bd163467c21362296e0f'
   'src\LambLink.Companion\Chzzk\ChzzkRealtimeClient.cs' = '5a57fe90df6e36ede54e0d4d24f07d7c6557f2ef6454341e99cf9d6bae335893'
   'src\LambLink.Companion\Chzzk\Models.cs' = 'd5424be6e8dcab385b1a92424263b234a5aac0a6555ecad2467fdae53e2901ba'
@@ -90,27 +93,32 @@ $criticalSources = @{
   'src\LambLink.Companion\Storage\DonationDeliveryRepository.cs' = '9fcb10a2b0d9fbb2a6e03112e6b274bbf102b4b3626a679435570eb5b2a16108'
   'src\LambLink.Companion\Storage\ViewerFollowerRepository.cs' = 'e10fc3955f24a2e21f2ce7839b2176a2b6052bb6953bf04f1419c936ca4ee607'
   'src\LambLink.Companion\Appearance\AppearanceStore.cs' = '14ff36135eb44a0b4f7a3a067bf604cef407316b7d303c475c26e98ee40d38bb'
-  'src\LambLink.Companion\Overlay\RaffleOverlayServer.cs' = 'df6fd46ee930dc23dd57345163fd513b9be074d30123d44c738d7f3d29163219'
-  'src\LambLink.Companion\LambLink.Companion.csproj' = '93a17db6abe70e0d907ca20fc9dd5552b27f37d77d19f7f11503621e60da129e'
+  'src\LambLink.Companion\Overlay\RaffleOverlayServer.cs' = '1dd328315954b5b8d14267b9abbb7c2d25add54060b86f46253d7299a92799c7'
+  'src\LambLink.Companion\LambLink.Companion.csproj' = '5f6bb1d3d0c508785a009d0ac8cb78b806254d79c048d067808595daba5b63c8'
   'src\LambLink.Companion\Configuration\CompanionLaunchProfile.cs' = '0ac9ef1eac171676f09f956b8579649d47d24b4603cabad2062a3bbaedad0870'
   'src\LambLink.Companion\Configuration\LegacyDataMigration.cs' = '5da7837cd88fafd1ed17eae0ee512238ee9d7245c128aea5ba2e2d9346f75921'
-  'src\LambLink.Installer\Program.cs' = '05c1c8f01cff32151ed543ac41cd83b08d4e6e9983c47ecc97a95e665d52a597'
-  'src\LambLink.Installer\LambLink.Installer.csproj' = 'a985e7c0536dd376085141f3b9b29a0450a26f6bf538e8be0b1f9969226f8c27'
-  'installer\installer-manifest.template.json' = 'f5208f373321b6a244e6df67eb084a6cb121736e0803c49016d5e3ad8cc49b9c'
-  'prepare-installer-manifest.ps1' = 'a3f9df80a86459be63ac9c85e5507835a80cd0d49470c75f4f3390aea615cab2'
-  'build-distribution.ps1' = '01890981da78e8204bb3d67aea61f9781a3196d124ef7ba83c5cf0253b089eb9'
-  'aws\scripts\deploy-release-staging.ps1' = '2aa6dc40decb1a702cbd017909e2aaab88756baa78c4290498dfce1599473e8f'
-  'aws\scripts\install-release-staging.ps1' = '71041761bf6aeefed8f312c4368e9b64397768d18e60e54cfcfefe4d081d1d45'
-  'aws\scripts\run-staging-companion.ps1' = 'a8939a383fd1abed31fa4662e7c09adee63a19807c71cd1eff0e45af0eda7644'
-  'DISTRIBUTION-RC39.md' = '1c8a7e2ebf13df7616bcba8fed8b57fe62e84a1790a217dc5e1032cf336e6296'
+  'src\LambLink.Installer\Program.cs' = '67746963a10f399df2b0ba0e28bc22324ea47edfaedf1ca80997cdf67adcc115'
+  'src\LambLink.Installer\LambLink.Installer.csproj' = 'fdb41202794ec4a63c121da2e51266d5ec08fb1430edcd5506790a7e635c089d'
+  'installer\installer-manifest.template.json' = 'ed90593435bad77d07e5d90751cf7f719eb1aaf44b4841b7afe6abc1ddbf6109'
+  'prepare-installer-manifest.ps1' = '12c46525d00049564abd6594def06f6e943e479d4d5d4eb228931bddc6cb16ea'
+  'build-distribution.ps1' = '54fc042ff301efc0ee9ebd42bea0482098c21f3cdd72a46fc3d818149756064f'
+  'aws\scripts\deploy-release-staging.ps1' = 'f57a468519bdf4846c0a4fb8c2f53be5f0cc50275e940554969982f388b4dcf1'
+  'aws\scripts\install-release-staging.ps1' = 'ecd3287233a41c4f30e560f630d9d91971c8943de4d7ce2b5d245f6c7c248370'
+  'aws\scripts\run-staging-companion.ps1' = 'dad9c5fc5a0550dd4ddfde42e319165cc361ab2886bfbde56b33082c08d653c2'
+  'aws\scripts\deploy-production.ps1' = '12defcbf792f7528e1cd99c284cb0c5241db0eab4ac8d16edf8e67840f0428ac'
+  'aws\scripts\deploy-release-production.ps1' = '66c9ee3579a47daf988b5e020d02c82cee21ee26490e6c9cca0845f5407a4793'
+  'aws\frontend\index.html' = '2ab5c7475e67829a616ef6cc4cebc12b9f7488db10dd2dd6b6911047f9c7da29'
+  'aws\template.yaml' = '0177db67b8bd6e90c57f3127b81dcb82eec3d0fb2536f6756ff549b217ce5e17'
+  'tests\brand\test-brand-migration.ps1' = '1dde99dc23150504f467242045ea416b28519dde94c0e3135383efd6d8b342ea'
+  'DISTRIBUTION-1.0.0.md' = 'b9bbb7ded34da5f747b004249a19ca912a2dad9af699fc77ce9f234a508b4411'
 }
 foreach ($relativePath in $criticalSources.Keys) {
   $sourcePath = Join-Path $root $relativePath
-  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC39 source: $relativePath" }
+  if (-not (Test-Path $sourcePath)) { throw "Missing critical v1.0.0 source: $relativePath" }
   $actualHash = (Get-FileHash $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actualHash -ne $criticalSources[$relativePath]) {
     # Git for Windows commonly checks text files out as CRLF when core.autocrlf=true,
-    # while the reviewed RC39 hashes were recorded from the repository's LF blobs.
+    # while the reviewed release hashes were recorded from the repository's LF blobs.
     # Normalize only CRLF line endings and hash the UTF-8 bytes again; any semantic
     # source change still fails the identity check.
     $sourceBytes = [System.IO.File]::ReadAllBytes($sourcePath)
@@ -128,10 +136,10 @@ foreach ($relativePath in $criticalSources.Keys) {
     }
   }
   if ($actualHash -ne $criticalSources[$relativePath]) {
-    throw "Critical RC39 source does not match the reviewed version: $relativePath"
+    throw "Critical v1.0.0 source does not match the reviewed version: $relativePath"
   }
 }
-Write-Host '[VERIFY] Critical RC39 source hashes OK.'
+Write-Host '[VERIFY] Critical v1.0.0 source hashes OK.'
 
 Clear-CompilerOutputs
 
@@ -147,7 +155,7 @@ Write-Host '[ASSET] Korean Font Fix 4.2.1 verified.'
 Write-Host '[2/9] Cleaning dist/release-hosting component artifacts...'
 Remove-DirectoryTree $dist
 New-Item -ItemType Directory -Force -Path $companionOut, $pluginOut, $hosting | Out-Null
-foreach ($f in @('COTL-KoreanFontFix-4.2.1-rc39.zip',"LambLink-Mod-$release.zip","LambLink-Companion-$release-win-x64.zip","LambLink-Setup-$release.exe","installer-manifest-$release.json")) {
+foreach ($f in @($fontPackageName,"LambLink-Mod-$release.zip","LambLink-Companion-$release-win-x64.zip","LambLink-Setup-$release.exe","installer-manifest-$release.json")) {
   $p = Join-Path $hosting $f; if (Test-Path $p) { Remove-Item $p -Force }
 }
 
@@ -166,25 +174,29 @@ $modDll = Join-Path $pluginOut 'LambLink.Mod.dll'
 $modBytes = [System.IO.File]::ReadAllBytes($modDll)
 function Test-ByteSequence([byte[]]$Haystack, [byte[]]$Needle) {
   if ($Needle.Length -eq 0 -or $Haystack.Length -lt $Needle.Length) { return $false }
-  for ($i = 0; $i -le $Haystack.Length - $Needle.Length; $i++) {
-    $matched = $true
-    for ($j = 0; $j -lt $Needle.Length; $j++) {
-      if ($Haystack[$i + $j] -ne $Needle[$j]) { $matched = $false; break }
-    }
-    if ($matched) { return $true }
+  if ($null -eq $script:ByteSequenceTextCache) {
+    $script:ByteSequenceTextCache = @{}
   }
-  return $false
+  $cacheKey = "{0}:{1}" -f [Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($Haystack), $Haystack.Length
+  if (-not $script:ByteSequenceTextCache.ContainsKey($cacheKey)) {
+    # Latin-1 is a lossless one-byte-to-one-character projection. String.IndexOf
+    # then performs the binary search in optimized .NET code instead of an
+    # interpreted PowerShell loop over a 100+ MB single-file executable.
+    $script:ByteSequenceTextCache[$cacheKey] = [Text.Encoding]::GetEncoding(28591).GetString($Haystack)
+  }
+  $needleText = [Text.Encoding]::GetEncoding(28591).GetString($Needle)
+  return $script:ByteSequenceTextCache[$cacheKey].IndexOf($needleText, [StringComparison]::Ordinal) -ge 0
 }
-$buildTag = 'rc39-staging-isolation'
+$buildTag = 'v1.0.0-production'
 $hasBuildTag = (Test-ByteSequence $modBytes ([System.Text.Encoding]::UTF8.GetBytes($buildTag))) -or
                (Test-ByteSequence $modBytes ([System.Text.Encoding]::Unicode.GetBytes($buildTag)))
 if (-not $hasBuildTag) {
-  throw 'Built mod DLL does not contain the RC39 build tag. Refusing to package a stale DLL.'
+  throw 'Built mod DLL does not contain the v1.0.0 build tag. Refusing to package a stale DLL.'
 }
 foreach ($marker in @('io.github.xhayper.COTL_API', 'RAFFLE_ROUND_CLOSED', '[NAMEPLATE][PATCH-VERIFY]', '[NAMEPLATE][INLINE-APPLIED]', '[NAMEPLATE][TARGETED-REFRESH]', 'CACHE-HIT', '[IDENTITY-COMMIT]', 'CHZZK nameplate marker dropped', '<color=#00C471>Chzzk</color> ')) {
   $hasMarker = (Test-ByteSequence $modBytes ([System.Text.Encoding]::UTF8.GetBytes($marker))) -or
                (Test-ByteSequence $modBytes ([System.Text.Encoding]::Unicode.GetBytes($marker)))
-  if (-not $hasMarker) { throw "Built mod DLL is missing required RC39 marker: $marker" }
+  if (-not $hasMarker) { throw "Built mod DLL is missing required v1.0.0 marker: $marker" }
 }
 foreach ($forbidden in @('[NAMEPLATE][IDENTITY-REPAIRED]', '[FOLLOWER-MARKER][IDENTITY-REPAIRED]')) {
   $hasForbidden = (Test-ByteSequence $modBytes ([System.Text.Encoding]::UTF8.GetBytes($forbidden))) -or
@@ -194,14 +206,14 @@ foreach ($forbidden in @('[NAMEPLATE][IDENTITY-REPAIRED]', '[FOLLOWER-MARKER][ID
 foreach ($marker in @('[DONATION][RX]', '[DONATION][APPLIED]', '[DONATION][RESULT-TX]', '[DONATION][QUEUE][ENQUEUED]', '[DONATION][GATE][STATE]', '[DONATION][STORY-HOOK][CAPABILITY]', '[DONATION][BUFF-GROUP]', 'sharedStartIn=', 'DONATION_RUNTIME_STATE', 'stage=')) {
   $hasMarker = (Test-ByteSequence $modBytes ([System.Text.Encoding]::UTF8.GetBytes($marker))) -or
                (Test-ByteSequence $modBytes ([System.Text.Encoding]::Unicode.GetBytes($marker)))
-  if (-not $hasMarker) { throw "Built mod DLL is missing RC39 donation diagnostic marker: $marker" }
+  if (-not $hasMarker) { throw "Built mod DLL is missing v1.0.0 donation diagnostic marker: $marker" }
 }
 foreach ($marker in @('[DONATION][RECEIPT][UNCERTAIN]', '[DONATION][RECEIPT][RECOVERY]', 'automatic replay blocked')) {
   $hasMarker = (Test-ByteSequence $modBytes ([System.Text.Encoding]::UTF8.GetBytes($marker))) -or
                (Test-ByteSequence $modBytes ([System.Text.Encoding]::Unicode.GetBytes($marker)))
   if (-not $hasMarker) { throw "Built mod DLL is missing durable donation receipt marker: $marker" }
 }
-Write-Host "[VERIFY] RC39 mod build tag and donation diagnostics found; SHA-256=$((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"
+Write-Host "[VERIFY] v1.0.0 mod build tag and donation diagnostics found; SHA-256=$((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"
 
 Write-Host '[5/9] Building and validating Companion diagnostics...'
 $companionProject = Join-Path $root 'src\LambLink.Companion\LambLink.Companion.csproj'
@@ -220,13 +232,13 @@ foreach ($marker in @('COTL_STAGING_MODE', 'COTL_STAGING_DATA_DIR', 'LambLink-St
                (Test-ByteSequence $companionValidationBytes ([System.Text.Encoding]::Unicode.GetBytes($marker)))
   if (-not $hasMarker) { throw "Built Companion validation assembly is missing staging isolation marker: $marker" }
 }
-foreach ($marker in @('[DONATION][TERMINAL][ACK-TIMEOUT]', '[DONATION][GATE][RX]', 'pausedWhileModGateBlocked=true', '[OVERLAY][BUFF-TIMER][PAUSED]', '[OVERLAY][BUFF-GROUP]', '[OVERLAY][DOCUMENT] version=', '[OVERLAY][STALE-DOCUMENT]', '[OVERLAY][CLIENT-DOCUMENT]', '[OVERLAY][CLIENT-LAYOUT]', 'rc39-overlay-document-v1', '#donationWrap{position:fixed;left:18px;right:auto;top:18px;width:min(480px', '#donationWrap .panel{width:100%;box-sizing:border-box}', '<div id="donationWrap"><div class="panel" id="donationPanel"></div></div>', '#buffs{position:fixed;left:18px;right:auto;top:18px', 'direction:ltr', 'justify-content:flex-start', '/overlay/client-layout?', 'location.replace(', 'OVERLAY_DOC_CURRENT=', '[OVERLAY][DONATION-QUEUE][ENQUEUED]', '[OVERLAY][DONATION-QUEUE][DISPLAY]', '[OVERLAY][DONATION-QUEUE][COMPLETED]', 'DONATION_GATE=', 'DONATION_OUTBOX=', '[DONATION][OUTBOX][RECOVERY]', 'donation outbox and Mod receipt contents', '[SUPPORT][READY]', 'companion-rc39.log', 'fallback snapshot every', '[STAGING TEST] 운영 환경이 아닙니다.', 'installed-launch-profile', 'companion-launch-profile.json')) {
+foreach ($marker in @('[DONATION][TERMINAL][ACK-TIMEOUT]', '[DONATION][GATE][RX]', 'pausedWhileModGateBlocked=true', '[OVERLAY][BUFF-TIMER][PAUSED]', '[OVERLAY][BUFF-GROUP]', '[OVERLAY][DOCUMENT] version=', '[OVERLAY][STALE-DOCUMENT]', '[OVERLAY][CLIENT-DOCUMENT]', '[OVERLAY][CLIENT-LAYOUT]', 'v1.0.0-overlay-document-v1', '#donationWrap{position:fixed;left:18px;right:auto;top:18px;width:min(480px', '#donationWrap .panel{width:100%;box-sizing:border-box}', '<div id="donationWrap"><div class="panel" id="donationPanel"></div></div>', '#buffs{position:fixed;left:18px;right:auto;top:18px', 'direction:ltr', 'justify-content:flex-start', '/overlay/client-layout?', 'location.replace(', 'OVERLAY_DOC_CURRENT=', '[OVERLAY][DONATION-QUEUE][ENQUEUED]', '[OVERLAY][DONATION-QUEUE][DISPLAY]', '[OVERLAY][DONATION-QUEUE][COMPLETED]', 'DONATION_GATE=', 'DONATION_OUTBOX=', '[DONATION][OUTBOX][RECOVERY]', 'donation outbox and Mod receipt contents', '[SUPPORT][READY]', 'companion-1.0.0.log', 'fallback snapshot every', '[STAGING TEST] 운영 환경이 아닙니다.', 'installed-launch-profile', 'companion-launch-profile.json')) {
   $hasMarker = (Test-ByteSequence $companionValidationBytes ([System.Text.Encoding]::UTF8.GetBytes($marker))) -or
                (Test-ByteSequence $companionValidationBytes ([System.Text.Encoding]::Unicode.GetBytes($marker)))
-  if (-not $hasMarker) { throw "Built Companion validation assembly is missing RC39 diagnostic marker: $marker" }
+  if (-not $hasMarker) { throw "Built Companion validation assembly is missing v1.0.0 diagnostic marker: $marker" }
 }
 foreach ($forbiddenMarker in @(
-  'RC39_TEST_TOOLS enabled',
+  'RELEASE_TEST_TOOLS enabled',
   'dev spawn ',
   'dev join ',
   'dev donation ',
@@ -239,8 +251,8 @@ foreach ($forbiddenMarker in @(
                   (Test-ByteSequence $companionValidationBytes ([System.Text.Encoding]::Unicode.GetBytes($forbiddenMarker)))
   if ($hasForbidden) { throw "Release Companion unexpectedly contains development-only code: $forbiddenMarker" }
 }
-Write-Host '[VERIFY] RC39 release Companion excludes test commands and local AWS CLI/SSO credential code.'
-Write-Host '[VERIFY] RC39 support, environment isolation, and donation markers found in compiled Companion assembly.'
+Write-Host '[VERIFY] v1.0.0 release Companion excludes test commands and local AWS CLI/SSO credential code.'
+Write-Host '[VERIFY] v1.0.0 support, environment isolation, and donation markers found in compiled Companion assembly.'
 
 Write-Host '[5/9] Publishing Companion self-contained single-file...'
 dotnet publish $companionProject -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $companionOut
@@ -248,8 +260,8 @@ Assert-NativeSuccess 'Release Companion publish'
 $companionExe = Join-Path $companionOut 'LambLink.Companion.exe'
 if (-not (Test-Path $companionExe)) { throw "Companion EXE was not produced: $companionExe" }
 $companionVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($companionExe)
-if ($companionVersion.FileVersion -ne '1.0.0.39') { throw "Unexpected Companion file version: $($companionVersion.FileVersion)" }
-Write-Host '[VERIFY] RC39 Companion EXE exists and file version is 1.0.0.39.'
+if ($companionVersion.FileVersion -ne $fileVersion) { throw "Unexpected Companion file version: $($companionVersion.FileVersion)" }
+Write-Host "[VERIFY] v1.0.0 Companion EXE exists and file version is $fileVersion."
 
 Write-Host '[6/9] Creating normalized downloadable component ZIPs...'
 $temp = Join-Path $distRoot '_component-build'
@@ -265,7 +277,7 @@ $fontPkg = Join-Path $temp 'font\BepInEx\plugins\COTL_KoreanFontFix'
 New-Item -ItemType Directory -Force -Path $fontPkg | Out-Null
 Copy-Item $fontDll (Join-Path $fontPkg 'COTL_KoreanFontFix.dll') -Force
 Copy-Item $fontBundle (Join-Path $fontPkg 'koreanfont.bundle') -Force
-Compress-Archive -Path (Join-Path $temp 'font\*') -DestinationPath (Join-Path $hosting 'COTL-KoreanFontFix-4.2.1-rc39.zip') -CompressionLevel Optimal
+Compress-Archive -Path (Join-Path $temp 'font\*') -DestinationPath (Join-Path $hosting $fontPackageName) -CompressionLevel Optimal
 
 Compress-Archive -Path (Join-Path $companionOut '*') -DestinationPath (Join-Path $hosting "LambLink-Companion-$release-win-x64.zip") -CompressionLevel Optimal
 
@@ -277,7 +289,7 @@ Assert-NativeSuccess 'Release Installer publish'
 $installerExe = Join-Path $installerPublish 'LambLink.Installer.exe'
 if (-not (Test-Path $installerExe)) { throw "Installer EXE was not produced: $installerExe" }
 $installerVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($installerExe)
-if ($installerVersion.FileVersion -ne '1.0.0.39') { throw "Unexpected Installer file version: $($installerVersion.FileVersion)" }
+if ($installerVersion.FileVersion -ne $fileVersion) { throw "Unexpected Installer file version: $($installerVersion.FileVersion)" }
 if (-not $installerVersion.ProductVersion.StartsWith($release, [System.StringComparison]::OrdinalIgnoreCase)) {
   throw "Unexpected Installer product version: $($installerVersion.ProductVersion)"
 }
@@ -285,9 +297,9 @@ $installerBytes = [System.IO.File]::ReadAllBytes($installerExe)
 foreach ($marker in @('STAGING TEST', 'PRODUCTION', 'companion-launch-profile.json', 'LambLink-Staging', 'STAGING Companion 실행')) {
   $hasMarker = (Test-ByteSequence $installerBytes ([System.Text.Encoding]::UTF8.GetBytes($marker))) -or
                (Test-ByteSequence $installerBytes ([System.Text.Encoding]::Unicode.GetBytes($marker)))
-  if (-not $hasMarker) { throw "Built Installer is missing RC39 environment-isolation marker: $marker" }
+  if (-not $hasMarker) { throw "Built Installer is missing v1.0.0 environment-isolation marker: $marker" }
 }
-Write-Host '[VERIFY] RC39 Installer contains distinct staging/production install markers.'
+Write-Host '[VERIFY] v1.0.0 Installer contains distinct staging/production install markers.'
 Copy-Item $installerExe (Join-Path $hosting "LambLink-Setup-$release.exe") -Force
 
 Write-Host '[8/9] Creating legacy test ZIP + release docs...'

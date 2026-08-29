@@ -1,7 +1,7 @@
 ﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $project = Join-Path $root 'src\LambLink.Mod\LambLink.Mod.csproj'
-$dist = Join-Path $root 'dist\rc39-plugin'
+$dist = Join-Path $root 'dist\v1.0.0-plugin-test'
 
 function Assert-NativeSuccess([string]$Step) {
   if ($LASTEXITCODE -ne 0) { throw "$Step failed with exit code $LASTEXITCODE." }
@@ -53,7 +53,7 @@ function Clear-CompilerOutputs {
 
 $criticalSources = @{
   'src\LambLink.Mod\LambLink.Mod.csproj' = '4e4912f4e62e273a3a4175b3d000ead95874193f29e545ea4c373805bc77ccf6'
-  'src\LambLink.Mod\Plugin.cs' = '74dde50a7c2c617bcce6825085c4359a64abbf0dc01780fe643db95b279b789e'
+  'src\LambLink.Mod\Plugin.cs' = '594f7159efbcb2cef29615329fc49f47960ba4f0f0e24b6916be5a7d06fe4d41'
   'src\LambLink.Mod\BridgeRuntimeHost.cs' = '499b5a9b14ff2fab6bdb84a9304550dd2d19c079ca50e5a6edbdf08894a66279'
   'src\LambLink.Mod\Network\ModBridgeClient.cs' = 'a355fecbbabe76fa69d5bf089f48a28d9bc60da5ad4233d794c68f18c346b63c'
   'src\LambLink.Mod\Game\IndoctrinationRafflePatch.cs' = '9804b3e1d156bab2981f85ff90a52733b83b6f8719ee48309b7f84a88788fee8'
@@ -71,7 +71,7 @@ $criticalSources = @{
 
 foreach ($relativePath in $criticalSources.Keys) {
   $sourcePath = Join-Path $root $relativePath
-  if (-not (Test-Path $sourcePath)) { throw "Missing critical RC39 source: $relativePath" }
+  if (-not (Test-Path $sourcePath)) { throw "Missing critical v1.0.0 source: $relativePath" }
   $actualHash = (Get-FileHash $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actualHash -ne $criticalSources[$relativePath]) {
     $sourceText = [System.IO.File]::ReadAllText($sourcePath).Replace("`r`n", "`n")
@@ -84,7 +84,7 @@ foreach ($relativePath in $criticalSources.Keys) {
     }
   }
   if ($actualHash -ne $criticalSources[$relativePath]) {
-    throw "Critical RC39 source does not match the reviewed version: $relativePath"
+    throw "Critical v1.0.0 source does not match the reviewed version: $relativePath"
   }
 }
 
@@ -119,29 +119,29 @@ function Test-ByteSequence([byte[]]$Haystack, [byte[]]$Needle) {
 
 $modDll = Join-Path $dist 'LambLink.Mod.dll'
 $bytes = [System.IO.File]::ReadAllBytes($modDll)
-$tag = 'rc39-staging-isolation'
+$tag = 'v1.0.0-production'
 $tagFound = (Test-ByteSequence $bytes ([System.Text.Encoding]::UTF8.GetBytes($tag))) -or
             (Test-ByteSequence $bytes ([System.Text.Encoding]::Unicode.GetBytes($tag)))
-if (-not $tagFound) { throw 'RC39 build tag missing from compiled DLL; stale build rejected.' }
+if (-not $tagFound) { throw 'v1.0.0 build tag missing from compiled DLL; stale build rejected.' }
 
 foreach ($marker in @('io.github.xhayper.COTL_API', 'RAFFLE_ROUND_CLOSED', '[NAMEPLATE][PATCH-VERIFY]', '[NAMEPLATE][INLINE-APPLIED]', '[NAMEPLATE][TARGETED-REFRESH]', 'CACHE-HIT', '[IDENTITY-COMMIT]', 'CHZZK nameplate marker dropped', '<color=#00C471>Chzzk</color> ')) {
   $found = (Test-ByteSequence $bytes ([System.Text.Encoding]::UTF8.GetBytes($marker))) -or
            (Test-ByteSequence $bytes ([System.Text.Encoding]::Unicode.GetBytes($marker)))
-  if (-not $found) { throw "RC39 compiled Mod is missing required marker: $marker" }
+  if (-not $found) { throw "v1.0.0 compiled Mod is missing required marker: $marker" }
 }
 
 foreach ($forbidden in @('[NAMEPLATE][IDENTITY-REPAIRED]', '[FOLLOWER-MARKER][IDENTITY-REPAIRED]')) {
   $found = (Test-ByteSequence $bytes ([System.Text.Encoding]::UTF8.GetBytes($forbidden))) -or
            (Test-ByteSequence $bytes ([System.Text.Encoding]::Unicode.GetBytes($forbidden)))
-  if ($found) { throw "RC39 compiled Mod contains forbidden ID-only identity repair marker: $forbidden" }
+  if ($found) { throw "v1.0.0 compiled Mod contains forbidden ID-only identity repair marker: $forbidden" }
 }
 
 foreach ($marker in @('[DONATION][RX]', '[DONATION][APPLIED]', '[DONATION][RESULT-TX]', '[DONATION][QUEUE][ENQUEUED]', '[DONATION][GATE][STATE]', '[DONATION][STORY-HOOK][CAPABILITY]', '[DONATION][BUFF-GROUP]', 'sharedStartIn=', 'DONATION_RUNTIME_STATE', 'stage=')) {
   $found = (Test-ByteSequence $bytes ([System.Text.Encoding]::UTF8.GetBytes($marker))) -or
            (Test-ByteSequence $bytes ([System.Text.Encoding]::Unicode.GetBytes($marker)))
-  if (-not $found) { throw "RC39 compiled Mod is missing donation diagnostic marker: $marker" }
+  if (-not $found) { throw "v1.0.0 compiled Mod is missing donation diagnostic marker: $marker" }
 }
 
-Write-Host '[OK] RC39 live-donation diagnostic Mod built and verified.'
+Write-Host '[OK] v1.0.0 live-donation diagnostic Mod built and verified.'
 Write-Host "Output: $dist"
 Write-Host "Mod SHA-256: $((Get-FileHash $modDll -Algorithm SHA256).Hash.ToLowerInvariant())"

@@ -49,21 +49,21 @@ try
     File.WriteAllText(Path.Combine(stagingProgramDir, CompanionLaunchProfileLoader.FileName), """
     {
       "schemaVersion": 1,
-      "release": "1.0.0-rc39",
+      "release": "1.0.0",
       "environment": "staging",
       "apiBaseUrl": "https://staging-api.example.test",
       "frontendUrl": "https://staging.example.test",
       "dataDirectory": "C:\\Users\\viewer\\AppData\\Local\\LambLink-Staging"
     }
     """);
-    var stagingProfile = CompanionLaunchProfileLoader.Load(stagingProgramDir, "1.0.0-rc39");
+    var stagingProfile = CompanionLaunchProfileLoader.Load(stagingProgramDir, "1.0.0");
     Assert(stagingProfile?.IsStaging == true, "installed staging launch profile must select staging mode");
     Assert(stagingProfile?.ApiBaseUrl == "https://staging-api.example.test", "staging launch profile must retain its isolated API");
     Assert(stagingProfile?.FrontendUrl == "https://staging.example.test", "staging launch profile must retain its isolated viewer web");
     AssertThrows<InvalidDataException>(
         () => CompanionLaunchProfileLoader.Load(stagingProgramDir, "1.0.0-rc36"),
         "a stale launch profile must not silently select an environment for another release");
-    Assert(CompanionLaunchProfileLoader.Load(Path.Combine(tempDir, "missing-program"), "1.0.0-rc39") is null,
+    Assert(CompanionLaunchProfileLoader.Load(Path.Combine(tempDir, "missing-program"), "1.0.0") is null,
         "a missing launch profile must preserve the production release default");
 
     var legacyDataDir = Path.Combine(tempDir, "legacy-data");

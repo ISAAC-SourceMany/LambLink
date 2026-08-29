@@ -26,7 +26,7 @@ public sealed class Plugin : BaseUnityPlugin
     public const string PluginName = "LambLink";
     public const string PluginVersion = "1.0.0";
     public const string CotlApiGuid = "io.github.xhayper.COTL_API";
-    public const string BuildTag = "rc39-staging-isolation";
+    public const string BuildTag = "v1.0.0-production";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private readonly CancellationTokenSource _runtimeLifetime = new();

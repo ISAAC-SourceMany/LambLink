@@ -18,8 +18,8 @@ internal static class Program
 
 internal sealed class InstallerForm : Form
 {
-    private const string ReleaseVersion = "1.0.0-rc39";
-    private const string DefaultManifestUrl = "https://d1gvw9ccym1qvn.cloudfront.net/releases/installer-manifest-1.0.0-rc39.json";
+    private const string ReleaseVersion = "1.0.0";
+    private const string DefaultManifestUrl = "https://d1gvw9ccym1qvn.cloudfront.net/releases/installer-manifest-1.0.0.json";
     private readonly TextBox _gamePath = new() { Dock = DockStyle.Fill, ReadOnly = true };
     private readonly Button _browse = new() { Text = "찾아보기", AutoSize = true };
     private readonly Button _install = new() { Text = "설치", AutoSize = true };
@@ -40,7 +40,7 @@ internal sealed class InstallerForm : Form
 
     public InstallerForm()
     {
-        Text = "LambLink Setup 1.0.0-rc39";
+        Text = "LambLink Setup 1.0.0";
         Width = 720;
         Height = 500;
         StartPosition = FormStartPosition.CenterScreen;
@@ -236,7 +236,7 @@ internal sealed class InstallerForm : Form
     private static async Task<InstallerManifest> DownloadManifestAsync(string url, CancellationToken token)
     {
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("LambLink-Installer/1.0.0-rc39");
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("LambLink-Installer/1.0.0");
         var json = await http.GetStringAsync(url, token);
         var manifest = JsonSerializer.Deserialize<InstallerManifest>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                        ?? throw new InvalidDataException("installer manifest를 읽을 수 없습니다.");
@@ -274,7 +274,7 @@ internal sealed class InstallerForm : Form
     private static async Task DownloadFileAsync(string url, string path, CancellationToken token)
     {
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("LambLink-Installer/1.0.0-rc39");
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("LambLink-Installer/1.0.0");
         using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token);
         response.EnsureSuccessStatusCode();
         await using var input = await response.Content.ReadAsStreamAsync(token);
@@ -386,9 +386,12 @@ internal sealed class InstallerForm : Form
         switch (c.InstallMode.ToLowerInvariant())
         {
             case "game-root":
-                if (c.Id.Equals("lamblink-mod", StringComparison.OrdinalIgnoreCase))
-                    RemoveLegacyModDirectory(gameRoot);
                 CopyDirectory(extracted, gameRoot);
+                if (c.Id.Equals("lamblink-mod", StringComparison.OrdinalIgnoreCase))
+                {
+                    VerifyCopiedDirectory(extracted, gameRoot);
+                    RemoveLegacyModDirectory(gameRoot);
+                }
                 break;
             case "game-root-autostrip":
                 CopyDirectory(StripSingleWrapperDirectory(extracted), gameRoot);
@@ -448,6 +451,23 @@ internal sealed class InstallerForm : Form
             File.Copy(file, Path.Combine(destination, Path.GetFileName(file)), true);
         foreach (var dir in Directory.GetDirectories(source))
             CopyDirectory(dir, Path.Combine(destination, Path.GetFileName(dir)));
+    }
+
+    private static void VerifyCopiedDirectory(string source, string destination)
+    {
+        var sourceRoot = Path.GetFullPath(source);
+        var destinationRoot = Path.GetFullPath(destination);
+        foreach (var sourceFile in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories))
+        {
+            var relativePath = Path.GetRelativePath(sourceRoot, sourceFile);
+            var destinationFile = Path.GetFullPath(Path.Combine(destinationRoot, relativePath));
+            if (!destinationFile.StartsWith(destinationRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                || !File.Exists(destinationFile)
+                || !Sha256(sourceFile).Equals(Sha256(destinationFile), StringComparison.OrdinalIgnoreCase))
+            {
+                throw new IOException($"LambLink Mod 설치 파일 검증에 실패했습니다: {relativePath}");
+            }
+        }
     }
 
     private static string Sha256(string file)

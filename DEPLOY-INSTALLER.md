@@ -1,4 +1,4 @@
-# RC39 Installer 배포 체크리스트
+# LambLink 1.0.0 Installer 배포 체크리스트
 
 ## 1. 로컬 빌드
 
@@ -12,10 +12,10 @@
 
 CloudFront 배포 원본 S3의 `releases/`에 다음 파일을 배치합니다.
 
-- `installer-manifest-1.0.0-rc39.json`
-- `COTL-KoreanFontFix-4.2.1-rc39.zip`
-- `LambLink-Mod-1.0.0-rc39.zip`
-- `LambLink-Companion-1.0.0-rc39-win-x64.zip`
+- `installer-manifest-1.0.0.json`
+- `COTL-KoreanFontFix-4.2.1-v1.0.0.zip`
+- `LambLink-Mod-1.0.0.zip`
+- `LambLink-Companion-1.0.0-win-x64.zip`
 
 설치 EXE는 사용자 다운로드 페이지에 별도로 올려도 됩니다.
 
@@ -23,17 +23,17 @@ CloudFront 배포 원본 S3의 `releases/`에 다음 파일을 배치합니다.
 
 Installer에는 아래 URL이 기본값으로 내장됩니다.
 
-`https://d1gvw9ccym1qvn.cloudfront.net/releases/installer-manifest-1.0.0-rc39.json`
+`https://d1gvw9ccym1qvn.cloudfront.net/releases/installer-manifest-1.0.0.json`
 
 개발 테스트 시에는 환경변수로 manifest URL만 바꿀 수 있습니다.
 
 ```powershell
-$env:COTL_INSTALLER_MANIFEST_URL='https://.../installer-manifest-1.0.0-rc39.json'
-.\LambLink-Setup-1.0.0-rc39.exe
+$env:COTL_INSTALLER_MANIFEST_URL='https://.../installer-manifest-1.0.0.json'
+.\LambLink-Setup-1.0.0.exe
 ```
 
 정식 사용자는 이 환경변수를 설정할 필요가 없습니다.
-테스트 URL을 사용해도 manifest의 `release`가 `1.0.0-rc39`이 아니면 설치기가 중단됩니다. 스테이징
+테스트 URL을 사용해도 manifest의 `release`가 `1.0.0`이 아니면 설치기가 중단됩니다. 스테이징
 manifest는 `environment=staging`, `apiBaseUrl`, `frontendUrl`도 포함해야 합니다.
 
 ## 4. 외부 PC 검증
