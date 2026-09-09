@@ -7,7 +7,7 @@ namespace LambLink.Companion.Overlay;
 
 public sealed class RaffleOverlayServer : IAsyncDisposable
 {
-    private const string OverlayDocumentVersion = "v1.0.1-overlay-document-v3";
+    private const string OverlayDocumentVersion = "v1.0.2-overlay-document-v3";
     public event Action<string, string>? DonationDisplayChanged;
     private bool _activeDonationConfirmed;
     private readonly object _gate = new();
@@ -91,7 +91,6 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
         _listener = new TcpListener(IPAddress.Loopback, _port);
         _listener.Start();
         _acceptLoop = Task.Run(() => AcceptLoopAsync(_cts.Token));
-        Console.WriteLine($"[OVERLAY][HTTP-URL] 호환 URL: {OverlayUrl} (실행 순서 자동 복구는 로컬 파일 사용)");
         Console.WriteLine($"[OVERLAY][DOCUMENT] version={OverlayDocumentVersion}, autoReloadOnVersionChange=true");
         Console.WriteLine("[OVERLAY][LAYOUT] donation=separate-fixed-layer,left=18px,top=18px,outerWidth=480px,buffs=separate-viewport-left-layer");
     }
@@ -567,7 +566,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
                     if (logStaleDocument)
                     {
                         Console.WriteLine($"[OVERLAY][STALE-DOCUMENT] client={SafeLogValue(clientDocumentVersion ?? "missing")}, expected={OverlayDocumentVersion}, pageRequests={pageRequests}; OBS is still running an older in-memory overlay document.");
-                        Console.WriteLine($"[OVERLAY][STALE-DOCUMENT][ACTION] Refresh the OBS Browser Source once or replace its URL with: {OverlayUrl}");
+                        Console.WriteLine("[OVERLAY][STALE-DOCUMENT][ACTION] OBS 브라우저 소스의 로컬 파일을 확인하세요. Companion에서 overlay 명령으로 파일 경로를 확인할 수 있습니다.");
                     }
                     if (logCurrentDocument)
                         Console.WriteLine($"[OVERLAY][CLIENT-DOCUMENT] current={OverlayDocumentVersion}, versionHandshake=true");
@@ -780,7 +779,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
 <div id="donationWrap"><div class="panel" id="donationPanel"></div></div>
 <div id="buffs"></div>
 <script>
-const overlayDocumentVersion='v1.0.1-overlay-document-v3';
+const overlayDocumentVersion='v1.0.2-overlay-document-v3';
 const wrap=document.getElementById('wrap');
 const panel=document.getElementById('panel');
 const donationWrap=document.getElementById('donationWrap');

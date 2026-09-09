@@ -6,7 +6,7 @@
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-$release = '1.0.1'
+$release = '1.0.2'
 $distributionZip = Join-Path $projectRoot "dist\LambLink-v$release-distribution.zip"
 $sourceDir = Join-Path $projectRoot "dist\LambLink-v$release-distribution\CDN-UPLOAD"
 $outputFile = Join-Path $projectRoot 'aws\production-release.local.json'

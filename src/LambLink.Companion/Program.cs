@@ -15,7 +15,7 @@ using LambLink.Companion.Storage;
 using LambLink.Companion.ViewerPage;
 using LambLink.Protocol;
 
-const string ReleaseVersion = "1.0.1";
+const string ReleaseVersion = "1.0.2";
 const string ProductionApiBase = "https://y0eblkdmu5.execute-api.ap-northeast-2.amazonaws.com";
 const string ProductionFrontendUrl = "https://d1gvw9ccym1qvn.cloudfront.net";
 
@@ -57,7 +57,7 @@ catch (Exception ex)
     legacyMigrationWarning = ex.Message;
 }
 Directory.CreateDirectory(dataDir);
-var diagnosticLogPath = Path.Combine(dataDir, "companion-1.0.1.log");
+var diagnosticLogPath = Path.Combine(dataDir, "companion-1.0.2.log");
 var originalConsoleOut = Console.Out;
 var originalConsoleError = Console.Error;
 using var diagnosticLogWriter = new RollingFileTextWriter(
@@ -1659,8 +1659,7 @@ async Task ConsoleLoopAsync()
             case "overlay":
             case "overlay file":
             case "overlay url":
-                Console.WriteLine($"[OVERLAY][LOCAL-FILE] 자동 복구용 OBS 로컬 파일: {overlayLocalFile}");
-                Console.WriteLine($"[OVERLAY][HTTP-URL] 호환 URL: {overlay.OverlayUrl} (실행 순서 자동 복구는 로컬 파일 사용)");
+                Console.WriteLine($"[OVERLAY] OBS 브라우저 소스에서 '로컬 파일'을 켜고 이 파일을 선택하세요: {overlayLocalFile}");
                 Console.WriteLine($"[OVERLAY] clientDocument={overlay.ClientDocumentVersion}, current={overlay.IsClientDocumentCurrent}");
                 break;
             case "viewer":
@@ -1976,7 +1975,7 @@ void PrintCommands()
     Console.WriteLine("Commands:");
     Console.WriteLine("  status | help | exit");
     Console.WriteLine("  donation status | donation recent  (후원 수신/처리/최근 결과 확인)");
-    Console.WriteLine("  overlay | overlay file | overlay url  (OBS 자동 복구용 로컬 파일/URL/연결 상태 확인)");
+    Console.WriteLine("  overlay                     (OBS에서 선택할 로컬 파일과 연결 상태 확인)");
     Console.WriteLine("  viewer | viewer copy | viewer open");
     Console.WriteLine("  support | support open       (개인정보 제거 로그 ZIP 생성/열기)");
     Console.WriteLine("  raffle start | raffle cancel | raffle draw");
