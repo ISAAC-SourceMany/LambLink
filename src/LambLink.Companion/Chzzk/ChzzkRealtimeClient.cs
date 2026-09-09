@@ -18,6 +18,25 @@ public sealed class ChzzkRealtimeClient(ChzzkApiClient api)
 
     public event Action<ChatEvent>? Chat;
     public event Action<DonationEvent>? Donation;
+    public event Action<DonationReception>? DonationObserved;
+    private readonly string _donationSession = Guid.NewGuid().ToString("N");
+    private long _donationSequence;
+
+    internal void ProcessDonationPayload(string payload)
+    {
+        var receivedAt = DateTimeOffset.UtcNow;
+        var id = Guid.NewGuid().ToString("N");
+        var sequence = Interlocked.Increment(ref _donationSequence);
+        var result = DonationEventParser.Parse(payload);
+        if (result.Donation is { } parsed)
+            result = result with { Donation = parsed with { ReceptionId = id, ReceivedAtUtc = receivedAt } };
+        var reception = new DonationReception(id, _donationSession, sequence, receivedAt, Encoding.UTF8.GetByteCount(payload), result);
+        Console.WriteLine($"[DONATION][INGRESS] utc={receivedAt:O}, session={_donationSession}, seq={sequence}, request={id}, bytes={reception.PayloadBytes}, parse={result.Code}, field={result.Field}, kind={result.ActualKind}");
+        // Diagnostics must not suppress a valid paid event if its persistence is unavailable.
+        try { DonationObserved?.Invoke(reception); }
+        catch (Exception ex) { Console.Error.WriteLine($"[DONATION][DIAGNOSTIC-FAILED] request={id}, type={ex.GetType().Name}"); }
+        if (result.Donation is not null) Donation?.Invoke(result.Donation);
+    }
     public event Action<SubscriptionEvent>? Subscription;
 
     public async Task RunAsync(string accessToken, CancellationToken ct)
@@ -201,12 +220,11 @@ public sealed class ChzzkRealtimeClient(ChzzkApiClient api)
             if (!text.StartsWith("42", StringComparison.Ordinal))
                 continue;
 
-            using var doc = JsonDocument.Parse(text.Substring(2));
-            var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() < 2) continue;
-
-            var eventName = root[0].GetString();
-            var payload = root[1].ValueKind == JsonValueKind.String ? root[1].GetString()! : root[1].GetRawText();
+            if (!TryDecodeSocketEvent(text, out var eventName, out var payload))
+            {
+                Console.Error.WriteLine($"[CHZZK][INVALID-SOCKET-EVENT] utc={DateTimeOffset.UtcNow:O}, bytes={Encoding.UTF8.GetByteCount(text)}");
+                continue;
+            }
 
             if (string.Equals(eventName, "error", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Socket.IO error: " + DiagnosticPrivacy.Redact(Abbreviate(payload, 500)));
@@ -283,9 +301,7 @@ public sealed class ChzzkRealtimeClient(ChzzkApiClient api)
                     {
                         sessionDonationCount++;
                         Console.WriteLine($"[CHZZK] DONATION frame received: sessionDonation={sessionDonationCount}, packets={sessionPacketCount}, bytes={Encoding.UTF8.GetByteCount(payload)}");
-                        var donation = DeserializeEventPayload<DonationEvent>(payload);
-                        if (donation is not null) Donation?.Invoke(donation);
-                        else Console.Error.WriteLine($"[CHZZK] DONATION parse failed: bytes={Encoding.UTF8.GetByteCount(payload)}");
+                        ProcessDonationPayload(payload);
                         break;
                     }
                     case "SUBSCRIPTION":
@@ -334,6 +350,22 @@ public sealed class ChzzkRealtimeClient(ChzzkApiClient api)
         public bool IsAwaitingPong => Interlocked.Read(ref _pongGeneration) < Interlocked.Read(ref _pingGeneration);
         public void MarkPing() => Interlocked.Increment(ref _pingGeneration);
         public void MarkPong() => Interlocked.Exchange(ref _pongGeneration, Interlocked.Read(ref _pingGeneration));
+    }
+
+    internal static bool TryDecodeSocketEvent(string text, out string eventName, out string payload)
+    {
+        eventName = payload = string.Empty;
+        if (!text.StartsWith("42", StringComparison.Ordinal)) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(text.Substring(2), new JsonDocumentOptions { MaxDepth = 32 });
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() < 2 || root[0].ValueKind != JsonValueKind.String) return false;
+            eventName = root[0].GetString()!;
+            payload = root[1].ValueKind == JsonValueKind.String ? root[1].GetString()! : root[1].GetRawText();
+            return true;
+        }
+        catch (JsonException) { return false; }
     }
 
     private T? DeserializeEventPayload<T>(string payload)

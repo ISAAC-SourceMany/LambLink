@@ -15,12 +15,14 @@ namespace LambLink.Mod.Game;
 /// </summary>
 internal sealed class DonationReceiptStore
 {
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
     private const int MaximumTerminalReceipts = 2_048;
     private readonly object _gate = new();
     private readonly string _path;
     private readonly ManualLogSource _log;
     private DonationReceiptFile _state;
+    private string _committedJson;
+    private readonly Dictionary<string, DonationEffectResult> _unsavedResults = new(StringComparer.Ordinal);
 
     public DonationReceiptStore(string path, ManualLogSource log)
     {
@@ -29,6 +31,7 @@ internal sealed class DonationReceiptStore
         Directory.CreateDirectory(Path.GetDirectoryName(path)
                                   ?? throw new ArgumentException("Donation receipt path has no directory.", nameof(path)));
         _state = Load(path);
+        _committedJson = JsonConvert.SerializeObject(_state);
         RecoverInterruptedApplications();
     }
 
@@ -37,6 +40,11 @@ internal sealed class DonationReceiptStore
         lock (_gate)
         {
             var receipt = FindLocked(requestId);
+            if (_unsavedResults.TryGetValue(requestId, out var unsaved))
+            {
+                result = Clone(unsaved);
+                return true;
+            }
             if (receipt?.Result != null &&
                 (string.Equals(receipt.Status, "COMPLETED", StringComparison.Ordinal) ||
                  string.Equals(receipt.Status, "UNCERTAIN", StringComparison.Ordinal)))
@@ -57,6 +65,8 @@ internal sealed class DonationReceiptStore
             var receipt = FindLocked(command.RequestId);
             if (receipt == null)
             {
+                if (_state.ReplayCutoffUnixMs > 0 && command.ReceivedAtUnixMs <= _state.ReplayCutoffUnixMs)
+                    throw new DonationHistoryExpiredException();
                 receipt = new DonationReceiptRecord { RequestId = command.RequestId };
                 _state.Receipts.Add(receipt);
             }
@@ -88,6 +98,8 @@ internal sealed class DonationReceiptStore
     {
         lock (_gate)
         {
+            // Preserve the applied result even when the disk commit fails.
+            _unsavedResults[result.RequestId] = Clone(result);
             var receipt = FindLocked(result.RequestId);
             if (receipt == null)
             {
@@ -100,6 +112,7 @@ internal sealed class DonationReceiptStore
             receipt.Result = Clone(result);
             TrimLocked();
             SaveLocked();
+            _unsavedResults.Remove(result.RequestId);
         }
     }
 
@@ -118,6 +131,7 @@ internal sealed class DonationReceiptStore
                 {
                     RequestId = receipt.RequestId,
                     Success = false,
+                    StatusCode = "APPLICATION_UNCERTAIN",
                     Effect = command?.Effect ?? string.Empty,
                     EventName = command?.EventName ?? string.Empty,
                     Amount = command?.Amount ?? 0,
@@ -142,8 +156,12 @@ internal sealed class DonationReceiptStore
         try
         {
             var state = JsonConvert.DeserializeObject<DonationReceiptFile>(File.ReadAllText(path))
-                        ?? new DonationReceiptFile();
-            state.Version = SchemaVersion;
+                        ?? throw new InvalidDataException("Empty donation receipts.");
+            if (state.Version != 1 && state.Version != SchemaVersion) throw new InvalidDataException("Unsupported donation receipt version.");
+            if (state.Receipts == null || state.Receipts.Any(x => string.IsNullOrWhiteSpace(x.RequestId)) ||
+                state.Receipts.Select(x => x.RequestId).Distinct(StringComparer.Ordinal).Count() != state.Receipts.Count)
+                throw new InvalidDataException("Invalid donation receipt entries.");
+            if (state.Version == 1 && !File.Exists(path + ".v1.bak")) File.Copy(path, path + ".v1.bak");
             state.Receipts = (state.Receipts ?? new List<DonationReceiptRecord>())
                 .Where(x => !string.IsNullOrWhiteSpace(x.RequestId))
                 .GroupBy(x => x.RequestId, StringComparer.Ordinal)
@@ -153,31 +171,36 @@ internal sealed class DonationReceiptStore
         }
         catch (Exception ex)
         {
-            var quarantine = path + $".corrupt-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}";
-            try { File.Move(path, quarantine); }
-            catch { quarantine = "unavailable"; }
-            _log.LogError($"[DONATION][RECEIPT][RECOVERY] unreadable receipt file quarantined={quarantine}, type={ex.GetType().FullName}");
-            return new DonationReceiptFile { Version = SchemaVersion };
+            _log.LogError($"[DONATION][RECEIPT][RECOVERY-BLOCKED] original file preserved; type={ex.GetType().FullName}");
+            throw new InvalidDataException("Donation receipts require recovery; automatic application disabled.", ex);
         }
     }
 
     private void SaveLocked()
     {
-        _state.Version = SchemaVersion;
-        var tempPath = _path + ".tmp";
-        File.WriteAllText(tempPath, JsonConvert.SerializeObject(_state, Formatting.Indented));
-        if (File.Exists(_path))
+        try
         {
-            try { File.Replace(tempPath, _path, null); }
-            catch (PlatformNotSupportedException)
+            _state.Version = SchemaVersion;
+            var tempPath = _path + ".tmp";
+            File.WriteAllText(tempPath, JsonConvert.SerializeObject(_state, Formatting.Indented));
+            if (File.Exists(_path))
             {
-                File.Delete(_path);
+                try { File.Replace(tempPath, _path, null); }
+                catch (PlatformNotSupportedException)
+                {
+                    throw new IOException("Atomic receipt replacement is unavailable.");
+                }
+            }
+            else
+            {
                 File.Move(tempPath, _path);
             }
+            _committedJson = JsonConvert.SerializeObject(_state);
         }
-        else
+        catch
         {
-            File.Move(tempPath, _path);
+            _state = JsonConvert.DeserializeObject<DonationReceiptFile>(_committedJson)!;
+            throw;
         }
     }
 
@@ -191,11 +214,19 @@ internal sealed class DonationReceiptStore
             .OrderByDescending(x => x.UpdatedAtUtc)
             .Skip(MaximumTerminalReceipts)
             .ToArray();
-        foreach (var receipt in terminal) _state.Receipts.Remove(receipt);
+        foreach (var receipt in terminal)
+        {
+            // A pruned request must never silently become a new game effect.
+            var receivedAt = receipt.Command?.ReceivedAtUnixMs ?? 0;
+            _state.ReplayCutoffUnixMs = Math.Max(_state.ReplayCutoffUnixMs,
+                receivedAt > 0 ? receivedAt : receipt.UpdatedAtUtc.ToUnixTimeMilliseconds());
+            _state.Receipts.Remove(receipt);
+        }
     }
 
     private static DonationEffectCommand Clone(DonationEffectCommand source) => new()
     {
+        ReceivedAtUnixMs = source.ReceivedAtUnixMs,
         RequestId = source.RequestId,
         ViewerId = source.ViewerId,
         Nickname = source.Nickname,
@@ -207,6 +238,7 @@ internal sealed class DonationReceiptStore
 
     private static DonationEffectResult Clone(DonationEffectResult source) => new()
     {
+        StatusCode = source.StatusCode,
         RequestId = source.RequestId,
         Success = source.Success,
         Retryable = source.Retryable,
@@ -224,6 +256,7 @@ internal sealed class DonationReceiptStore
     private sealed class DonationReceiptFile
     {
         public int Version { get; set; } = SchemaVersion;
+        public long ReplayCutoffUnixMs { get; set; }
         public List<DonationReceiptRecord> Receipts { get; set; } = new();
     }
 
@@ -235,4 +268,9 @@ internal sealed class DonationReceiptStore
         public DonationEffectCommand? Command { get; set; }
         public DonationEffectResult? Result { get; set; }
     }
+}
+
+internal sealed class DonationHistoryExpiredException : InvalidOperationException
+{
+    public DonationHistoryExpiredException() : base("Donation predates retained replay history; application is unconfirmed and automatic replay is blocked.") { }
 }

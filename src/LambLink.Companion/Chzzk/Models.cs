@@ -40,6 +40,9 @@ public sealed record DonationEvent(
     [property: JsonPropertyName("payAmount")] string PayAmount,
     [property: JsonPropertyName("donationText")] string? DonationText)
 {
+    [JsonIgnore] public string ReceptionId { get; init; } = string.Empty;
+    [JsonIgnore] public DateTimeOffset ReceivedAtUtc { get; init; }
+
     public bool TryGetAmount(out long amount, out string error)
     {
         var value = PayAmount?.Trim();

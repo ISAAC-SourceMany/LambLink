@@ -7,7 +7,9 @@ namespace LambLink.Companion.Overlay;
 
 public sealed class RaffleOverlayServer : IAsyncDisposable
 {
-    private const string OverlayDocumentVersion = "v1.0.0-overlay-document-v1";
+    private const string OverlayDocumentVersion = "v1.0.1-overlay-document-v3";
+    public event Action<string, string>? DonationDisplayChanged;
+    private bool _activeDonationConfirmed;
     private readonly object _gate = new();
     private readonly int _port;
     private TcpListener? _listener;
@@ -89,7 +91,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
         _listener = new TcpListener(IPAddress.Loopback, _port);
         _listener.Start();
         _acceptLoop = Task.Run(() => AcceptLoopAsync(_cts.Token));
-        Console.WriteLine($"[OVERLAY] OBS browser source: {OverlayUrl}");
+        Console.WriteLine($"[OVERLAY][HTTP-URL] 호환 URL: {OverlayUrl} (실행 순서 자동 복구는 로컬 파일 사용)");
         Console.WriteLine($"[OVERLAY][DOCUMENT] version={OverlayDocumentVersion}, autoReloadOnVersionChange=true");
         Console.WriteLine("[OVERLAY][LAYOUT] donation=separate-fixed-layer,left=18px,top=18px,outerWidth=480px,buffs=separate-viewport-left-layer");
     }
@@ -167,7 +169,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
     }
 
 
-    public void ShowDonation(string nickname, long amount, string eventName, int seconds = 5)
+    public void ShowDonation(string nickname, long amount, string eventName, int seconds = 5, string? requestId = null, DateTimeOffset? createdAtUtc = null)
     {
         lock (_gate)
         {
@@ -178,9 +180,17 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
                 string.IsNullOrWhiteSpace(nickname) ? "후원자" : nickname,
                 Math.Max(0, amount),
                 string.IsNullOrWhiteSpace(eventName) ? "이벤트 발동" : eventName,
-                TimeSpan.FromSeconds(Math.Max(1, seconds)));
+                TimeSpan.FromSeconds(Math.Max(1, seconds)), requestId ?? Guid.NewGuid().ToString("N"), createdAtUtc ?? now);
+
+            while (_donationQueue.Count >= 100)
+            {
+                var expired = _donationQueue.First!.Value;
+                _donationQueue.RemoveFirst();
+                NotifyDisplay(expired.RequestId, "EXPIRED_CAPACITY");
+            }
 
             _donationQueue.AddLast(item);
+            NotifyDisplay(item.RequestId, IsClientPolling ? "QUEUED" : "WAITING_CLIENT");
             Console.WriteLine($"[OVERLAY][DONATION-QUEUE][ENQUEUED] sequence={item.Sequence}, phase={_phase}, pending={_donationQueue.Count}, event='{item.EventName}'");
             StartNextDonationLocked(now, "queue-ready");
         }
@@ -188,6 +198,8 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
 
     private void AdvanceTransientPhaseLocked(DateTimeOffset now)
     {
+        MaintainDonationDisplayLocked(now);
+        if (_phase == "donation" && !_activeDonationConfirmed) return;
         if (_phase == "raffle" || !_visibleUntil.HasValue || now < _visibleUntil.Value) return;
 
         if (_phase == "donation" && _activeDonation is not null)
@@ -205,7 +217,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
 
     private void StartNextDonationLocked(DateTimeOffset now, string reason)
     {
-        if (_phase != "hidden" || _donationQueue.First is null) return;
+        if (_phase != "hidden" || _donationQueue.First is null || !IsClientPolling) return;
         var item = _donationQueue.First.Value;
         _donationQueue.RemoveFirst();
         ActivateDonationLocked(item, now, reason);
@@ -214,6 +226,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
     private void ActivateDonationLocked(DonationOverlayItem item, DateTimeOffset now, string reason)
     {
         _activeDonation = item;
+        _activeDonationConfirmed = false;
         _phase = "donation";
         _endsAt = null;
         _visibleUntil = now + item.DisplayDuration;
@@ -223,12 +236,52 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
         Console.WriteLine($"[OVERLAY][DONATION-QUEUE][DISPLAY] sequence={item.Sequence}, reason={reason}, durationMs={item.DisplayDuration.TotalMilliseconds:F0}, pending={_donationQueue.Count}, event='{item.EventName}'");
     }
 
+    private void NotifyDisplay(string id, string state)
+    {
+        try { DonationDisplayChanged?.Invoke(id, state); }
+        catch (Exception ex) { Console.WriteLine($"[OVERLAY][DISPLAY-DIAGNOSTIC-FAILED] type={ex.GetType().Name}"); }
+    }
+
+    private void MaintainDonationDisplayLocked(DateTimeOffset now)
+    {
+        for (var node = _donationQueue.First; node is not null;)
+        {
+            var next = node.Next;
+            if (now - node.Value.CreatedAtUtc > TimeSpan.FromMinutes(30))
+            {
+                NotifyDisplay(node.Value.RequestId, "EXPIRED_AGE");
+                _donationQueue.Remove(node);
+            }
+            node = next;
+        }
+        if (_phase != "donation" || _activeDonation is null) return;
+        if (now - _activeDonation.CreatedAtUtc > TimeSpan.FromMinutes(30))
+        {
+            NotifyDisplay(_activeDonation.RequestId, "EXPIRED_AGE");
+            _activeDonation = null;
+            _phase = "hidden";
+            _visibleUntil = null;
+            return;
+        }
+        if (!IsClientPolling)
+        {
+            var active = _activeDonation;
+            var remaining = _activeDonationConfirmed && _visibleUntil.HasValue && _lastStateRequestAt.HasValue
+                ? _visibleUntil.Value - _lastStateRequestAt.Value : active.DisplayDuration;
+            _donationQueue.AddFirst(active with { DisplayDuration = remaining < TimeSpan.FromSeconds(1) ? TimeSpan.FromSeconds(1) : remaining });
+            NotifyDisplay(active.RequestId, "WAITING_CLIENT");
+            _activeDonation = null;
+            _phase = "hidden";
+            _visibleUntil = null;
+        }
+    }
+
     private void RequeueActiveDonationLocked(DateTimeOffset now, string reason)
     {
         var active = _activeDonation;
         if (_phase != "donation" || active is null) return;
 
-        var remaining = _visibleUntil.HasValue ? _visibleUntil.Value - now : active.DisplayDuration;
+        var remaining = _activeDonationConfirmed && _visibleUntil.HasValue ? _visibleUntil.Value - now : active.DisplayDuration;
         if (remaining < TimeSpan.FromSeconds(1)) remaining = TimeSpan.FromSeconds(1);
         var resumed = active with { DisplayDuration = remaining };
         _donationQueue.AddFirst(resumed);
@@ -393,6 +446,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
             var now = DateTimeOffset.UtcNow;
             var buffNow = GetBuffNowLocked();
             AdvanceTransientPhaseLocked(now);
+            StartNextDonationLocked(now, "client-ready");
 
             foreach (var entry in _buffQueues.ToArray())
             {
@@ -439,6 +493,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
                 _donationAmount,
                 _donationEventName,
                 _donationQueue.Count,
+                _activeDonation?.RequestId,
                 buffs,
                 _buffTimersPaused,
                 _buffPauseReason);
@@ -494,6 +549,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
                         clientDocumentVersion, OverlayDocumentVersion, StringComparison.Ordinal);
                     lock (_gate)
                     {
+                        MaintainDonationDisplayLocked(DateTimeOffset.UtcNow);
                         firstPoll = _stateRequests == 0;
                         _stateRequests++;
                         _lastStateRequestAt = DateTimeOffset.UtcNow;
@@ -524,6 +580,27 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
                     return;
                 }
 
+                if (path.Equals("/overlay/donation-shown", StringComparison.OrdinalIgnoreCase))
+                {
+                    var id = GetQueryValue(target, "id");
+                    var version = GetQueryValue(target, "documentVersion");
+                    lock (_gate)
+                    {
+                        if (_phase == "donation" && _activeDonation is { } active && active.RequestId == id && version == OverlayDocumentVersion && IsClientPolling)
+                        {
+                            if (!_activeDonationConfirmed)
+                            {
+                                _activeDonationConfirmed = true;
+                                _visibleUntil = DateTimeOffset.UtcNow + active.DisplayDuration;
+                                NotifyDisplay(id!, "PAGE_CONFIRMED");
+                                Console.WriteLine($"[OVERLAY][DONATION-SHOWN] utc={DateTimeOffset.UtcNow:O}, request={id}, document={version}");
+                            }
+                        }
+                    }
+                    await WriteResponseAsync(stream, "204 No Content", "text/plain", string.Empty, ct, "Cache-Control: no-store\r\n");
+                    return;
+                }
+
                 if (path.Equals("/overlay/client-layout", StringComparison.OrdinalIgnoreCase))
                 {
                     var documentVersion = SafeLogValue(GetQueryValue(target, "documentVersion") ?? "missing");
@@ -542,7 +619,8 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
                     long pageRequest;
                     lock (_gate) pageRequest = ++_overlayPageRequests;
                     var requestedVersion = SafeLogValue(GetQueryValue(target, "v") ?? "none");
-                    Console.WriteLine($"[OVERLAY][CLIENT] page loaded: request={pageRequest}, document={OverlayDocumentVersion}, requested={requestedVersion}, remote={client.Client.RemoteEndPoint}");
+                    var entry = GetQueryValue(target, "bootstrap") == "local-v1" ? "local-bootstrap" : "direct-http";
+                    Console.WriteLine($"[OVERLAY][CLIENT] page loaded: request={pageRequest}, document={OverlayDocumentVersion}, requested={requestedVersion}, entry={entry}, remote={client.Client.RemoteEndPoint}");
                     await WriteResponseAsync(stream, "200 OK", "text/html; charset=utf-8", OverlayHtml, ct,
                         "Cache-Control: no-store, no-cache, must-revalidate, max-age=0\r\nPragma: no-cache\r\nExpires: 0\r\n");
                     return;
@@ -615,6 +693,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
         long DonationAmount,
         string? DonationEventName,
         int PendingDonationCount,
+        string? DonationRequestId,
         OverlayBuffState[] ActiveBuffs,
         bool BuffTimersPaused,
         string BuffPauseReason);
@@ -640,7 +719,9 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
         string Nickname,
         long Amount,
         string EventName,
-        TimeSpan DisplayDuration);
+        TimeSpan DisplayDuration,
+        string RequestId,
+        DateTimeOffset CreatedAtUtc);
 
     private sealed record BuffDefinition(
         string Key,
@@ -699,13 +780,14 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
 <div id="donationWrap"><div class="panel" id="donationPanel"></div></div>
 <div id="buffs"></div>
 <script>
-const overlayDocumentVersion='v1.0.0-overlay-document-v1';
+const overlayDocumentVersion='v1.0.1-overlay-document-v3';
 const wrap=document.getElementById('wrap');
 const panel=document.getElementById('panel');
 const donationWrap=document.getElementById('donationWrap');
 const donationPanel=document.getElementById('donationPanel');
 const buffs=document.getElementById('buffs');
 let durationMs=30000,lastPhase='hidden',lastLayoutSignature='';
+let shownDonationId='',reportingDonation=false;
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function ensureCurrentDocument(s){
   const serverVersion=String(s.overlayDocumentVersion||'');
@@ -768,12 +850,42 @@ function render(s){
     return `<div class="buff"><div class="buffIcon">${esc(b.icon||'✦')}</div><div class="buffName">${esc(b.name||'후원 버프')}${queueText}</div><div class="buffMeta"><span>${esc(b.detail||'')}</span><span class="buffTime">${timer}</span></div></div>`;
   }).join('');
   reportLayout(phase);
+  if(phase==='donation' && s.donationRequestId && shownDonationId!==s.donationRequestId && !reportingDonation){
+    reportingDonation=true;
+    requestAnimationFrame(()=>{
+      if(!donationWrap.classList.contains('show')){reportingDonation=false;return;}
+      fetch(`/overlay/donation-shown?id=${encodeURIComponent(s.donationRequestId)}&documentVersion=${encodeURIComponent(overlayDocumentVersion)}`,{cache:'no-store',signal:AbortSignal.timeout(2000)})
+        .then(r=>{if(r.ok)shownDonationId=s.donationRequestId})
+        .catch(()=>{}).finally(()=>{reportingDonation=false});
+    });
+  }
+  if(phase!=='donation')shownDonationId='';
   lastPhase=phase;
 }
 async function tick(){
-  try{const r=await fetch(`/overlay/state?documentVersion=${encodeURIComponent(overlayDocumentVersion)}`,{cache:'no-store'});if(r.ok)render(await r.json())}catch(e){}
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),2000);
+  try{
+    const r=await fetch(`/overlay/state?documentVersion=${encodeURIComponent(overlayDocumentVersion)}`,{cache:'no-store',signal:controller.signal});
+    if(!r.ok)throw new Error('Overlay state unavailable');
+    const state=await r.json();
+    if(ensureCurrentDocument(state)){
+      render(state);
+      // No viewer data crosses the frame boundary. Local files have an opaque origin.
+      if(window.parent!==window)window.parent.postMessage({type:'lamblink-overlay-rendered'},'*');
+    }
+  }catch(e){
+    shownDonationId='';
+    wrap.classList.remove('show');
+    donationWrap.classList.remove('show');
+    buffs.innerHTML='';
+  }finally{
+    clearTimeout(timeout);
+    // One bounded request at a time, including while the server is unavailable.
+    setTimeout(tick,200);
+  }
 }
-setInterval(tick,200);tick();
+tick();
 </script>
 </body>
 </html>

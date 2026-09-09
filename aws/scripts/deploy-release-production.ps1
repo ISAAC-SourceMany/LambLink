@@ -1,4 +1,4 @@
-param(
+﻿param(
   [string]$StackName = 'cotl-prod',
   [string]$Profile = '',
   [string]$Region = 'ap-northeast-2'
@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-$release = '1.0.0'
+$release = '1.0.1'
 $distributionZip = Join-Path $projectRoot "dist\LambLink-v$release-distribution.zip"
 $sourceDir = Join-Path $projectRoot "dist\LambLink-v$release-distribution\CDN-UPLOAD"
 $outputFile = Join-Path $projectRoot 'aws\production-release.local.json'

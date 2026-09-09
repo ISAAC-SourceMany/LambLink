@@ -106,7 +106,7 @@ LambLink는 단순히 채팅을 화면에 띄우는 도구가 아니라, 방송 
 4. 설치 완료 후 **Companion 실행**을 누릅니다.
 5. 열린 브라우저에서 방송에 사용할 치지직 계정으로 로그인하고 접근을 승인합니다.
 6. Companion은 방송을 사용하는 동안 종료하지 않습니다.
-7. OBS에 Companion이 안내하는 로컬 오버레이 주소를 브라우저 소스로 추가합니다.
+7. OBS 브라우저 소스의 **로컬 파일**을 켜고 Companion의 `overlay` 명령이 안내하는 `LambLink-Overlay.html`을 선택합니다. 최초 설정 이후에는 OBS를 먼저 실행해도 Companion 실행 후 자동 연결됩니다. 기존 HTTP URL 소스는 한 번 전환해야 합니다. OBS와 Companion은 같은 PC에서 실행하세요.
 8. Companion의 `viewer copy` 명령으로 시청자 외형 설정 주소를 복사해 방송 공지나 채팅에 공유합니다.
 9. Cult of the Lamb을 실행한 뒤 Companion에서 `status`를 입력해 `GAME=True`, `SYNC=READY`, `OVERLAY=ready`인지 확인합니다.
 
@@ -126,7 +126,7 @@ LambLink는 단순히 채팅을 화면에 띄우는 도구가 아니라, 방송 
 | 명령 | 설명 |
 |---|---|
 | `status` | 치지직, 게임, 저장 파일, 외형 목록, 후원 및 오버레이 연결 상태 확인 |
-| `overlay` | OBS 브라우저 소스 주소 확인 |
+| `overlay` | OBS 자동 복구용 로컬 파일 경로와 연결 상태 확인 |
 | `viewer` | 시청자 외형 설정 페이지 주소 확인 |
 | `viewer copy` | 시청자 페이지 주소를 클립보드에 복사 |
 | `viewer open` | 시청자 페이지를 기본 브라우저로 열기 |

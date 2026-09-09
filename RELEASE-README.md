@@ -109,6 +109,15 @@ must log `[RAFFLE][ROUND-CLOSED]`. A no-participant/cancelled round must report
 `allowRetry=True`; reopening the same pending recruit then starts another round. `status` should
 report `OVERLAY=ready` while the OBS browser source is loaded and polling.
 
+For startup-order recovery, select the generated `LambLink-Overlay.html` using OBS's
+**Local file** option (run `overlay` in Companion for its full path). OBS and Companion
+must run on the same PC. Existing HTTP URL sources require this one-time migration.
+The local entry point stays alive before Companion starts, reloads failed/stalled child
+pages, and hides stale content until a successful render heartbeat arrives. Verify OBS
+first, Companion first, and Companion restart; the direct HTTP URL alone cannot recover
+its own initial page-load failure. Local bootstrap updates require refreshing the OBS
+source once; server page updates are picked up automatically.
+
 For CHZZK follower nameplates, startup must log
 `[NAMEPLATE][PATCH-VERIFY] ... installed=True`. After marker synchronization, the Mod must log
 `[NAMEPLATE][REFRESH] armed`. Every decorated follower must log

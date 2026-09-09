@@ -1,5 +1,5 @@
 {
-  "release": "1.0.0",
+  "release": "1.0.1",
   "environment": "production",
   "apiBaseUrl": "https://y0eblkdmu5.execute-api.ap-northeast-2.amazonaws.com",
   "frontendUrl": "https://d1gvw9ccym1qvn.cloudfront.net",
@@ -33,18 +33,18 @@
     },
     {
       "id": "lamblink-mod",
-      "displayName": "LambLink Mod 1.0.0",
-      "version": "1.0.0",
-      "url": "https://d1gvw9ccym1qvn.cloudfront.net/releases/LambLink-Mod-1.0.0.zip",
+      "displayName": "LambLink Mod 1.0.1",
+      "version": "1.0.1",
+      "url": "https://d1gvw9ccym1qvn.cloudfront.net/releases/LambLink-Mod-1.0.1.zip",
       "sha256": "__MOD_SHA256__",
       "installMode": "game-root",
       "source": "LambLink release CDN"
     },
     {
       "id": "companion",
-      "displayName": "LambLink Companion 1.0.0",
-      "version": "1.0.0",
-      "url": "https://d1gvw9ccym1qvn.cloudfront.net/releases/LambLink-Companion-1.0.0-win-x64.zip",
+      "displayName": "LambLink Companion 1.0.1",
+      "version": "1.0.1",
+      "url": "https://d1gvw9ccym1qvn.cloudfront.net/releases/LambLink-Companion-1.0.1-win-x64.zip",
       "sha256": "__COMPANION_SHA256__",
       "installMode": "companion",
       "source": "LambLink release CDN"

@@ -1,6 +1,6 @@
 ﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$release = '1.0.0'
+$release = '1.0.1'
 $hosting = Join-Path $root 'release-hosting'
 $distRoot = Join-Path $root 'dist'
 $bundleRoot = Join-Path $distRoot "LambLink-v$release-distribution"
@@ -14,6 +14,7 @@ function Get-LowerSha256([string]$Path) {
 
 function Remove-DirectoryTree([string]$Path) {
     $fullPath = [System.IO.Path]::GetFullPath($Path)
+    if (-not $fullPath.StartsWith($distRoot.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { throw "Cleanup path outside dist: $fullPath" }
     if (-not [System.IO.Directory]::Exists($fullPath)) { return }
 
     try {
@@ -111,7 +112,9 @@ Copy-Item (Join-Path $hosting $setupName) $userDir -Force
 foreach ($name in @($manifestName, $fontName, $modName, $companionName)) {
     Copy-Item (Join-Path $hosting $name) $cdnDir -Force
 }
-Copy-Item (Join-Path $root 'DISTRIBUTION-1.0.0.md') $bundleRoot -Force
+Copy-Item (Join-Path $root 'DISTRIBUTION-1.0.1.md') $bundleRoot -Force
+Copy-Item (Join-Path $root 'docs\DONATION_PATCH_VALIDATION_KO.md') $bundleRoot -Force
+Copy-Item (Join-Path $root 'docs\guides\USER_GUIDE_KO.md') $userDir -Force
 
 $checksumLines = New-Object System.Collections.Generic.List[string]
 foreach ($name in @($setupName)) {
@@ -127,6 +130,6 @@ Set-Content (Join-Path $bundleRoot 'SHA256SUMS.txt') $checksumLines -Encoding AS
 Write-Host '[5/5] Creating final distribution archive...'
 Compress-Archive -Path (Join-Path $bundleRoot '*') -DestinationPath $bundleZip -CompressionLevel Optimal
 if (-not (Test-Path $bundleZip)) { throw "Distribution ZIP was not produced: $bundleZip" }
-Write-Host "[OK] v1.0.0 distribution bundle: $bundleZip"
+Write-Host "[OK] v1.0.1 distribution bundle: $bundleZip"
 Write-Host "[UPLOAD] Upload every file in $cdnDir to CloudFront origin /releases/."
 Write-Host "[DISTRIBUTE] Give users only $(Join-Path $userDir $setupName)."

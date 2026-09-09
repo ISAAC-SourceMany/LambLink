@@ -85,6 +85,7 @@ public sealed class DonationEffectService
             {
                 RequestId = command?.RequestId ?? string.Empty,
                 Success = false,
+                StatusCode = stage == "APPLY" ? "APPLICATION_UNCERTAIN" : "REJECTED",
                 Effect = command?.Effect ?? string.Empty,
                 EventName = command?.EventName ?? string.Empty,
                 Amount = command?.Amount ?? 0,

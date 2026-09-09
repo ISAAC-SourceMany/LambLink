@@ -4,9 +4,9 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.40</FileVersion>
+    <Version>1.0.1</Version>
+    <AssemblyVersion>1.0.1.0</AssemblyVersion>
+    <FileVersion>1.0.1.41</FileVersion>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <DefineConstants>$(DefineConstants);RELEASE_DISTRIBUTION</DefineConstants>
@@ -15,6 +15,10 @@
     <DefineConstants>$(DefineConstants);RELEASE_TEST_TOOLS</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>LambLink.DonationTests</_Parameter1>
+    </AssemblyAttribute>
+    <EmbeddedResource Include="Overlay\OverlayBootstrap.html" LogicalName="LambLink.OverlayBootstrap.html" />
     <ProjectReference Include="..\LambLink.Protocol\LambLink.Protocol.csproj" />
   </ItemGroup>
 </Project>

@@ -24,9 +24,9 @@ public sealed class Plugin : BaseUnityPlugin
     // renamed LambLink assembly as a second, unrelated plugin.
     public const string PluginGuid = "com.chzzkofthelamb.integration";
     public const string PluginName = "LambLink";
-    public const string PluginVersion = "1.0.0";
+    public const string PluginVersion = "1.0.1";
     public const string CotlApiGuid = "io.github.xhayper.COTL_API";
-    public const string BuildTag = "v1.0.0-production";
+    public const string BuildTag = "v1.0.1-production";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private readonly CancellationTokenSource _runtimeLifetime = new();
@@ -527,6 +527,7 @@ public sealed class Plugin : BaseUnityPlugin
                 RequestId = command?.RequestId ?? string.Empty,
                 Success = false,
                 Retryable = root is RetryableDonationException or IOException or UnauthorizedAccessException,
+                StatusCode = root is DonationHistoryExpiredException ? "HISTORY_EXPIRED" : "REJECTED",
                 Effect = command?.Effect ?? string.Empty,
                 EventName = command?.EventName ?? string.Empty,
                 Amount = command?.Amount ?? 0,
@@ -562,6 +563,7 @@ public sealed class Plugin : BaseUnityPlugin
                 RequestId = pending.Command.RequestId,
                 Success = false,
                 Retryable = !applyStarted && root is IOException or UnauthorizedAccessException,
+                StatusCode = applyStarted ? "APPLICATION_UNCERTAIN" : "RECEIPT_SAVE_FAILED",
                 Effect = pending.Command.Effect,
                 EventName = pending.Command.EventName,
                 Amount = pending.Command.Amount,

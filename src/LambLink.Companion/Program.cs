@@ -15,7 +15,7 @@ using LambLink.Companion.Storage;
 using LambLink.Companion.ViewerPage;
 using LambLink.Protocol;
 
-const string ReleaseVersion = "1.0.0";
+const string ReleaseVersion = "1.0.1";
 const string ProductionApiBase = "https://y0eblkdmu5.execute-api.ap-northeast-2.amazonaws.com";
 const string ProductionFrontendUrl = "https://d1gvw9ccym1qvn.cloudfront.net";
 
@@ -57,7 +57,7 @@ catch (Exception ex)
     legacyMigrationWarning = ex.Message;
 }
 Directory.CreateDirectory(dataDir);
-var diagnosticLogPath = Path.Combine(dataDir, "companion-1.0.0.log");
+var diagnosticLogPath = Path.Combine(dataDir, "companion-1.0.1.log");
 var originalConsoleOut = Console.Out;
 var originalConsoleError = Console.Error;
 using var diagnosticLogWriter = new RollingFileTextWriter(
@@ -112,7 +112,10 @@ using var stop = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
 
 await using var overlay = new RaffleOverlayServer();
+var overlayLocalFile = OverlayBootstrap.EnsureFile(dataDir);
 overlay.Start();
+Console.WriteLine($"[OVERLAY][LOCAL-FILE] OBS 브라우저 소스에서 '로컬 파일'을 켜고 선택: {overlayLocalFile}");
+Console.WriteLine("[OVERLAY][AUTO-RECOVERY] 로컬 파일 방식은 OBS를 먼저 실행해도 자동 연결됩니다. 기존 HTTP URL 소스는 로컬 파일로 한 번 전환하세요.");
 
 var hasChzzkCredentials = !string.IsNullOrWhiteSpace(clientId) && !string.IsNullOrWhiteSpace(clientSecret);
 var developmentMode = !IsReleaseDistribution && (forceDevelopmentMode || !hasChzzkCredentials);
@@ -258,6 +261,15 @@ var presentedDonationResults = new ConcurrentDictionary<string, byte>(StringComp
 var donationDeliveries = new DonationDeliveryRepository(Path.Combine(
     dataDir,
     $"donation-outbox-{DiagnosticPrivacy.StableFileKey(streamerChannelId)}.json"));
+var donationActivity = new DonationActivityLog(Path.Combine(dataDir,
+    $"donation-history-{DiagnosticPrivacy.StableFileKey(streamerChannelId)}.json"));
+overlay.DonationDisplayChanged += donationActivity.Display;
+foreach (var delivery in donationDeliveries.Snapshot())
+    donationActivity.Recover(delivery.RequestId, delivery.ReceivedAtUtc, delivery.Amount, delivery.Effect);
+donationActivity.ReconcilePending(donationDeliveries.Snapshot().Select(x => x.RequestId).ToHashSet(StringComparer.Ordinal));
+foreach (var pendingDisplay in donationActivity.PendingDisplays())
+    overlay.ShowDonation("후원자", pendingDisplay.Amount ?? 0, rules.GetEventName(pendingDisplay.Effect), requestId: pendingDisplay.Id,
+        createdAtUtc: pendingDisplay.AppliedAtUtc ?? pendingDisplay.UpdatedAtUtc);
 DonationRuntimeStateEvent lastDonationRuntimeState = new()
 {
     IsReady = false,
@@ -265,7 +277,6 @@ DonationRuntimeStateEvent lastDonationRuntimeState = new()
     Reason = "STARTING",
     Area = "UNKNOWN"
 };
-long donationEventSequence = 0;
 string? lastSupportBundlePath = null;
 
 await using var bridge = new GameBridgeServer();
@@ -579,20 +590,22 @@ bridge.MessageReceived += envelope =>
             case GameMessageTypes.DonationEffectResult:
             {
                 var result = JsonSerializer.Deserialize<DonationEffectResult>(envelope.PayloadJson)!;
-                var matched = donationTraces.TryComplete(result.RequestId, out var trace, out var elapsedMs);
+                // Commit outbox completion before consuming the volatile trace.
                 var outboxMatched = result.Success || !result.Retryable
                     ? donationDeliveries.TryComplete(result.RequestId, out _)
                     : donationDeliveries.Contains(result.RequestId);
+                var matched = donationTraces.TryComplete(result.RequestId, out var trace, out var elapsedMs);
                 var accepted = matched || outboxMatched;
                 var correlation = matched
                     ? $"matched=true, elapsedMs={elapsedMs:F1}, source={trace!.Source}, area={trace.Area}"
                     : $"matched=false, elapsedMs=unknown, outboxMatched={outboxMatched}";
                 if (result.Success)
                 {
+                    if (accepted) donationActivity.Update(result.RequestId, "APPLIED", "MOD_ACK", result.Effect);
                     Console.WriteLine($"[DONATION][ACK][SUCCESS] request={ShortId(result.RequestId)}, {correlation}, event='{result.EventName}', effect={result.Effect}; details={result.Details}");
                     if (accepted && presentedDonationResults.TryAdd(result.RequestId, 0))
                     {
-                        overlay.ShowDonation(result.Nickname, result.Amount, result.EventName, seconds: 5);
+                        overlay.ShowDonation(result.Nickname, result.Amount, result.EventName, seconds: 5, requestId: result.RequestId);
                         overlay.RegisterDonationBuff(result.Effect, result.EventName);
                     }
                     else
@@ -602,6 +615,9 @@ bridge.MessageReceived += envelope =>
                 }
                 else
                 {
+                    if (accepted) donationActivity.Update(result.RequestId,
+                        result.Retryable ? "QUEUED" : result.StatusCode is "APPLICATION_UNCERTAIN" or "HISTORY_EXPIRED" || result.Error?.Contains("while this donation was applying", StringComparison.Ordinal) == true ? "UNCERTAIN" : "FAILED",
+                        result.Retryable ? "MOD_RETRYABLE" : string.IsNullOrEmpty(result.StatusCode) ? "MOD_REJECTED" : result.StatusCode, result.Effect);
                     Console.WriteLine($"[DONATION][ACK][FAILED] request={ShortId(result.RequestId)}, {correlation}, retryable={result.Retryable}, event='{result.EventName}', effect={result.Effect}; error={result.Error}");
                 }
                 break;
@@ -1126,19 +1142,22 @@ if (!developmentMode && api is not null && accessToken is not null)
         }
     };
 
+    realtime.DonationObserved += donationActivity.Observe;
     realtime.Donation += donation =>
     {
-        var eventSequence = Interlocked.Increment(ref donationEventSequence);
-        var requestId = Guid.NewGuid().ToString("N");
+        var requestId = donation.ReceptionId;
+        var eventSequence = requestId;
         try
         {
             if (!string.Equals(donation.ChannelId, streamerChannelId, StringComparison.Ordinal))
             {
+                donationActivity.Update(requestId, "EXCLUDED", "CHANNEL_MISMATCH");
                 Console.Error.WriteLine($"[DONATION][TERMINAL][CHANNEL-MISMATCH] seq={eventSequence}, request={ShortId(requestId)}, expectedHash={DiagnosticPrivacy.ShortHash(streamerChannelId)}, actualHash={DiagnosticPrivacy.ShortHash(donation.ChannelId)}");
                 return;
             }
             if (!donation.TryGetAmount(out var amount, out var amountError))
             {
+                donationActivity.Update(requestId, "FAILED", "INVALID_AMOUNT");
                 Console.Error.WriteLine($"[DONATION][TERMINAL][INVALID-AMOUNT] seq={eventSequence}, request={ShortId(requestId)}, reason={amountError}");
                 return;
             }
@@ -1148,6 +1167,7 @@ if (!developmentMode && api is not null && accessToken is not null)
             Console.WriteLine($"[DONATION][RX] seq={eventSequence}, request={ShortId(requestId)}, source=CHZZK, donationType={donation.DonationType}, donorHash={donorHash}, amount={amount:N0}, area={area}, messageChars={donation.DonationText?.Length ?? 0}");
             if (decision.Effect == "NONE")
             {
+                donationActivity.Update(requestId, "EXCLUDED", decision.EventName);
                 Console.WriteLine($"[DONATION][TERMINAL][NO-EFFECT] request={ShortId(requestId)}, amount={amount:N0}, area={area}, rule={decision.EventName}");
                 return;
             }
@@ -1164,15 +1184,17 @@ if (!developmentMode && api is not null && accessToken is not null)
                 TierName = decision.TierName,
                 Effect = decision.Effect,
                 EventName = decision.EventName,
-                ReceivedAtUtc = DateTimeOffset.UtcNow
+                ReceivedAtUtc = donation.ReceivedAtUtc
             };
             if (!donationDeliveries.TryAdd(delivery))
                 throw new InvalidOperationException("Duplicate donation request ID was generated.");
+            donationActivity.Update(requestId, "QUEUED", "DURABLY_STORED", decision.Effect);
             Console.WriteLine($"[DONATION][OUTBOX][ENQUEUED] request={ShortId(requestId)}, durablePending={donationDeliveries.PendingCount}; donor message is not persisted");
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[DONATION][TERMINAL][HANDLER-EXCEPTION] seq={eventSequence}, request={ShortId(requestId)}, type={ex.GetType().FullName}, error={ex}");
+            donationActivity.Update(requestId, "FAILED", "ACCEPTANCE_" + ex.GetType().Name);
+            Console.Error.WriteLine($"[DONATION][TERMINAL][HANDLER-EXCEPTION] seq={eventSequence}, request={ShortId(requestId)}, type={ex.GetType().FullName}");
         }
     };
 
@@ -1627,9 +1649,18 @@ async Task ConsoleLoopAsync()
 
         switch (normalized)
         {
+            case "donation status":
+                Console.WriteLine(donationActivity.Summary());
+                Console.WriteLine($"DONATION_OUTBOX={donationDeliveries.PendingCount}, DONATION_OUTBOX_ERROR={donationDeliveries.RecoveryError}, DONATION_GATE={lastDonationRuntimeState.Reason}");
+                break;
+            case "donation recent":
+                foreach (var entry in donationActivity.Recent()) Console.WriteLine(entry);
+                break;
             case "overlay":
+            case "overlay file":
             case "overlay url":
-                Console.WriteLine($"[OVERLAY] OBS browser source: {overlay.OverlayUrl}");
+                Console.WriteLine($"[OVERLAY][LOCAL-FILE] 자동 복구용 OBS 로컬 파일: {overlayLocalFile}");
+                Console.WriteLine($"[OVERLAY][HTTP-URL] 호환 URL: {overlay.OverlayUrl} (실행 순서 자동 복구는 로컬 파일 사용)");
                 Console.WriteLine($"[OVERLAY] clientDocument={overlay.ClientDocumentVersion}, current={overlay.IsClientDocumentCurrent}");
                 break;
             case "viewer":
@@ -1712,6 +1743,8 @@ async Task ConsoleLoopAsync()
                 }, stop.Token);
                 break;
             case "status":
+                Console.WriteLine(donationActivity.Summary());
+                Console.WriteLine($"DONATION_OUTBOX_ERROR={donationDeliveries.RecoveryError}");
             {
                 var lastPumpUnixMs = Interlocked.Read(ref lastRuntimePumpStatusUnixMs);
                 var pumpAgeSeconds = lastPumpUnixMs <= 0
@@ -1800,6 +1833,7 @@ async Task MaintainDonationOutboxAsync()
 
             if (!donationDeliveries.TryRecordAttempt(delivery.RequestId, DateTimeOffset.UtcNow))
                 continue;
+            donationActivity.Update(delivery.RequestId, "DELIVERING", "BRIDGE_SEND");
             Console.WriteLine($"[DONATION][OUTBOX][DISPATCH] request={ShortId(delivery.RequestId)}, attempt={delivery.AttemptCount + 1}, durablePending={donationDeliveries.PendingCount}");
             await SendDonationEffectSafeAsync(
                 delivery.RequestId,
@@ -1811,7 +1845,7 @@ async Task MaintainDonationOutboxAsync()
                 message: null,
                 delivery.Area,
                 new DonationDecision(delivery.Effect, delivery.EventName, delivery.TierName),
-                stop.Token);
+                stop.Token, delivery.ReceivedAtUtc);
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested)
         {
@@ -1836,7 +1870,8 @@ async Task SendDonationEffectSafeAsync(
     string? message,
     string area,
     DonationDecision decision,
-    CancellationToken cancellationToken)
+    CancellationToken cancellationToken,
+    DateTimeOffset? receivedAtUtc = null)
 {
     try
     {
@@ -1857,6 +1892,7 @@ async Task SendDonationEffectSafeAsync(
             message,
             decision.EventName,
             requestId);
+        command.ReceivedAtUnixMs = (receivedAtUtc ?? DateTimeOffset.UtcNow).ToUnixTimeMilliseconds();
 
         Console.WriteLine($"[DONATION][TX][BEGIN] request={ShortId(requestId)}, event='{decision.EventName}', effect={decision.Effect}, messageChars={message?.Length ?? 0}");
         var sent = await bridge.SendAsync(GameMessageTypes.DonationEffect, command, cancellationToken);
@@ -1868,6 +1904,7 @@ async Task SendDonationEffectSafeAsync(
         }
 
         Console.WriteLine($"[DONATION][TX][SENT] request={ShortId(requestId)}, awaiting=DONATION_EFFECT_RESULT, activeTimeoutSeconds=15, pausedWhileModGateBlocked=true");
+        donationActivity.Update(requestId, "AWAITING_RESULT", "MOD_QUEUE_OR_APPLY");
         _ = MonitorDonationAcknowledgementAsync(requestId, cancellationToken);
     }
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1902,12 +1939,14 @@ async Task MonitorDonationAcknowledgementAsync(string requestId, CancellationTok
             var runtimeState = lastDonationRuntimeState;
             if (!runtimeState.TimersPaused && runtimeState.IsReady)
             {
+                if (lastPauseReason is not null) donationActivity.Update(requestId, "AWAITING_RESULT", "GAME_READY");
                 activeWaitSeconds += deltaSeconds;
                 lastPauseReason = null;
             }
             else if (!string.Equals(lastPauseReason, runtimeState.Reason, StringComparison.Ordinal))
             {
                 lastPauseReason = runtimeState.Reason;
+                donationActivity.Update(requestId, "WAITING_GAME", runtimeState.Reason);
                 Console.WriteLine($"[DONATION][ACK-WAIT][PAUSED] request={ShortId(requestId)}, reason={runtimeState.Reason}, area={runtimeState.Area}, pending={runtimeState.PendingDonations}, activeWaitSeconds={activeWaitSeconds:F1}");
             }
 
@@ -1916,6 +1955,7 @@ async Task MonitorDonationAcknowledgementAsync(string requestId, CancellationTok
 
             if (donationTraces.TryAbandon(requestId, out var trace, out var elapsedMs))
             {
+                donationActivity.Update(requestId, "QUEUED", "ACK_TIMEOUT_RETRY");
                 var timeoutKind = wallSeconds >= absoluteSafetyTimeoutSeconds ? "absolute-safety" : "active-gameplay";
                 Console.Error.WriteLine($"[DONATION][TERMINAL][ACK-TIMEOUT] request={ShortId(requestId)}, kind={timeoutKind}, elapsedMs={elapsedMs:F1}, activeWaitSeconds={activeWaitSeconds:F1}, source={trace!.Source}, area={trace.Area}, effect={trace.Effect}, gameSocket={bridge.IsGameConnected}, sync={gameSyncPhase}, gate={runtimeState.Reason}");
             }
@@ -1935,7 +1975,8 @@ void PrintCommands()
 {
     Console.WriteLine("Commands:");
     Console.WriteLine("  status | help | exit");
-    Console.WriteLine("  overlay | overlay url       (OBS 브라우저 소스 URL/문서 버전 확인)");
+    Console.WriteLine("  donation status | donation recent  (후원 수신/처리/최근 결과 확인)");
+    Console.WriteLine("  overlay | overlay file | overlay url  (OBS 자동 복구용 로컬 파일/URL/연결 상태 확인)");
     Console.WriteLine("  viewer | viewer copy | viewer open");
     Console.WriteLine("  support | support open       (개인정보 제거 로그 ZIP 생성/열기)");
     Console.WriteLine("  raffle start | raffle cancel | raffle draw");

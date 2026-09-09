@@ -109,6 +109,7 @@ public sealed class FollowerSpawnResult
 
 public sealed class DonationEffectCommand
 {
+    public long ReceivedAtUnixMs { get; set; }
     public string RequestId { get; set; } = string.Empty;
     public string ViewerId { get; set; } = string.Empty;
     public string Nickname { get; set; } = string.Empty;
@@ -132,6 +133,7 @@ public sealed class DonationEffectCommand
 
 public sealed class DonationEffectResult
 {
+    public string StatusCode { get; set; } = string.Empty;
     public string RequestId { get; set; } = string.Empty;
     public bool Success { get; set; }
     public bool Retryable { get; set; }
