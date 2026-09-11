@@ -8,6 +8,15 @@ const {pathToFileURL}=require('node:url');
 const {spawn}=require('node:child_process');
 const {createInterface}=require('node:readline');
 const {chromium}=require('playwright');
+const {PNG}=require('pngjs');
+
+// Computed background-color can be transparent while Chromium paints an opaque
+// iframe canvas. Check the rendered alpha channel outside all overlay cards.
+async function assertTransparent(page,label){
+  const png=PNG.sync.read(await page.screenshot({omitBackground:true,clip:{x:1800,y:960,width:16,height:16}}));
+  for(let i=3;i<png.data.length;i+=4)
+    assert.equal(png.data[i],0,`${label}: background must have zero alpha; RGBA=${[...png.data.subarray(i-3,i+1)]}`);
+}
 
 (async()=>{
   const data=fs.mkdtempSync(path.join(os.tmpdir(),'LambLink-overlay-'));
@@ -41,6 +50,7 @@ const {chromium}=require('playwright');
     const hidden=()=>page.waitForFunction(()=>document.querySelector('iframe').style.visibility==='hidden',null,{timeout:10000});
     await page.goto(url);
     await hidden();
+    await assertTransparent(page,'Server offline');
     const first=await page.locator('iframe').getAttribute('src');
     await page.waitForFunction(first=>document.querySelector('iframe').src!==first,first,{timeout:7000});
     assert.equal(page.url(),url,'Offline recovery must retain the local entry point');
@@ -49,6 +59,11 @@ const {chromium}=require('playwright');
     await command('START');
     await visible();
     await page.frameLocator('iframe').locator('#wrap.show').waitFor();
+    await assertTransparent(page,'Connected raffle');
+    for(const colorScheme of ['light','dark']){
+      await page.emulateMedia({colorScheme});
+      await assertTransparent(page,`Connected raffle / ${colorScheme} OS theme`);
+    }
     await command('STATUS');
     const stable=await page.locator('iframe').getAttribute('src');
     await page.waitForTimeout(4500);
@@ -57,6 +72,7 @@ const {chromium}=require('playwright');
 
     await command('STOP');
     await hidden();
+    await assertTransparent(page,'Server stopped');
     assert.equal(page.url(),url);
     await command('START');
     await visible();
@@ -90,6 +106,7 @@ const {chromium}=require('playwright');
     assert.equal(bounds.x,18);
     assert.equal(bounds.y,18);
     assert.equal(bounds.width,480);
+    await assertTransparent(page,'Donation card');
     console.log('PASS: donation card renders at original viewport coordinates after recovery');
     await waitLine('DISPLAY 11111111111111111111111111111111 PAGE_CONFIRMED');
     await page.close();

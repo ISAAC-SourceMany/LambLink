@@ -96,6 +96,19 @@ OBS 브라우저 소스를 켠 뒤 Companion에서 `status`를 입력합니다. 
 
 ### 오버레이 표시 위치
 
+로컬 파일 방식에서 전체 배경이 검게 보인다면 OBS 브라우저 소스 속성의 **사용자 지정 CSS**에
+다음을 입력하고 **현재 페이지 새로고침**을 누르세요. 내부 페이지와 iframe의 색상 모드를
+일치시켜 투명 배경이 검은색으로 합성되는 문제를 해결합니다.
+
+```css
+html, body { background: transparent !important; }
+iframe { background: transparent !important; color-scheme: dark !important; }
+```
+
+수정된 Companion은 같은 처리를 로컬 HTML에 포함합니다. 업데이트 후 Companion을 한 번
+실행하고 OBS 소스를 새로고침하면 위 CSS를 별도로 넣지 않아도 됩니다. 일반 브라우저 창을
+창 캡처하는 방식이 아니라 OBS의 **브라우저** 소스로 해당 로컬 HTML을 열어야 합니다.
+
 - 추첨과 당첨 결과: 화면 중앙
 - 후원 이벤트 카드: 화면 왼쪽 위에서 18px, 최대 너비 480px
 - 지속 버프·디버프: 화면 왼쪽부터 오른쪽 방향으로 배치

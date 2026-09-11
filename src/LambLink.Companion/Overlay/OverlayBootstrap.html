@@ -5,7 +5,9 @@
 <title>LambLink Overlay</title>
 <style>
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}
-iframe{display:block;border:0;width:100%;height:100%;visibility:hidden}
+/* Match the child document's dark scheme: a mismatch paints an opaque iframe
+   canvas even when both documents have background:transparent. */
+iframe{display:block;border:0;width:100%;height:100%;visibility:hidden;background:transparent;color-scheme:dark}
 </style>
 </head>
 <body>

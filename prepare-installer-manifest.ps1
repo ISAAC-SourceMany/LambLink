@@ -1,6 +1,6 @@
 ﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$release = '1.0.2'
+$release = '1.0.3'
 $templatePath = Join-Path $root 'installer\installer-manifest.template.json'
 $outDir = Join-Path $root 'release-hosting'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null

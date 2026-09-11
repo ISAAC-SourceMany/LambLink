@@ -7,7 +7,7 @@ dotnet build tests/LambLink.OverlayRecoveryTests/LambLink.OverlayRecoveryTests.c
 node tests/LambLink.OverlayRecoveryTests/recovery.cjs
 ```
 
-Requires .NET 8, Node.js, `playwright` (resolvable directly or via `NODE_PATH`), and
+Requires .NET 8, Node.js, `playwright` and `pngjs` (resolvable directly or via `NODE_PATH`), and
 Chrome. Override `CHROME_PATH` if needed. Port 17883 must be free. This fixture links
 the production overlay server and embedded bootstrap, writes only a unique temporary
 directory, and never logs in to CHZZK or connects to the game. It shuts down its own
@@ -18,6 +18,10 @@ real raffle rendering, healthy connection without reloads, server stop/restart,
 HTTP 503 state responses, indefinitely stalled state requests, browser reopening,
 untrusted heartbeat rejection, donation layout after recovery, stable generated
 file path, unchanged-file preservation, and bootstrap file updates.
+
+Rendered PNG alpha is checked outside the cards while offline, connected, stopped,
+and showing a donation, including light/dark OS themes. Checking CSS alone misses
+Chromium's opaque iframe canvas when parent and child color schemes differ.
 
 Chromium automation does not replace the OBS acceptance check:
 

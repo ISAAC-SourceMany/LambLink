@@ -6,7 +6,7 @@
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-$release = '1.0.2'
+$release = '1.0.3'
 $distributionZip = Join-Path $projectRoot "dist\LambLink-v$release-distribution.zip"
 $sourceDir = Join-Path $projectRoot "dist\LambLink-v$release-distribution\CDN-UPLOAD"
 $outputFile = Join-Path $projectRoot 'aws\production-release.local.json'
@@ -33,7 +33,6 @@ if ([string]::IsNullOrWhiteSpace($bucket) -or [string]::IsNullOrWhiteSpace($fron
 $manifestName = "installer-manifest-$release.json"
 $manifestPath = Join-Path $sourceDir $manifestName
 $componentFiles = @(
-  'COTL-KoreanFontFix-4.2.1-v1.0.0.zip',
   "LambLink-Mod-$release.zip",
   "LambLink-Companion-$release-win-x64.zip"
 )
