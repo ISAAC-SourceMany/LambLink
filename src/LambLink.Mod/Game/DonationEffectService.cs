@@ -342,28 +342,28 @@ public sealed class DonationEffectService
         {
             <= 2_999 => new[]
             {
-                ("DUNGEON_HEAL_SMALL", "작은 치유"), ("DUNGEON_HURT_SMALL", "작은 시련"),
-                ("DUNGEON_FERVOUR_SMALL", "열정 충전"), ("DUNGEON_SPEED_SMALL", "신속의 축복"),
-                ("DUNGEON_SPEED_DOWN_SMALL", "둔화의 장난"), ("DUNGEON_ENEMY_DAMAGE_SMALL", "적을 향한 일격")
+                ("DUNGEON_HEAL_SMALL", "체력 하트 0.5칸 회복"), ("DUNGEON_HURT_SMALL", "체력 하트 0.5칸 감소"),
+                ("DUNGEON_FERVOUR_SMALL", "열정 최대치의 20% 회복"), ("DUNGEON_SPEED_SMALL", "이동속도 15% 증가"),
+                ("DUNGEON_SPEED_DOWN_SMALL", "이동속도 15% 감소"), ("DUNGEON_ENEMY_DAMAGE_SMALL", "적 전체에 고정 피해 0.5")
             },
             <= 4_999 => new[]
             {
-                ("DUNGEON_HEAL_MEDIUM", "치유의 손길"), ("DUNGEON_HURT_MEDIUM", "고통의 장난"),
-                ("DUNGEON_FERVOUR_MEDIUM", "열정의 샘"), ("DUNGEON_SPEED_MEDIUM", "질주의 축복"),
-                ("DUNGEON_ATTACK_MEDIUM", "전투의 축복"), ("DUNGEON_SPEED_DOWN_MEDIUM", "무거운 발걸음"),
-                ("DUNGEON_ATTACK_DOWN_MEDIUM", "무뎌진 칼날"), ("DUNGEON_ENEMY_DAMAGE_MEDIUM", "적 무리 강타")
+                ("DUNGEON_HEAL_MEDIUM", "체력 하트 1칸 회복"), ("DUNGEON_HURT_MEDIUM", "체력 하트 1칸 감소"),
+                ("DUNGEON_FERVOUR_MEDIUM", "열정 최대치의 35% 회복"), ("DUNGEON_SPEED_MEDIUM", "이동속도 20% 증가"),
+                ("DUNGEON_ATTACK_MEDIUM", "공격력 20% 증가"), ("DUNGEON_SPEED_DOWN_MEDIUM", "이동속도 20% 감소"),
+                ("DUNGEON_ATTACK_DOWN_MEDIUM", "공격력 20% 감소"), ("DUNGEON_ENEMY_DAMAGE_MEDIUM", "적 전체에 고정 피해 1")
             },
             <= 9_999 => new[]
             {
-                ("DUNGEON_HEAL_LARGE", "강한 치유"), ("DUNGEON_HURT_LARGE", "강한 시련"),
-                ("DUNGEON_FERVOUR_LARGE", "넘치는 열정"), ("DUNGEON_SPEED_ATTACK_LARGE", "광전사의 축복"),
-                ("DUNGEON_SPEED_ATTACK_DOWN_LARGE", "쇠약의 저주"), ("DUNGEON_ENEMY_DAMAGE_LARGE", "적 무리 대타격")
+                ("DUNGEON_HEAL_LARGE", "체력 하트 1.5칸 회복"), ("DUNGEON_HURT_LARGE", "체력 하트 1.5칸 감소"),
+                ("DUNGEON_FERVOUR_LARGE", "열정 최대치의 50% 회복"), ("DUNGEON_SPEED_ATTACK_LARGE", "이동속도·공격력 25% 증가"),
+                ("DUNGEON_SPEED_ATTACK_DOWN_LARGE", "이동속도·공격력 25% 감소"), ("DUNGEON_ENEMY_DAMAGE_LARGE", "적 전체에 고정 피해 1.5")
             },
             _ => new[]
             {
-                ("DUNGEON_HEAL_SPECIAL", "기적의 치유"), ("DUNGEON_HURT_SPECIAL", "신의 시련"),
-                ("DUNGEON_FERVOUR_SPECIAL", "열정 완전 충전"), ("DUNGEON_SPEED_ATTACK_SPECIAL", "전투의 기적"),
-                ("DUNGEON_SPEED_ATTACK_DOWN_SPECIAL", "전투의 대저주"), ("DUNGEON_ENEMY_DAMAGE_SPECIAL", "적 무리 대폭발")
+                ("DUNGEON_HEAL_SPECIAL", "체력 하트 2칸 회복"), ("DUNGEON_HURT_SPECIAL", "체력 하트 2칸 감소"),
+                ("DUNGEON_FERVOUR_SPECIAL", "열정 완전 회복"), ("DUNGEON_SPEED_ATTACK_SPECIAL", "이동속도·공격력 40% 증가"),
+                ("DUNGEON_SPEED_ATTACK_DOWN_SPECIAL", "이동속도·공격력 40% 감소"), ("DUNGEON_ENEMY_DAMAGE_SPECIAL", "적 전체에 고정 피해 2.5")
             }
         };
         return pool[UnityEngine.Random.Range(0, pool.Length)];

@@ -24,9 +24,9 @@ public sealed class Plugin : BaseUnityPlugin
     // renamed LambLink assembly as a second, unrelated plugin.
     public const string PluginGuid = "com.chzzkofthelamb.integration";
     public const string PluginName = "LambLink";
-    public const string PluginVersion = "1.0.3";
+    public const string PluginVersion = "1.0.4";
     public const string CotlApiGuid = "io.github.xhayper.COTL_API";
-    public const string BuildTag = "v1.0.3-production";
+    public const string BuildTag = "v1.0.4-production";
 
     private readonly ConcurrentQueue<GameCommandEnvelope> _queue = new();
     private readonly CancellationTokenSource _runtimeLifetime = new();

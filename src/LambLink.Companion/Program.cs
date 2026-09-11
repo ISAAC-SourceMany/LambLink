@@ -15,7 +15,7 @@ using LambLink.Companion.Storage;
 using LambLink.Companion.ViewerPage;
 using LambLink.Protocol;
 
-const string ReleaseVersion = "1.0.3";
+const string ReleaseVersion = "1.0.4";
 const string ProductionApiBase = "https://y0eblkdmu5.execute-api.ap-northeast-2.amazonaws.com";
 const string ProductionFrontendUrl = "https://d1gvw9ccym1qvn.cloudfront.net";
 
@@ -57,7 +57,7 @@ catch (Exception ex)
     legacyMigrationWarning = ex.Message;
 }
 Directory.CreateDirectory(dataDir);
-var diagnosticLogPath = Path.Combine(dataDir, "companion-1.0.3.log");
+var diagnosticLogPath = Path.Combine(dataDir, "companion-1.0.4.log");
 var originalConsoleOut = Console.Out;
 var originalConsoleError = Console.Error;
 using var diagnosticLogWriter = new RollingFileTextWriter(

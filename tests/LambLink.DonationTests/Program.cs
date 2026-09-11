@@ -19,6 +19,64 @@ string Payload(string amount, string type = "CHAT") => "{\"donationType\":\"" + 
 var jsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
 try
 {
+    Test("all donation names describe the actual effect and units", () => {
+        var rules = new DonationRuleEngine(new DonationSettings());
+        var expected = new (string Effect, string Name)[]
+        {
+            ("SMALL_FAITH_UP_5", "신앙 5 증가"),
+            ("SMALL_FAITH_DOWN_5", "신앙 5 감소"),
+            ("SMALL_RANDOM_FOLLOWER_FOOD_UP_15", "무작위 신도 1명 포만도 15 증가"),
+            ("SMALL_ALL_FOOD_UP_5", "모든 신도 포만도 5 증가"),
+            ("SMALL_BALANCED_UP_3", "신앙·모든 신도 포만도 3 증가"),
+            ("MEDIUM_FAITH_UP_10", "신앙 10 증가"),
+            ("MEDIUM_FAITH_DOWN_10", "신앙 10 감소"),
+            ("MEDIUM_ALL_FOOD_UP_10", "모든 신도 포만도 10 증가"),
+            ("MEDIUM_ALL_FOOD_DOWN_10", "모든 신도 포만도 10 감소"),
+            ("MEDIUM_BALANCED_UP_7", "신앙·모든 신도 포만도 7 증가"),
+            ("MEDIUM_BALANCED_DOWN_7", "신앙·모든 신도 포만도 7 감소"),
+            ("HH_FAITH_UP_20", "신앙 20 증가"),
+            ("HH_ALL_FOOD_UP_20", "모든 신도 포만도 20 증가"),
+            ("HH_BALANCED_UP_15", "신앙·모든 신도 포만도 15 증가"),
+            ("HH_FAITH_DOWN_15", "신앙 15 감소"),
+            ("HH_ALL_FOOD_DOWN_15", "모든 신도 포만도 15 감소"),
+            ("HH_BALANCED_DOWN_10", "신앙·모든 신도 포만도 10 감소"),
+            ("SPECIAL_FULL_FEAST", "모든 신도 포만도 완전 회복"),
+            ("SPECIAL_FAITH_UP_30", "신앙 30 증가"),
+            ("SPECIAL_BALANCED_UP_25", "신앙·모든 신도 포만도 25 증가"),
+            ("SPECIAL_FAITH_DOWN_20", "신앙 20 감소"),
+            ("SPECIAL_BALANCED_DOWN_20", "신앙·모든 신도 포만도 20 감소"),
+            ("SPECIAL_RANDOM_FOLLOWER_FEAST_FAITH_20", "신앙 20 증가·무작위 신도 1명 포만도 완전 회복"),
+            ("DUNGEON_HEAL_SMALL", "체력 하트 0.5칸 회복"),
+            ("DUNGEON_HURT_SMALL", "체력 하트 0.5칸 감소"),
+            ("DUNGEON_FERVOUR_SMALL", "열정 최대치의 20% 회복"),
+            ("DUNGEON_SPEED_SMALL", "이동속도 15% 증가"),
+            ("DUNGEON_SPEED_DOWN_SMALL", "이동속도 15% 감소"),
+            ("DUNGEON_ENEMY_DAMAGE_SMALL", "적 전체에 고정 피해 0.5"),
+            ("DUNGEON_HEAL_MEDIUM", "체력 하트 1칸 회복"),
+            ("DUNGEON_HURT_MEDIUM", "체력 하트 1칸 감소"),
+            ("DUNGEON_FERVOUR_MEDIUM", "열정 최대치의 35% 회복"),
+            ("DUNGEON_SPEED_MEDIUM", "이동속도 20% 증가"),
+            ("DUNGEON_ATTACK_MEDIUM", "공격력 20% 증가"),
+            ("DUNGEON_SPEED_DOWN_MEDIUM", "이동속도 20% 감소"),
+            ("DUNGEON_ATTACK_DOWN_MEDIUM", "공격력 20% 감소"),
+            ("DUNGEON_ENEMY_DAMAGE_MEDIUM", "적 전체에 고정 피해 1"),
+            ("DUNGEON_HEAL_LARGE", "체력 하트 1.5칸 회복"),
+            ("DUNGEON_HURT_LARGE", "체력 하트 1.5칸 감소"),
+            ("DUNGEON_FERVOUR_LARGE", "열정 최대치의 50% 회복"),
+            ("DUNGEON_SPEED_ATTACK_LARGE", "이동속도·공격력 25% 증가"),
+            ("DUNGEON_SPEED_ATTACK_DOWN_LARGE", "이동속도·공격력 25% 감소"),
+            ("DUNGEON_ENEMY_DAMAGE_LARGE", "적 전체에 고정 피해 1.5"),
+            ("DUNGEON_HEAL_SPECIAL", "체력 하트 2칸 회복"),
+            ("DUNGEON_HURT_SPECIAL", "체력 하트 2칸 감소"),
+            ("DUNGEON_FERVOUR_SPECIAL", "열정 완전 회복"),
+            ("DUNGEON_SPEED_ATTACK_SPECIAL", "이동속도·공격력 40% 증가"),
+            ("DUNGEON_SPEED_ATTACK_DOWN_SPECIAL", "이동속도·공격력 40% 감소"),
+            ("DUNGEON_ENEMY_DAMAGE_SPECIAL", "적 전체에 고정 피해 2.5"),
+        };
+        foreach (var item in expected)
+            Check(rules.GetEventName(item.Effect) == item.Name, item.Effect);
+        Check(rules.GetEventName("CUSTOM_EFFECT") == "CUSTOM_EFFECT", "custom effect preserved");
+    });
     Test("CHAT/VIDEO numbers and strings normalize identically; no donor identity invented", () => {
         foreach (var type in new[] { "CHAT", "VIDEO" })
         foreach (var amount in new[] { "1", "999", "1000", "2999", "3000", "4999", "5000", "9999", "10000", long.MaxValue.ToString() })

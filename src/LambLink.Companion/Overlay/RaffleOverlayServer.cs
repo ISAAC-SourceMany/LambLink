@@ -7,7 +7,7 @@ namespace LambLink.Companion.Overlay;
 
 public sealed class RaffleOverlayServer : IAsyncDisposable
 {
-    private const string OverlayDocumentVersion = "v1.0.3-overlay-document-v3";
+    private const string OverlayDocumentVersion = "v1.0.4-overlay-document-v3";
     public event Action<string, string>? DonationDisplayChanged;
     private bool _activeDonationConfirmed;
     private readonly object _gate = new();
@@ -779,7 +779,7 @@ public sealed class RaffleOverlayServer : IAsyncDisposable
 <div id="donationWrap"><div class="panel" id="donationPanel"></div></div>
 <div id="buffs"></div>
 <script>
-const overlayDocumentVersion='v1.0.3-overlay-document-v3';
+const overlayDocumentVersion='v1.0.4-overlay-document-v3';
 const wrap=document.getElementById('wrap');
 const panel=document.getElementById('panel');
 const donationWrap=document.getElementById('donationWrap');
